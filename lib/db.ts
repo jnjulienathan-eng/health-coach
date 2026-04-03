@@ -46,7 +46,10 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     },
     { onConflict: 'date' }
   )
-  if (error) throw error
+  if (error) {
+    console.error('Supabase upsert error:', JSON.stringify(error))
+    throw error
+  }
 }
 
 export async function loadRecentEntries(days: number): Promise<DailyEntry[]> {

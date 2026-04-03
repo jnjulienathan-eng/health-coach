@@ -168,7 +168,8 @@ export default function App() {
       setSavedSection(sectionName)
       setTimeout(() => setSavedSection(null), 2000)
     } catch (e) {
-      console.error('Failed to save:', e)
+      console.error('Failed to save:', JSON.stringify(e))
+      throw e
     } finally {
       setSaving(false)
     }

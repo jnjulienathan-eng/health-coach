@@ -200,7 +200,12 @@ ${ctx}`
     }
 
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Unknown error'
+    console.error('Coach API error:', e)
+    const msg = e instanceof Error
+      ? e.message
+      : (typeof e === 'object' && e !== null && 'message' in e)
+        ? String((e as Record<string, unknown>).message)
+        : String(e)
     return Response.json({ error: msg }, { status: 500 })
   }
 }
