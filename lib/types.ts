@@ -12,7 +12,7 @@ export type ActivityType = 'swim' | 'egym' | 'run' | 'walk'
 
 export interface TrainingSession {
   id: string
-  activity_type: ActivityType
+  activity_type: string   // ActivityType for quick-add; any string for custom
   duration_min: number
   perceived_effort: number | null   // 1–5
   active_calories: number | null

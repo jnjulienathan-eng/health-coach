@@ -87,6 +87,7 @@ export interface BreakfastTemplate {
   fat: number | null
   carbs: number | null
   calories: number | null
+  description?: string
 }
 
 // Derive today's cycle day from yesterday's stored context.cycle_day + 1

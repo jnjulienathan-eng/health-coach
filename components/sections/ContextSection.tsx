@@ -11,6 +11,7 @@ interface Props {
   onChange: (data: ContextData) => void
   onSave: () => void
   onResetCycle: () => void
+  onCycleDayChange: (day: number | null) => void
   saving?: boolean
 }
 
@@ -24,7 +25,7 @@ const SYMPTOMS: Symptom[] = [
   'Other',
 ]
 
-export default function ContextSection({ data, cycleDay, onChange, onSave, onResetCycle, saving }: Props) {
+export default function ContextSection({ data, cycleDay, onChange, onSave, onResetCycle, onCycleDayChange, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
 
   const isComplete =
@@ -83,19 +84,31 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
               justifyContent: 'space-between',
             }}
           >
-            {/* Large cycle day number */}
-            <div
+            {/* Editable cycle day number */}
+            <input
+              type="number"
+              min={1}
+              max={40}
+              value={cycleDay ?? ''}
+              placeholder="—"
+              onChange={(e) => {
+                const v = e.target.value === '' ? null : parseInt(e.target.value, 10)
+                onCycleDayChange(v && v > 0 ? v : null)
+              }}
               style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: 64,
                 fontWeight: 400,
                 lineHeight: 1,
-                color:
-                  cycleDay != null ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
+                color: cycleDay != null ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                width: 120,
+                padding: 0,
+                MozAppearance: 'textfield',
               }}
-            >
-              {cycleDay != null ? cycleDay : '—'}
-            </div>
+            />
 
             {/* Reset button */}
             <button

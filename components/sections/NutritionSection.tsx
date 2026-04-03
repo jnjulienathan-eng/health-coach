@@ -52,11 +52,11 @@ const INCIDENTAL_CHIPS: { label: string; macros: Partial<MealMacros> }[] = [
 
 // Default breakfast templates (shown if Supabase returns none)
 const DEFAULT_BREAKFAST_TEMPLATES: BreakfastTemplate[] = [
-  { id: 'b1', name: 'Yogurt bowl',            protein: 22, fiber: 6, fat: 14, carbs: 28, calories: 330 },
-  { id: 'b2', name: 'Chickpea pancake + sardines', protein: 40, fiber: 10, fat: 16, carbs: 30, calories: 420 },
-  { id: 'b3', name: 'Cottage cheese pancakes', protein: 35, fiber: 3, fat: 10, carbs: 22, calories: 310 },
-  { id: 'b4', name: 'Rice & natto bowl',       protein: 30, fiber: 5, fat: 12, carbs: 48, calories: 420 },
-  { id: 'b5', name: 'Sourdough toast + egg',   protein: 18, fiber: 3, fat: 10, carbs: 32, calories: 290 },
+  { id: 'b1', name: 'Yogurt bowl',            protein: 41, fiber: 17, fat: 36, carbs: 55, calories: 712, description: 'Almond milk, chia, flax, cacao nibs, pumpkin seeds, hemp seeds, Greek yogurt 5%, blueberries, protein powder, protein muesli.' },
+  { id: 'b2', name: 'Chickpea pancake + sardines', protein: 40, fiber: 10, fat: 16, carbs: 30, calories: 420, description: '' },
+  { id: 'b3', name: 'Cottage cheese pancakes', protein: 35, fiber: 3, fat: 10, carbs: 22, calories: 310, description: '' },
+  { id: 'b4', name: 'Rice & natto bowl',       protein: 51, fiber: 5, fat: 22, carbs: 50, calories: 605, description: 'Japanese rice, natto, soft tofu, sardines.' },
+  { id: 'b5', name: 'Sourdough toast + egg',   protein: 18, fiber: 3, fat: 10, carbs: 32, calories: 290, description: '' },
 ]
 
 // ─── MacroBar component ──────────────────────────────────────────
@@ -320,7 +320,7 @@ export default function NutritionSection({
   const applyTemplate = (tmpl: BreakfastTemplate) => {
     const b: BreakfastMeal = {
       template_name: tmpl.name,
-      description: tmpl.name,
+      description: tmpl.description || tmpl.name,
       protein: tmpl.protein,
       fiber: tmpl.fiber,
       fat: tmpl.fat,

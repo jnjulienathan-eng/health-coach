@@ -24,15 +24,20 @@ const ACTIVITIES: {
   { type: 'walk', label: 'Walk',  emoji: '🚶', defaultMin: 75 },
 ]
 
-function activityLabel(type: ActivityType) {
+function activityLabel(type: string) {
   return ACTIVITIES.find((a) => a.type === type)?.label ?? type
 }
-function activityEmoji(type: ActivityType) {
+function activityEmoji(type: string) {
   return ACTIVITIES.find((a) => a.type === type)?.emoji ?? '🏋️'
 }
 
 export default function TrainingSection({ data, onChange, onSave, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
+  const [showCustomForm, setShowCustomForm] = useState(false)
+  const [customName, setCustomName] = useState('')
+  const [customMin, setCustomMin] = useState<number>(30)
+  const [customEffort, setCustomEffort] = useState<number | null>(null)
+  const [customCal, setCustomCal] = useState<number | null>(null)
 
   const isComplete = data.sessions.length > 0 || data.cycled_today
 
@@ -116,7 +121,102 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
                 </span>
               </button>
             ))}
+
+            {/* Other + button */}
+            <button
+              type="button"
+              onClick={() => setShowCustomForm((v) => !v)}
+              className="btn-template"
+              style={{ background: showCustomForm ? 'var(--color-primary)' : undefined, color: showCustomForm ? '#fff' : undefined }}
+            >
+              <span style={{ fontSize: 18 }}>＋</span>
+              <span style={{ fontSize: 12, marginTop: 2 }}>Other</span>
+            </button>
           </div>
+
+          {/* Inline custom activity form */}
+          {showCustomForm && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 14,
+                background: 'var(--color-primary-light)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+              }}
+            >
+              {/* Name + duration row */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ flex: 2 }}>
+                  <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 6 }}>Activity</div>
+                  <input
+                    type="text"
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    placeholder="e.g. Yoga, Pilates…"
+                    style={{ width: '100%', height: 44, padding: '0 12px', fontSize: 14, color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 6 }}>Minutes</div>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={customMin}
+                    onChange={(e) => setCustomMin(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                    style={{ width: '100%', height: 44, padding: '0 10px', fontFamily: 'var(--font-mono)', fontSize: 20, color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 6 }}>Kcal</div>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={customCal ?? ''}
+                    onChange={(e) => setCustomCal(e.target.value === '' ? null : parseInt(e.target.value))}
+                    placeholder="—"
+                    style={{ width: '100%', height: 44, padding: '0 10px', fontFamily: 'var(--font-mono)', fontSize: 20, color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              {/* Effort */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+                  Effort <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--color-text-dim)' }}>optional</span>
+                </div>
+                <TapScale value={customEffort} onChange={setCustomEffort} lowLabel="easy" highLabel="max effort" />
+              </div>
+
+              {/* Add button */}
+              <button
+                type="button"
+                disabled={!customName.trim()}
+                onClick={() => {
+                  const session: TrainingSession = {
+                    id: crypto.randomUUID(),
+                    activity_type: customName.trim() || 'Other',
+                    duration_min: customMin || 0,
+                    perceived_effort: customEffort,
+                    active_calories: customCal,
+                  }
+                  onChange({ ...data, sessions: [...data.sessions, session] })
+                  setCustomName('')
+                  setCustomMin(30)
+                  setCustomEffort(null)
+                  setCustomCal(null)
+                  setShowCustomForm(false)
+                }}
+                className="btn-primary"
+                style={{ opacity: customName.trim() ? 1 : 0.4 }}
+              >
+                Add session
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Session cards */}

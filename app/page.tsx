@@ -370,6 +370,7 @@ export default function App() {
                   onChange={(context) => update({ context })}
                   onSave={() => save('context')}
                   onResetCycle={resetCycleDay}
+                  onCycleDayChange={setCycleDay}
                   saving={saving}
                 />
               </div>
