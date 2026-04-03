@@ -23,7 +23,7 @@ function rowToEntry(row: Record<string, unknown>): DailyEntry {
 
 export async function loadEntry(date: string): Promise<DailyEntry> {
   const { data, error } = await supabase
-    .from('checkins')
+    .from('daily_entries')
     .select('*')
     .eq('date', date)
     .maybeSingle()
@@ -34,7 +34,7 @@ export async function loadEntry(date: string): Promise<DailyEntry> {
 }
 
 export async function saveEntry(entry: DailyEntry): Promise<void> {
-  const { error } = await supabase.from('checkins').upsert(
+  const { error } = await supabase.from('daily_entries').upsert(
     {
       date:        entry.date,
       sleep:       entry.sleep,
@@ -58,7 +58,7 @@ export async function loadRecentEntries(days: number): Promise<DailyEntry[]> {
   const sinceStr = since.toISOString().split('T')[0]
 
   const { data, error } = await supabase
-    .from('checkins')
+    .from('daily_entries')
     .select('*')
     .gte('date', sinceStr)
     .order('date', { ascending: false })
@@ -70,7 +70,7 @@ export async function loadRecentEntries(days: number): Promise<DailyEntry[]> {
 // Check if a given date's sleep data has been logged
 export async function isSleepLogged(date: string): Promise<boolean> {
   const { data, error } = await supabase
-    .from('checkins')
+    .from('daily_entries')
     .select('sleep')
     .eq('date', date)
     .maybeSingle()
@@ -100,7 +100,7 @@ export async function deriveCycleDay(): Promise<number | null> {
   const yStr = yesterday.toISOString().split('T')[0]
 
   const { data } = await supabase
-    .from('checkins')
+    .from('daily_entries')
     .select('context')
     .eq('date', yStr)
     .maybeSingle()

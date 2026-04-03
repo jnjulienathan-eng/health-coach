@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
     const sinceStr = since.toISOString().split('T')[0]
 
     const { data, error } = await supabase
-      .from('checkins')
+      .from('daily_entries')
       .select('*')
       .gte('date', sinceStr)
       .order('date', { ascending: false })
