@@ -113,7 +113,8 @@ export async function POST(req: NextRequest) {
       history?: Array<{ role: 'user' | 'assistant'; content: string }>
     }
 
-    const { type, today, cycleDay, currentDate, message, history = [] } = body
+    const { type, today, cycleDay, currentDate: currentDateRaw, message, history = [] } = body
+    const currentDate = currentDateRaw ?? new Date().toISOString().split('T')[0]
 
     // Load last 7 days from Supabase
     const since = new Date(currentDate + 'T00:00:00')
