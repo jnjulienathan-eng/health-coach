@@ -1,110 +1,420 @@
 'use client'
 
+import { useState } from 'react'
+import type { TrainingData, TrainingSession, ActivityType } from '@/lib/types'
 import Section from '@/components/ui/Section'
-import type { TrainingSession } from '@/lib/types'
+import TapScale from '@/components/ui/TapScale'
 
 interface Props {
-  sessions: TrainingSession[]
-  onChange: (sessions: TrainingSession[]) => void
+  data: TrainingData
+  onChange: (data: TrainingData) => void
+  onSave: () => void
+  saving?: boolean
 }
 
-const TRAINING_TYPES = [
-  'Strength', 'Run', 'Cycle', 'HIIT', 'Walk',
-  'Yoga', 'Pilates', 'Swim', 'Mobility', 'Cardio', 'Other',
+const ACTIVITIES: {
+  type: ActivityType
+  label: string
+  emoji: string
+  defaultMin: number
+}[] = [
+  { type: 'swim', label: 'Swim',  emoji: '🏊', defaultMin: 50 },
+  { type: 'egym', label: 'eGym',  emoji: '💪', defaultMin: 35 },
+  { type: 'run',  label: 'Run',   emoji: '🏃', defaultMin: 35 },
+  { type: 'walk', label: 'Walk',  emoji: '🚶', defaultMin: 75 },
 ]
 
-function newSession(): TrainingSession {
-  return { id: crypto.randomUUID(), type: 'Strength', duration_minutes: null, rpe: null }
+function activityLabel(type: ActivityType) {
+  return ACTIVITIES.find((a) => a.type === type)?.label ?? type
+}
+function activityEmoji(type: ActivityType) {
+  return ACTIVITIES.find((a) => a.type === type)?.emoji ?? '🏋️'
 }
 
-function buildSummary(sessions: TrainingSession[]) {
-  if (!sessions.length) return undefined
-  return sessions
-    .map((s) => `${s.type}${s.duration_minutes ? ` ${s.duration_minutes}m` : ''}`)
-    .join(', ')
-}
+export default function TrainingSection({ data, onChange, onSave, saving }: Props) {
+  const [localSaved, setLocalSaved] = useState(false)
 
-export default function TrainingSection({ sessions, onChange }: Props) {
-  const add = () => onChange([...sessions, newSession()])
-  const remove = (id: string) => onChange(sessions.filter((s) => s.id !== id))
-  const update = (id: string, patch: Partial<TrainingSession>) =>
-    onChange(sessions.map((s) => (s.id === id ? { ...s, ...patch } : s)))
+  const isComplete = data.sessions.length > 0 || data.cycled_today
+
+  const addSession = (type: ActivityType, defaultMin: number) => {
+    const session: TrainingSession = {
+      id: crypto.randomUUID(),
+      activity_type: type,
+      duration_min: defaultMin,
+      perceived_effort: null,
+      active_calories: null,
+    }
+    onChange({ ...data, sessions: [...data.sessions, session] })
+  }
+
+  const removeSession = (id: string) =>
+    onChange({ ...data, sessions: data.sessions.filter((s) => s.id !== id) })
+
+  const updateSession = (id: string, patch: Partial<TrainingSession>) =>
+    onChange({
+      ...data,
+      sessions: data.sessions.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+    })
+
+  const handleSave = async () => {
+    await onSave()
+    setLocalSaved(true)
+    setTimeout(() => setLocalSaved(false), 2000)
+  }
+
+  // Collapsed summary
+  const summary = isComplete ? (
+    <div
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 12,
+        color: 'var(--color-text-secondary)',
+      }}
+    >
+      {data.sessions.map((s) => activityEmoji(s.activity_type)).join(' ')}
+      {data.sessions.length > 0 && data.cycled_today && ' · '}
+      {data.cycled_today && '🚴'}
+    </div>
+  ) : null
 
   return (
-    <Section title="Training" summary={buildSummary(sessions)}>
-      <div className="space-y-3">
-        {sessions.map((session) => (
-          <div
-            key={session.id}
-            className="grid grid-cols-[1fr_72px_56px_20px] gap-2 items-end"
-          >
-            <div>
-              <label className="block text-[10px] text-[#444] font-mono uppercase tracking-wider mb-1">
-                Type
-              </label>
-              <select
-                value={session.type}
-                onChange={(e) => update(session.id, { type: e.target.value })}
-                className="w-full bg-[#0d0d0d] border border-[#1c1c1c] rounded px-2 py-1.5 text-xs font-mono text-[#d4d4d4] focus:outline-none focus:border-[#2a2a2a]"
-              >
-                {TRAINING_TYPES.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] text-[#444] font-mono uppercase tracking-wider mb-1">
-                Min
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={session.duration_minutes ?? ''}
-                onChange={(e) =>
-                  update(session.id, {
-                    duration_minutes: e.target.value === '' ? null : parseInt(e.target.value),
-                  })
-                }
-                className="w-full bg-[#0d0d0d] border border-[#1c1c1c] rounded px-2 py-1.5 text-xs font-mono text-[#d4d4d4] focus:outline-none focus:border-[#2a2a2a]"
-                placeholder="—"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] text-[#444] font-mono uppercase tracking-wider mb-1">
-                RPE
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={session.rpe ?? ''}
-                onChange={(e) =>
-                  update(session.id, {
-                    rpe: e.target.value === '' ? null : parseInt(e.target.value),
-                  })
-                }
-                className="w-full bg-[#0d0d0d] border border-[#1c1c1c] rounded px-2 py-1.5 text-xs font-mono text-[#d4d4d4] focus:outline-none focus:border-[#2a2a2a]"
-                placeholder="—"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => remove(session.id)}
-              className="pb-0.5 text-[#2a2a2a] hover:text-[#f87171] text-xs transition-colors"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
+    <Section title="Training" isComplete={isComplete} rightSlot={summary}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+        {/* Quick-add row */}
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--color-text-secondary)',
+              marginBottom: 10,
+            }}
+          >
+            Add session
+          </div>
+          <div className="scroll-row">
+            {ACTIVITIES.map(({ type, label, emoji, defaultMin }) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => addSession(type, defaultMin)}
+                className="btn-template"
+              >
+                <span style={{ fontSize: 20 }}>{emoji}</span>
+                <span style={{ fontSize: 12, marginTop: 2 }}>{label}</span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--color-text-secondary)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {defaultMin}m
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Session cards */}
+        {data.sessions.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {data.sessions.map((session) => (
+              <SessionCard
+                key={session.id}
+                session={session}
+                onChange={(patch) => updateSession(session.id, patch)}
+                onRemove={() => removeSession(session.id)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Cycling toggle */}
+        <CyclingRow
+          cycled={data.cycled_today}
+          minutes={data.cycling_minutes}
+          onCycledChange={(v) => onChange({ ...data, cycled_today: v })}
+          onMinutesChange={(v) => onChange({ ...data, cycling_minutes: v })}
+        />
+
+        {/* Save */}
         <button
           type="button"
-          onClick={add}
-          className="w-full py-2 border border-dashed border-[#1c1c1c] rounded text-xs text-[#2a2a2a] hover:text-[#444] hover:border-[#252525] transition-colors font-mono"
+          onClick={handleSave}
+          disabled={saving}
+          className="btn-primary"
+          style={{ background: localSaved ? 'var(--color-primary-dark)' : undefined }}
         >
-          + add session
+          {localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save training'}
         </button>
       </div>
     </Section>
+  )
+}
+
+// ─── Session card ─────────────────────────────────────────────────
+function SessionCard({
+  session,
+  onChange,
+  onRemove,
+}: {
+  session: TrainingSession
+  onChange: (patch: Partial<TrainingSession>) => void
+  onRemove: () => void
+}) {
+  return (
+    <div
+      style={{
+        background: 'var(--color-primary-light)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 10,
+        padding: 14,
+      }}
+    >
+      {/* Header row */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 22 }}>{activityEmoji(session.activity_type)}</span>
+          <span
+            style={{
+              fontSize: 15,
+              fontWeight: 500,
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            {activityLabel(session.activity_type)}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove session"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--color-text-dim)',
+            fontSize: 18,
+            lineHeight: 1,
+            padding: 4,
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Duration + Calories */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--color-text-secondary)',
+              marginBottom: 6,
+            }}
+          >
+            Duration
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={session.duration_min ?? ''}
+              onChange={(e) =>
+                onChange({
+                  duration_min: e.target.value === '' ? 0 : parseInt(e.target.value),
+                })
+              }
+              style={{
+                width: 64,
+                height: 44,
+                padding: '0 10px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 20,
+                color: 'var(--color-text-primary)',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                outline: 'none',
+              }}
+            />
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>min</span>
+          </div>
+        </div>
+
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--color-text-secondary)',
+              marginBottom: 6,
+            }}
+          >
+            Calories
+            <span
+              style={{
+                fontWeight: 400,
+                textTransform: 'none',
+                marginLeft: 4,
+                color: 'var(--color-text-dim)',
+              }}
+            >
+              optional
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={session.active_calories ?? ''}
+              onChange={(e) =>
+                onChange({
+                  active_calories: e.target.value === '' ? null : parseInt(e.target.value),
+                })
+              }
+              placeholder="—"
+              style={{
+                width: 64,
+                height: 44,
+                padding: '0 10px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 20,
+                color: 'var(--color-text-primary)',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                outline: 'none',
+              }}
+            />
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>kcal</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Effort */}
+      <div>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'var(--color-text-secondary)',
+            marginBottom: 8,
+          }}
+        >
+          Perceived effort
+          <span
+            style={{
+              fontWeight: 400,
+              textTransform: 'none',
+              marginLeft: 4,
+              color: 'var(--color-text-dim)',
+            }}
+          >
+            optional
+          </span>
+        </div>
+        <TapScale
+          value={session.perceived_effort}
+          onChange={(v) => onChange({ perceived_effort: v })}
+          lowLabel="easy"
+          highLabel="max effort"
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─── Cycling row ──────────────────────────────────────────────────
+function CyclingRow({
+  cycled,
+  minutes,
+  onCycledChange,
+  onMinutesChange,
+}: {
+  cycled: boolean
+  minutes: number | null
+  onCycledChange: (v: boolean) => void
+  onMinutesChange: (v: number | null) => void
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '12px 14px',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 10,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 20 }}>🚴</span>
+        <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>Cycled today</span>
+        <span
+          style={{
+            fontSize: 11,
+            color: 'var(--color-text-dim)',
+          }}
+        >
+          (transport)
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {cycled && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={minutes ?? ''}
+              onChange={(e) =>
+                onMinutesChange(e.target.value === '' ? null : parseInt(e.target.value))
+              }
+              placeholder="min"
+              style={{
+                width: 56,
+                height: 36,
+                padding: '0 8px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 15,
+                color: 'var(--color-text-primary)',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 6,
+                outline: 'none',
+                textAlign: 'center',
+              }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>min</span>
+          </div>
+        )}
+        <input
+          type="checkbox"
+          checked={cycled}
+          onChange={(e) => onCycledChange(e.target.checked)}
+          className="toggle"
+          aria-label="Cycled today"
+        />
+      </div>
+    </div>
   )
 }

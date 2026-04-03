@@ -1,28 +1,27 @@
 import { createClient } from '@supabase/supabase-js'
-import type { CheckinRecord, MealTemplate } from './types'
-import { emptyCheckin } from './types'
+import type { DailyEntry } from './types'
+import { emptyEntry } from './types'
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
 )
 
-function rowToCheckin(row: Record<string, unknown>, date: string): CheckinRecord {
-  const base = emptyCheckin(date)
+// Maps the JSONB checkins row → DailyEntry, filling missing fields with defaults.
+function rowToEntry(row: Record<string, unknown>): DailyEntry {
+  const date = row.date as string
+  const base = emptyEntry(date)
   return {
-    date: row.date as string,
-    sleep: (row.sleep as CheckinRecord['sleep']) || base.sleep,
-    feel: (row.feel as CheckinRecord['feel']) || base.feel,
-    training_sessions: (row.training_sessions as CheckinRecord['training_sessions']) || [],
-    meals: (row.meals as CheckinRecord['meals']) || [],
-    hydration_ml: (row.hydration_ml as number | null) ?? null,
-    supplements: (row.supplements as CheckinRecord['supplements']) || [],
-    mindset: (row.mindset as CheckinRecord['mindset']) || base.mindset,
-    context: (row.context as CheckinRecord['context']) || base.context,
+    date,
+    sleep:       { ...base.sleep,       ...(row.sleep       as object || {}) },
+    training:    { ...base.training,    ...(row.training    as object || {}) },
+    nutrition:   { ...base.nutrition,   ...(row.nutrition   as object || {}) },
+    supplements: { ...base.supplements, ...(row.supplements as object || {}) },
+    context:     { ...base.context,     ...(row.context     as object || {}) },
   }
 }
 
-export async function loadCheckin(date: string): Promise<CheckinRecord> {
+export async function loadEntry(date: string): Promise<DailyEntry> {
   const { data, error } = await supabase
     .from('checkins')
     .select('*')
@@ -30,30 +29,27 @@ export async function loadCheckin(date: string): Promise<CheckinRecord> {
     .maybeSingle()
 
   if (error) throw error
-  if (!data) return emptyCheckin(date)
-  return rowToCheckin(data, date)
+  if (!data) return emptyEntry(date)
+  return rowToEntry(data as Record<string, unknown>)
 }
 
-export async function saveCheckin(record: CheckinRecord): Promise<void> {
+export async function saveEntry(entry: DailyEntry): Promise<void> {
   const { error } = await supabase.from('checkins').upsert(
     {
-      date: record.date,
-      sleep: record.sleep,
-      feel: record.feel,
-      training_sessions: record.training_sessions,
-      meals: record.meals,
-      hydration_ml: record.hydration_ml,
-      supplements: record.supplements,
-      mindset: record.mindset,
-      context: record.context,
-      updated_at: new Date().toISOString(),
+      date:        entry.date,
+      sleep:       entry.sleep,
+      training:    entry.training,
+      nutrition:   entry.nutrition,
+      supplements: entry.supplements,
+      context:     entry.context,
+      updated_at:  new Date().toISOString(),
     },
     { onConflict: 'date' }
   )
   if (error) throw error
 }
 
-export async function loadRecentCheckins(days: number): Promise<CheckinRecord[]> {
+export async function loadRecentEntries(days: number): Promise<DailyEntry[]> {
   const since = new Date()
   since.setDate(since.getDate() - days)
   const sinceStr = since.toISOString().split('T')[0]
@@ -65,15 +61,59 @@ export async function loadRecentCheckins(days: number): Promise<CheckinRecord[]>
     .order('date', { ascending: false })
 
   if (error) throw error
-  return (data || []).map((row) => rowToCheckin(row, row.date))
+  return (data || []).map((row) => rowToEntry(row as Record<string, unknown>))
 }
 
-export async function loadMealTemplates(): Promise<MealTemplate[]> {
+// Check if a given date's sleep data has been logged
+export async function isSleepLogged(date: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('checkins')
+    .select('sleep')
+    .eq('date', date)
+    .maybeSingle()
+
+  if (error || !data) return false
+  const sleep = data.sleep as Record<string, unknown> | null
+  if (!sleep) return false
+  return sleep.hrv != null || sleep.duration_min != null
+}
+
+// Breakfast templates stored in meal_templates table
+export interface BreakfastTemplate {
+  id: string
+  name: string
+  protein: number | null
+  fiber: number | null
+  fat: number | null
+  carbs: number | null
+  calories: number | null
+}
+
+// Derive today's cycle day from yesterday's stored context.cycle_day + 1
+export async function deriveCycleDay(): Promise<number | null> {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yStr = yesterday.toISOString().split('T')[0]
+
+  const { data } = await supabase
+    .from('checkins')
+    .select('context')
+    .eq('date', yStr)
+    .maybeSingle()
+
+  if (!data?.context) return null
+  const ctx = data.context as Record<string, unknown>
+  const prev = ctx.cycle_day
+  if (typeof prev !== 'number' || prev <= 0) return null
+  return prev + 1
+}
+
+export async function loadBreakfastTemplates(): Promise<BreakfastTemplate[]> {
   const { data, error } = await supabase
     .from('meal_templates')
     .select('*')
     .order('sort_order')
 
   if (error) throw error
-  return (data || []) as MealTemplate[]
+  return (data || []) as BreakfastTemplate[]
 }

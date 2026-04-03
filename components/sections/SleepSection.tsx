@@ -1,117 +1,218 @@
 'use client'
 
-import Section from '@/components/ui/Section'
-import ScoreRating from '@/components/ui/ScoreRating'
+import { useState } from 'react'
 import type { SleepData } from '@/lib/types'
+import Section from '@/components/ui/Section'
+import TapScale from '@/components/ui/TapScale'
 
 interface Props {
   data: SleepData
-  onChange: (d: SleepData) => void
+  onChange: (data: SleepData) => void
+  onSave: () => void
+  saving?: boolean
 }
 
-function NumField({
+function durationToHM(min: number | null): { h: string; m: string } {
+  if (min == null) return { h: '', m: '' }
+  return { h: String(Math.floor(min / 60)), m: String(min % 60) }
+}
+
+function hmToDuration(h: string, m: string): number | null {
+  const hv = parseInt(h)
+  const mv = parseInt(m)
+  if (isNaN(hv) && isNaN(mv)) return null
+  return (isNaN(hv) ? 0 : hv) * 60 + (isNaN(mv) ? 0 : mv)
+}
+
+function Field({
   label,
   unit,
-  value,
-  onChange,
-  step = 1,
-  min = 0,
+  children,
 }: {
   label: string
   unit?: string
-  value: number | null
-  onChange: (v: number | null) => void
-  step?: number
-  min?: number
+  children: React.ReactNode
 }) {
   return (
     <div>
-      <label className="block text-[10px] text-[#444] font-mono uppercase tracking-wider mb-1">
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 500,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: 'var(--color-text-secondary)',
+          marginBottom: 6,
+        }}
+      >
         {label}
-      </label>
-      <div className="flex items-center gap-1.5">
-        <input
-          type="number"
-          step={step}
-          min={min}
-          value={value ?? ''}
-          onChange={(e) =>
-            onChange(e.target.value === '' ? null : parseFloat(e.target.value))
-          }
-          className="w-full bg-[#0d0d0d] border border-[#1c1c1c] rounded px-2 py-1.5 text-xs font-mono text-[#d4d4d4] focus:outline-none focus:border-[#2a2a2a] placeholder:text-[#1e1e1e]"
-          placeholder="—"
-        />
         {unit && (
-          <span className="text-[10px] text-[#2a2a2a] font-mono whitespace-nowrap">{unit}</span>
+          <span
+            style={{
+              fontWeight: 400,
+              textTransform: 'none',
+              marginLeft: 4,
+              color: 'var(--color-text-dim)',
+            }}
+          >
+            {unit}
+          </span>
         )}
       </div>
+      {children}
     </div>
   )
 }
 
-function buildSummary(data: SleepData) {
-  const parts: string[] = []
-  if (data.duration) parts.push(`${data.duration}h`)
-  if (data.hrv) parts.push(`HRV ${data.hrv}`)
-  if (data.rhr) parts.push(`RHR ${data.rhr}`)
-  if (data.waking_score) parts.push(`Score ${data.waking_score}/5`)
-  return parts.join(' · ') || undefined
+function NumInput({
+  value,
+  onChange,
+  placeholder = '—',
+  width = 80,
+}: {
+  value: number | null
+  onChange: (v: number | null) => void
+  placeholder?: string
+  width?: number
+}) {
+  return (
+    <input
+      type="number"
+      inputMode="numeric"
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+      placeholder={placeholder}
+      style={{
+        width,
+        height: 44,
+        padding: '0 12px',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 20,
+        color: 'var(--color-text-primary)',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 8,
+        outline: 'none',
+      }}
+    />
+  )
 }
 
-export default function SleepSection({ data, onChange }: Props) {
+export default function SleepSection({ data, onChange, onSave, saving }: Props) {
+  const [localSaved, setLocalSaved] = useState(false)
+  const { h, m } = durationToHM(data.duration_min)
+  const isComplete = data.hrv != null || data.duration_min != null
+
   const set = <K extends keyof SleepData>(k: K, v: SleepData[K]) =>
     onChange({ ...data, [k]: v })
 
+  const setDuration = (newH: string, newM: string) =>
+    onChange({ ...data, duration_min: hmToDuration(newH, newM) })
+
+  const handleSave = async () => {
+    await onSave()
+    setLocalSaved(true)
+    setTimeout(() => setLocalSaved(false), 2000)
+  }
+
+  // Collapsed summary shown in header
+  const summary =
+    isComplete ? (
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 12,
+          color: 'var(--color-text-secondary)',
+        }}
+      >
+        {data.duration_min != null && (
+          <span>{Math.floor(data.duration_min / 60)}h {data.duration_min % 60}m</span>
+        )}
+        {data.hrv != null && <span>HRV {data.hrv}</span>}
+        {data.rhr != null && <span>RHR {data.rhr}</span>}
+        {data.rested != null && <span>Rested {data.rested}/5</span>}
+      </div>
+    ) : null
+
   return (
-    <Section title="Sleep" summary={buildSummary(data)}>
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <NumField
-          label="Duration"
-          unit="hrs"
-          value={data.duration}
-          onChange={(v) => set('duration', v)}
-          step={0.25}
-        />
-        <NumField label="HRV" unit="ms" value={data.hrv} onChange={(v) => set('hrv', v)} />
-        <NumField label="RHR" unit="bpm" value={data.rhr} onChange={(v) => set('rhr', v)} />
-        <NumField
-          label="Deep sleep"
-          unit="min"
-          value={data.deep_sleep_minutes}
-          onChange={(v) => set('deep_sleep_minutes', v)}
-        />
-        <NumField
-          label="Wake events"
-          value={data.wake_events}
-          onChange={(v) => set('wake_events', v)}
-        />
-        <NumField
-          label="Resp. rate"
-          unit="/min"
-          value={data.respiration_rate}
-          onChange={(v) => set('respiration_rate', v)}
-          step={0.1}
-        />
-      </div>
+    <Section title="Sleep" isComplete={isComplete} rightSlot={summary}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-      <div className="mb-4">
-        <label className="block text-[10px] text-[#444] font-mono uppercase tracking-wider mb-2">
-          Waking score
-        </label>
-        <ScoreRating value={data.waking_score} onChange={(v) => set('waking_score', v)} />
-      </div>
+        {/* Bedtime */}
+        <Field label="Bedtime">
+          <input
+            type="time"
+            value={data.bedtime ?? '21:45'}
+            onChange={(e) => set('bedtime', e.target.value || null)}
+            style={{
+              height: 44,
+              padding: '0 12px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 20,
+              color: 'var(--color-text-primary)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8,
+              outline: 'none',
+            }}
+          />
+        </Field>
 
-      <div>
-        <label className="block text-[10px] text-[#444] font-mono uppercase tracking-wider mb-1">
-          Note
-        </label>
-        <textarea
-          value={data.note}
-          onChange={(e) => set('note', e.target.value)}
-          rows={2}
-          className="w-full bg-[#0d0d0d] border border-[#1c1c1c] rounded px-2 py-1.5 text-xs text-[#666] focus:outline-none focus:border-[#2a2a2a] resize-none placeholder:text-[#1e1e1e]"
-          placeholder="Sleep notes..."
-        />
+        {/* Duration */}
+        <Field label="Sleep duration">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <NumInput
+              value={h === '' ? null : Number(h)}
+              onChange={(v) => setDuration(v == null ? '' : String(v), m)}
+              width={72}
+              placeholder="—"
+            />
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>h</span>
+            <NumInput
+              value={m === '' ? null : Number(m)}
+              onChange={(v) => setDuration(h, v == null ? '' : String(v))}
+              width={72}
+              placeholder="—"
+            />
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>min</span>
+          </div>
+        </Field>
+
+        {/* HRV + RHR */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <Field label="HRV" unit="ms">
+            <NumInput value={data.hrv} onChange={(v) => set('hrv', v)} />
+          </Field>
+          <Field label="RHR" unit="bpm">
+            <NumInput value={data.rhr} onChange={(v) => set('rhr', v)} />
+          </Field>
+        </div>
+
+        {/* Rested scale */}
+        <Field label="Rested on waking">
+          <TapScale
+            value={data.rested}
+            onChange={(v) => set('rested', v)}
+            lowLabel="exhausted"
+            highLabel="great"
+          />
+        </Field>
+
+        {/* Save */}
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="btn-primary"
+          style={{
+            background: localSaved ? 'var(--color-primary-dark)' : undefined,
+            marginTop: 4,
+          }}
+        >
+          {localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save sleep'}
+        </button>
       </div>
     </Section>
   )

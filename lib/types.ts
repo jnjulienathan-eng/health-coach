@@ -1,106 +1,181 @@
+// ─── Sleep ───────────────────────────────────────────────────────
 export interface SleepData {
-  duration: number | null
-  hrv: number | null
-  rhr: number | null
-  deep_sleep_minutes: number | null
-  wake_events: number | null
-  respiration_rate: number | null
-  waking_score: number | null
-  note: string
+  bedtime: string | null          // "HH:MM" 24h
+  duration_min: number | null     // total sleep in minutes
+  hrv: number | null              // ms
+  rhr: number | null              // bpm
+  rested: number | null           // 1–5 tap scale
 }
 
-export interface FeelData {
-  energy: number | null
-  mood: number | null
-}
+// ─── Training ────────────────────────────────────────────────────
+export type ActivityType = 'swim' | 'egym' | 'run' | 'walk'
 
 export interface TrainingSession {
   id: string
-  type: string
-  duration_minutes: number | null
-  rpe: number | null
+  activity_type: ActivityType
+  duration_min: number
+  perceived_effort: number | null   // 1–5
+  active_calories: number | null
 }
 
-export interface Meal {
-  id: string
-  name: string
-  time: string
+export interface TrainingData {
+  sessions: TrainingSession[]
+  cycled_today: boolean
+  cycling_minutes: number | null
+}
+
+// ─── Nutrition ───────────────────────────────────────────────────
+export interface MealMacros {
+  description: string
   protein: number | null
+  fiber: number | null
   fat: number | null
   carbs: number | null
   calories: number | null
-  fiber: number | null
 }
 
-export interface MealTemplate {
-  id: string
-  name: string
-  protein: number | null
-  fat: number | null
-  carbs: number | null
-  calories: number | null
-  fiber: number | null
+export interface BreakfastMeal extends MealMacros {
+  template_name: string | null
 }
 
-export interface SupplementEntry {
-  id: string
-  name: string
-  dose: number | null
-  unit: string
-  timing: string
+export interface NutritionData {
+  pre_workout_snack: MealMacros
+  breakfast: BreakfastMeal
+  lunch: MealMacros
+  dinner: MealMacros
+  incidentals: MealMacros
+  total_protein: number | null
+  total_fiber: number | null
+  total_fat: number | null
+  total_carbs: number | null
+  total_calories: number | null
 }
 
-export interface MindsetData {
-  stress: number | null
-  focus: number | null
-  meditation_minutes: number | null
+// ─── Supplements ─────────────────────────────────────────────────
+export interface SupplementsData {
+  morning_stack_taken: boolean
+  morning_exceptions: string[]     // names of items NOT taken from morning stack
+  evening_stack_taken: boolean
+  evening_exceptions: string[]     // names of items NOT taken from evening stack
+  progesterone_taken: boolean
+  estradiol_taken: boolean
+  ashwagandha_taken: boolean       // cyclic
+  dim_taken: boolean               // cyclic
+  phosphatidylserine_taken: boolean // cyclic
 }
+
+// ─── Context ─────────────────────────────────────────────────────
+export type Symptom =
+  | 'Congestion'
+  | 'Headache'
+  | 'Fatigue'
+  | 'Nausea'
+  | 'Cramps'
+  | 'Bloating'
+  | 'Other'
 
 export interface ContextData {
-  cycle_day: number | null
-  flags: string[]
-  note: string
+  stress_level: number | null      // 1–5
+  symptoms: Symptom[]
+  travelling: boolean
+  notes: string
 }
 
-export interface CheckinRecord {
-  date: string
+// ─── Daily entry (maps to checkins table JSONB columns) ──────────
+export interface DailyEntry {
+  date: string                     // YYYY-MM-DD
   sleep: SleepData
-  feel: FeelData
-  training_sessions: TrainingSession[]
-  meals: Meal[]
-  hydration_ml: number | null
-  supplements: SupplementEntry[]
-  mindset: MindsetData
+  training: TrainingData
+  nutrition: NutritionData
+  supplements: SupplementsData
   context: ContextData
 }
 
-const emptySleep: SleepData = {
-  duration: null,
-  hrv: null,
-  rhr: null,
-  deep_sleep_minutes: null,
-  wake_events: null,
-  respiration_rate: null,
-  waking_score: null,
-  note: '',
+// ─── Defaults ────────────────────────────────────────────────────
+export function emptySleep(): SleepData {
+  return { bedtime: null, duration_min: null, hrv: null, rhr: null, rested: null }
 }
 
-const emptyFeel: FeelData = { energy: null, mood: null }
+export function emptyTraining(): TrainingData {
+  return { sessions: [], cycled_today: false, cycling_minutes: null }
+}
 
-const emptyMindset: MindsetData = { stress: null, focus: null, meditation_minutes: null }
+export function emptyMeal(): MealMacros {
+  return { description: '', protein: null, fiber: null, fat: null, carbs: null, calories: null }
+}
 
-const emptyContext: ContextData = { cycle_day: null, flags: [], note: '' }
+export function emptyNutrition(): NutritionData {
+  return {
+    pre_workout_snack: emptyMeal(),
+    breakfast: { ...emptyMeal(), template_name: null },
+    lunch: emptyMeal(),
+    dinner: emptyMeal(),
+    incidentals: emptyMeal(),
+    total_protein: null,
+    total_fiber: null,
+    total_fat: null,
+    total_carbs: null,
+    total_calories: null,
+  }
+}
 
-export function emptyCheckin(date: string): CheckinRecord {
+export function emptySupplements(): SupplementsData {
+  return {
+    morning_stack_taken: false,
+    morning_exceptions: [],
+    evening_stack_taken: false,
+    evening_exceptions: [],
+    progesterone_taken: false,
+    estradiol_taken: false,
+    ashwagandha_taken: false,
+    dim_taken: false,
+    phosphatidylserine_taken: false,
+  }
+}
+
+export function emptyContext(): ContextData {
+  return { stress_level: null, symptoms: [], travelling: false, notes: '' }
+}
+
+export function emptyEntry(date: string): DailyEntry {
   return {
     date,
-    sleep: { ...emptySleep },
-    feel: { ...emptyFeel },
-    training_sessions: [],
-    meals: [],
-    hydration_ml: null,
-    supplements: [],
-    mindset: { ...emptyMindset },
-    context: { ...emptyContext },
+    sleep: emptySleep(),
+    training: emptyTraining(),
+    nutrition: emptyNutrition(),
+    supplements: emptySupplements(),
+    context: emptyContext(),
   }
+}
+
+// ─── Score helpers ────────────────────────────────────────────────
+export function scoreColor(score: number): string {
+  if (score >= 75) return 'var(--color-success)'
+  if (score >= 50) return 'var(--color-amber)'
+  return 'var(--color-danger)'
+}
+
+export function scoreLabel(score: number): string {
+  if (score >= 90) return 'Optimal'
+  if (score >= 75) return 'Good'
+  if (score >= 50) return 'OK'
+  if (score >= 25) return 'Low'
+  return 'Rest'
+}
+
+// ─── Macro targets ────────────────────────────────────────────────
+export const MACRO_TARGETS = {
+  protein:  { min: 130, max: 140, flagBelow: 120 },
+  fiber:    { min: 30,  max: 35,  flagBelow: 25 },
+  fat:      { min: 60,  max: 75,  flagAbove: 90 },
+  carbs:    { min: 100, max: 130, flagAbove: 150 },
+  calories: { min: 1700, max: 1800 },
+} as const
+
+// ─── HRV training zones ──────────────────────────────────────────
+export function hrvZone(hrv: number): string {
+  if (hrv > 100) return 'Train hard'
+  if (hrv >= 80)  return 'Moderate training'
+  if (hrv >= 60)  return 'Easy only'
+  return 'Rest or gentle walk'
 }

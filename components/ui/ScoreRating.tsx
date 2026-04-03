@@ -7,11 +7,11 @@ interface ScoreRatingProps {
 }
 
 const active: Record<number, string> = {
-  1: 'text-[#f87171] border-[#f87171] bg-[#1a0f0f]',
-  2: 'text-[#fb923c] border-[#fb923c] bg-[#1a120a]',
-  3: 'text-[#fbbf24] border-[#fbbf24] bg-[#1a160a]',
-  4: 'text-[#a3e635] border-[#a3e635] bg-[#111a0a]',
-  5: 'text-[#4ade80] border-[#4ade80] bg-[#0a1a0f]',
+  1: 'text-white border-[#3D9A6B] bg-[#3D9A6B]',
+  2: 'text-white border-[#3D9A6B] bg-[#3D9A6B]',
+  3: 'text-white border-[#3D9A6B] bg-[#3D9A6B]',
+  4: 'text-white border-[#3D9A6B] bg-[#3D9A6B]',
+  5: 'text-white border-[#3D9A6B] bg-[#3D9A6B]',
 }
 
 export default function ScoreRating({ value, onChange, max = 5 }: ScoreRatingProps) {
@@ -25,7 +25,7 @@ export default function ScoreRating({ value, onChange, max = 5 }: ScoreRatingPro
           className={`w-8 h-8 rounded text-xs font-mono font-semibold border transition-all ${
             value === n
               ? active[n]
-              : 'text-[#2a2a2a] border-[#1e1e1e] bg-[#0d0d0d] hover:border-[#2a2a2a] hover:text-[#444]'
+              : 'text-[#8FAA98] border-[#DCE8E0] bg-white hover:border-[#8FAA98] hover:text-[#5A7A66]'
           }`}
         >
           {n}

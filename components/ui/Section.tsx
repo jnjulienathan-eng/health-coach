@@ -1,41 +1,85 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useId } from 'react'
 
 interface SectionProps {
   title: string
-  summary?: string
-  children: React.ReactNode
+  isComplete?: boolean
   defaultOpen?: boolean
+  rightSlot?: React.ReactNode   // e.g. macro bars shown in header when collapsed
+  children: React.ReactNode
 }
 
-export default function Section({ title, summary, children, defaultOpen = false }: SectionProps) {
+export default function Section({
+  title,
+  isComplete = false,
+  defaultOpen = false,
+  rightSlot,
+  children,
+}: SectionProps) {
   const [open, setOpen] = useState(defaultOpen)
+  const id = useId()
 
   return (
-    <div className="border border-[#1c1c1c] rounded-lg bg-[#101010] overflow-hidden">
+    <div>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#141414] transition-colors"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((v) => !v)}
+        className={`section-header${open ? ' open' : ''}`}
       >
-        <span className="text-[10px] font-mono font-medium text-[#666] tracking-widest uppercase">
-          {title}
-        </span>
-        <div className="flex items-center gap-3">
-          {!open && summary && (
-            <span className="text-[10px] text-[#383838] font-mono truncate max-w-[200px]">{summary}</span>
-          )}
-          <span className={`text-[#2a2a2a] text-[10px] transition-transform duration-150 ${open ? 'rotate-180' : ''}`}>
-            ▾
-          </span>
+        <div className="flex items-center gap-2">
+          <span className="section-label">{title}</span>
+          {isComplete && <CheckIcon />}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {!open && rightSlot}
+          <ChevronIcon open={open} />
         </div>
       </button>
+
       {open && (
-        <div className="px-4 pb-4 pt-3 border-t border-[#181818]">
+        <div id={id} className="section-body">
           {children}
         </div>
       )}
     </div>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label="Complete">
+      <circle cx="7" cy="7" r="7" fill="var(--color-primary)" />
+      <path
+        d="M4 7l2 2 4-4"
+        stroke="#fff"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      className={`chevron${open ? ' open' : ''}`}
+    >
+      <path
+        d="M4 6l4 4 4-4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }

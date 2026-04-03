@@ -1,22 +1,191 @@
 @import "tailwindcss";
 
+/* ─── Design tokens ─────────────────────────────────────────────── */
 :root {
-  --background: #0d0d0d;
-  --foreground: #e0e0e0;
+  color-scheme: light;
+
+  /* Color palette */
+  --color-bg:             #F7F9F7;
+  --color-surface:        #FFFFFF;
+  --color-primary:        #3D9A6B;
+  --color-primary-light:  #E8F5EE;
+  --color-primary-dark:   #2C7A52;
+  --color-accent:         #F4A04A;
+  --color-amber:          #F4A04A;
+  --color-text-primary:   #1A2E22;
+  --color-text-secondary: #5A7A66;
+  --color-text-dim:       #8FAA98;
+  --color-border:         #DCE8E0;
+  --color-danger:         #E05252;
+  --color-success:        #3D9A6B;
 }
 
+/* ─── Tailwind v4 theme extension ───────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg:             var(--color-bg);
+  --color-surface:        var(--color-surface);
+  --color-primary:        var(--color-primary);
+  --color-primary-light:  var(--color-primary-light);
+  --color-primary-dark:   var(--color-primary-dark);
+  --color-accent:         var(--color-accent);
+  --color-amber:          var(--color-amber);
+  --color-text-primary:   var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-dim:       var(--color-text-dim);
+  --color-border:         var(--color-border);
+  --color-danger:         var(--color-danger);
+  --color-success:        var(--color-success);
+  --font-sans:            var(--font-sans);
+  --font-mono:            var(--font-mono);
 }
 
+/* ─── Base styles ───────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Typography utilities ──────────────────────────────────────── */
+
+/* Section headers: 11px tracked uppercase */
+.section-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+}
+
+/* Metric values: DM Mono 24px */
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--color-text-primary);
+}
+
+/* Big scores: DM Mono 72px */
+.score-value {
+  font-family: var(--font-mono);
+  font-size: 72px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* Secondary / hints */
+.text-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* ─── Card component ────────────────────────────────────────────── */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* ─── Button components ─────────────────────────────────────────── */
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 52px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 100ms, background 100ms;
+}
+.btn-primary:active {
+  transform: scale(0.97);
+  background: var(--color-primary-dark);
+}
+
+.btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 52px;
+  background: transparent;
+  color: var(--color-primary);
+  border: 1.5px solid var(--color-primary);
+  border-radius: 10px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 100ms;
+}
+.btn-secondary:active {
+  transform: scale(0.97);
+}
+
+/* Quick-add template buttons */
+.btn-template {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary);
+  border-radius: 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-primary);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 100ms, background 100ms;
+  flex-shrink: 0;
+}
+.btn-template:active {
+  transform: scale(0.97);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* ─── Input fields ──────────────────────────────────────────────── */
+input[type='text'],
+input[type='number'],
+input[type='time'],
+textarea,
+select {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 150ms;
+}
+input[type='text']:focus,
+input[type='number']:focus,
+input[type='time']:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--color-primary);
+  border-width: 1.5px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-dim);
 }
 
 /* Remove number input spinners */
@@ -29,13 +198,178 @@ input[type='number'] {
   -moz-appearance: textfield;
 }
 
-/* Dark select/option */
 select option {
-  background: #141414;
-  color: #d4d4d4;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
 }
 
-/* Time input dark */
-input[type='time']::-webkit-calendar-picker-indicator {
-  filter: invert(0.3);
+/* ─── Tap scale (1–5) ───────────────────────────────────────────── */
+.tap-scale-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: transform 100ms, background 100ms, border-color 100ms, color 100ms;
+  flex-shrink: 0;
+}
+.tap-scale-btn:active {
+  transform: scale(0.95);
+}
+.tap-scale-btn.selected {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+/* ─── Toggle switch ─────────────────────────────────────────────── */
+.toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 44px;
+  height: 26px;
+  background: var(--color-border);
+  border-radius: 13px;
+  position: relative;
+  cursor: pointer;
+  transition: background 200ms;
+  flex-shrink: 0;
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 200ms;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.toggle:checked {
+  background: var(--color-primary);
+}
+.toggle:checked::after {
+  transform: translateX(18px);
+}
+
+/* ─── Section accordion ─────────────────────────────────────────── */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 150ms;
+  text-align: left;
+}
+.section-header:active {
+  background: var(--color-primary-light);
+}
+.section-header.open {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+
+.section-body {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-top: none;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+/* Chevron rotation */
+.chevron {
+  transition: transform 200ms ease;
+  color: var(--color-text-dim);
+}
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+/* ─── Macro progress bars ───────────────────────────────────────── */
+.macro-bar-track {
+  height: 6px;
+  background: var(--color-primary-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.macro-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 300ms ease;
+}
+.macro-bar-fill.on-track  { background: var(--color-success); }
+.macro-bar-fill.under     { background: var(--color-danger); }
+.macro-bar-fill.over      { background: var(--color-amber); }
+
+/* ─── Score count-up animation ──────────────────────────────────── */
+@keyframes score-count-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.score-animate {
+  animation: score-count-up 400ms ease forwards;
+}
+
+/* ─── Symptom tag pills ─────────────────────────────────────────── */
+.symptom-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background 100ms, border-color 100ms, color 100ms;
+}
+.symptom-tag.selected {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ─── Scrollable row ────────────────────────────────────────────── */
+.scroll-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Yesterday prompt banner ───────────────────────────────────── */
+.yesterday-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary);
+  border-radius: 10px;
+  margin-bottom: 16px;
 }
