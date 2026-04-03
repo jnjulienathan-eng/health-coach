@@ -100,19 +100,31 @@ function NumInput({
 
 export default function SleepSection({ data, onChange, onSave, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   const { h, m } = durationToHM(data.duration_min)
   const isComplete = data.hrv != null || data.duration_min != null
 
-  const set = <K extends keyof SleepData>(k: K, v: SleepData[K]) =>
+  const set = <K extends keyof SleepData>(k: K, v: SleepData[K]) => {
+    setLocalSaved(false)
+    setSaveError(false)
     onChange({ ...data, [k]: v })
+  }
 
-  const setDuration = (newH: string, newM: string) =>
+  const setDuration = (newH: string, newM: string) => {
+    setLocalSaved(false)
+    setSaveError(false)
     onChange({ ...data, duration_min: hmToDuration(newH, newM) })
+  }
 
   const handleSave = async () => {
-    await onSave()
-    setLocalSaved(true)
-    setTimeout(() => setLocalSaved(false), 2000)
+    setSaveError(false)
+    try {
+      await onSave()
+      setLocalSaved(true)
+      setTimeout(() => setLocalSaved(false), 2000)
+    } catch {
+      setSaveError(true)
+    }
   }
 
   // Collapsed summary shown in header
@@ -207,11 +219,11 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
           disabled={saving}
           className="btn-primary"
           style={{
-            background: localSaved ? 'var(--color-primary-dark)' : undefined,
+            background: saveError ? 'var(--color-danger)' : localSaved ? '#52B882' : undefined,
             marginTop: 4,
           }}
         >
-          {localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save sleep'}
+          {saveError ? 'Save failed — retry' : localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save sleep'}
         </button>
       </div>
     </Section>

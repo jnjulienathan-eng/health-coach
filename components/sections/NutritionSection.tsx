@@ -301,6 +301,7 @@ export default function NutritionSection({
   saving,
 }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   const [showIncidentals, setShowIncidentals] = useState(false)
 
   const effectiveTemplates =
@@ -313,6 +314,8 @@ export default function NutritionSection({
     data.pre_workout_snack.description
 
   const updateMeal = (key: keyof NutritionData, meal: MealMacros | BreakfastMeal) => {
+    setLocalSaved(false)
+    setSaveError(false)
     const updated = computeTotals({ ...data, [key]: meal })
     onChange(updated)
   }
@@ -346,9 +349,14 @@ export default function NutritionSection({
   }
 
   const handleSave = async () => {
-    await onSave()
-    setLocalSaved(true)
-    setTimeout(() => setLocalSaved(false), 2000)
+    setSaveError(false)
+    try {
+      await onSave()
+      setLocalSaved(true)
+      setTimeout(() => setLocalSaved(false), 2000)
+    } catch {
+      setSaveError(true)
+    }
   }
 
   // Collapsed summary: macro bars
@@ -704,10 +712,10 @@ export default function NutritionSection({
           className="btn-primary"
           style={{
             marginTop: 16,
-            background: localSaved ? 'var(--color-primary-dark)' : undefined,
+            background: saveError ? 'var(--color-danger)' : localSaved ? '#52B882' : undefined,
           }}
         >
-          {localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save nutrition'}
+          {saveError ? 'Save failed — retry' : localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save nutrition'}
         </button>
       </div>
     </Section>

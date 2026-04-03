@@ -27,6 +27,9 @@ const SYMPTOMS: Symptom[] = [
 
 export default function ContextSection({ data, cycleDay, onChange, onSave, onResetCycle, onCycleDayChange, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
+  const [saveError, setSaveError] = useState(false)
+
+  const change = (d: ContextData) => { setLocalSaved(false); setSaveError(false); onChange(d) }
 
   const isComplete =
     data.stress_level != null || data.notes.length > 0 || data.symptoms.length > 0
@@ -35,13 +38,18 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
     const symptoms = data.symptoms.includes(s)
       ? data.symptoms.filter((x) => x !== s)
       : [...data.symptoms, s]
-    onChange({ ...data, symptoms })
+    change({ ...data, symptoms })
   }
 
   const handleSave = async () => {
-    await onSave()
-    setLocalSaved(true)
-    setTimeout(() => setLocalSaved(false), 2000)
+    setSaveError(false)
+    try {
+      await onSave()
+      setLocalSaved(true)
+      setTimeout(() => setLocalSaved(false), 2000)
+    } catch {
+      setSaveError(true)
+    }
   }
 
   // Collapsed summary
@@ -151,7 +159,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
           </div>
           <TapScale
             value={data.stress_level}
-            onChange={(v) => onChange({ ...data, stress_level: v })}
+            onChange={(v) => change({ ...data, stress_level: v })}
             lowLabel="calm"
             highLabel="overwhelmed"
           />
@@ -199,7 +207,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
           <input
             type="checkbox"
             checked={data.travelling}
-            onChange={(e) => onChange({ ...data, travelling: e.target.checked })}
+            onChange={(e) => change({ ...data, travelling: e.target.checked })}
             className="toggle"
             aria-label="Travelling today"
           />
@@ -221,7 +229,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
           </div>
           <textarea
             value={data.notes}
-            onChange={(e) => onChange({ ...data, notes: e.target.value })}
+            onChange={(e) => change({ ...data, notes: e.target.value })}
             placeholder="Anything worth noting — what you ate out, how you felt, what helped or didn't…"
             rows={4}
             style={{
@@ -247,9 +255,9 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
           onClick={handleSave}
           disabled={saving}
           className="btn-primary"
-          style={{ background: localSaved ? 'var(--color-primary-dark)' : undefined }}
+          style={{ background: saveError ? 'var(--color-danger)' : localSaved ? '#52B882' : undefined }}
         >
-          {localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save context'}
+          {saveError ? 'Save failed — retry' : localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save context'}
         </button>
       </div>
     </Section>

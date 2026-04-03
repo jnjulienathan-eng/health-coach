@@ -60,36 +60,44 @@ function StackLabel({ text }: { text: string }) {
 
 export default function SupplementsSection({ data, onChange, onSave, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   const [showCyclic, setShowCyclic] = useState(false)
 
   const isComplete = data.morning_stack_taken || data.evening_stack_taken
+
+  const change = (d: SupplementsData) => { setLocalSaved(false); setSaveError(false); onChange(d) }
 
   const toggleMorningException = (item: string) => {
     const exceptions = data.morning_exceptions.includes(item)
       ? data.morning_exceptions.filter((e) => e !== item)
       : [...data.morning_exceptions, item]
-    onChange({ ...data, morning_exceptions: exceptions })
+    change({ ...data, morning_exceptions: exceptions })
   }
 
   const toggleEveningException = (item: string) => {
     const exceptions = data.evening_exceptions.includes(item)
       ? data.evening_exceptions.filter((e) => e !== item)
       : [...data.evening_exceptions, item]
-    onChange({ ...data, evening_exceptions: exceptions })
+    change({ ...data, evening_exceptions: exceptions })
   }
 
   const confirmMorning = () => {
-    onChange({ ...data, morning_stack_taken: true, morning_exceptions: [] })
+    change({ ...data, morning_stack_taken: true, morning_exceptions: [] })
   }
 
   const confirmEvening = () => {
-    onChange({ ...data, evening_stack_taken: true, evening_exceptions: [] })
+    change({ ...data, evening_stack_taken: true, evening_exceptions: [] })
   }
 
   const handleSave = async () => {
-    await onSave()
-    setLocalSaved(true)
-    setTimeout(() => setLocalSaved(false), 2000)
+    setSaveError(false)
+    try {
+      await onSave()
+      setLocalSaved(true)
+      setTimeout(() => setLocalSaved(false), 2000)
+    } catch {
+      setSaveError(true)
+    }
   }
 
   // Collapsed summary
@@ -124,13 +132,13 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
               label="Progesterone"
               dose="200mg"
               taken={data.progesterone_taken}
-              onToggle={(v) => onChange({ ...data, progesterone_taken: v })}
+              onToggle={(v) => change({ ...data, progesterone_taken: v })}
             />
             <HormoneCard
               label="Estradiol"
               dose="1 spray Lenzetto"
               taken={data.estradiol_taken}
-              onToggle={(v) => onChange({ ...data, estradiol_taken: v })}
+              onToggle={(v) => change({ ...data, estradiol_taken: v })}
             />
           </div>
         </div>
@@ -170,7 +178,7 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
           {data.morning_stack_taken && (
             <button
               type="button"
-              onClick={() => onChange({ ...data, morning_stack_taken: false })}
+              onClick={() => change({ ...data, morning_stack_taken: false })}
               style={{
                 marginTop: 6,
                 fontSize: 12,
@@ -221,7 +229,7 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
           {data.evening_stack_taken && (
             <button
               type="button"
-              onClick={() => onChange({ ...data, evening_stack_taken: false })}
+              onClick={() => change({ ...data, evening_stack_taken: false })}
               style={{
                 marginTop: 6,
                 fontSize: 12,
@@ -290,7 +298,7 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
                   label={label}
                   note={note}
                   active={data[key] as boolean}
-                  onToggle={(v) => onChange({ ...data, [key]: v })}
+                  onToggle={(v) => change({ ...data, [key]: v })}
                 />
               ))}
             </div>
@@ -303,9 +311,9 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
           onClick={handleSave}
           disabled={saving}
           className="btn-primary"
-          style={{ background: localSaved ? 'var(--color-primary-dark)' : undefined }}
+          style={{ background: saveError ? 'var(--color-danger)' : localSaved ? '#52B882' : undefined }}
         >
-          {localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save supplements'}
+          {saveError ? 'Save failed — retry' : localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save supplements'}
         </button>
       </div>
     </Section>

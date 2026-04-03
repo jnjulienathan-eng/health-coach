@@ -33,6 +33,7 @@ function activityEmoji(type: string) {
 
 export default function TrainingSection({ data, onChange, onSave, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   const [showCustomForm, setShowCustomForm] = useState(false)
   const [customName, setCustomName] = useState('')
   const [customMin, setCustomMin] = useState<number>(30)
@@ -40,6 +41,8 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
   const [customCal, setCustomCal] = useState<number | null>(null)
 
   const isComplete = data.sessions.length > 0 || data.cycled_today
+
+  const change = (d: TrainingData) => { setLocalSaved(false); setSaveError(false); onChange(d) }
 
   const addSession = (type: ActivityType, defaultMin: number) => {
     const session: TrainingSession = {
@@ -49,22 +52,27 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
       perceived_effort: null,
       active_calories: null,
     }
-    onChange({ ...data, sessions: [...data.sessions, session] })
+    change({ ...data, sessions: [...data.sessions, session] })
   }
 
   const removeSession = (id: string) =>
-    onChange({ ...data, sessions: data.sessions.filter((s) => s.id !== id) })
+    change({ ...data, sessions: data.sessions.filter((s) => s.id !== id) })
 
   const updateSession = (id: string, patch: Partial<TrainingSession>) =>
-    onChange({
+    change({
       ...data,
       sessions: data.sessions.map((s) => (s.id === id ? { ...s, ...patch } : s)),
     })
 
   const handleSave = async () => {
-    await onSave()
-    setLocalSaved(true)
-    setTimeout(() => setLocalSaved(false), 2000)
+    setSaveError(false)
+    try {
+      await onSave()
+      setLocalSaved(true)
+      setTimeout(() => setLocalSaved(false), 2000)
+    } catch {
+      setSaveError(true)
+    }
   }
 
   // Collapsed summary
@@ -203,7 +211,7 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
                     perceived_effort: customEffort,
                     active_calories: customCal,
                   }
-                  onChange({ ...data, sessions: [...data.sessions, session] })
+                  change({ ...data, sessions: [...data.sessions, session] })
                   setCustomName('')
                   setCustomMin(30)
                   setCustomEffort(null)
@@ -237,8 +245,8 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
         <CyclingRow
           cycled={data.cycled_today}
           minutes={data.cycling_minutes}
-          onCycledChange={(v) => onChange({ ...data, cycled_today: v })}
-          onMinutesChange={(v) => onChange({ ...data, cycling_minutes: v })}
+          onCycledChange={(v) => change({ ...data, cycled_today: v })}
+          onMinutesChange={(v) => change({ ...data, cycling_minutes: v })}
         />
 
         {/* Save */}
@@ -247,9 +255,9 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
           onClick={handleSave}
           disabled={saving}
           className="btn-primary"
-          style={{ background: localSaved ? 'var(--color-primary-dark)' : undefined }}
+          style={{ background: saveError ? 'var(--color-danger)' : localSaved ? '#52B882' : undefined }}
         >
-          {localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save training'}
+          {saveError ? 'Save failed — retry' : localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save training'}
         </button>
       </div>
     </Section>
