@@ -52,6 +52,16 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
   }
 }
 
+export async function loadAllEntries(): Promise<DailyEntry[]> {
+  const { data, error } = await supabase
+    .from('daily_entries')
+    .select('*')
+    .order('date', { ascending: false })
+
+  if (error) throw error
+  return (data || []).map((row) => rowToEntry(row as Record<string, unknown>))
+}
+
 export async function loadRecentEntries(days: number): Promise<DailyEntry[]> {
   const since = new Date()
   since.setDate(since.getDate() - days)

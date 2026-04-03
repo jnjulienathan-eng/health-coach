@@ -407,7 +407,7 @@ export default function App() {
         )}
 
         {/* ── DASHBOARD TAB ────────────────────────────────────── */}
-        {activeTab === 'dashboard' && <DashboardTab />}
+        {activeTab === 'dashboard' && <DashboardTab today={entry} currentDate={currentDate} />}
 
         {/* ── HISTORY TAB ──────────────────────────────────────── */}
         {activeTab === 'history' && (
