@@ -113,11 +113,11 @@ export async function deriveCycleDay(): Promise<number | null> {
 }
 
 export async function loadBreakfastTemplates(): Promise<BreakfastTemplate[]> {
-  const { data, error } = await supabase
-    .from('meal_templates')
-    .select('*')
-    .order('sort_order')
-
-  if (error) throw error
-  return (data || []) as BreakfastTemplate[]
+  return [
+    { id: '1', name: 'Yogurt bowl',                    protein: 41, carbs: 55, fat: 36, fiber: 17, calories: 712 },
+    { id: '2', name: 'Chickpea pancake + sardines',    protein: 35, carbs: 28, fat: 12, fiber: 8,  calories: 360 },
+    { id: '3', name: 'Cottage cheese pancakes',        protein: 32, carbs: 24, fat: 10, fiber: 2,  calories: 320 },
+    { id: '4', name: 'Japanese rice & natto bowl',     protein: 35, carbs: 52, fat: 14, fiber: 6,  calories: 480 },
+    { id: '5', name: 'Sourdough toast + egg',          protein: 18, carbs: 32, fat: 10, fiber: 3,  calories: 290 },
+  ]
 }
