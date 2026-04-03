@@ -329,6 +329,15 @@ select option {
   animation: score-count-up 400ms ease forwards;
 }
 
+/* ─── Coach tab animations ───────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50%       { opacity: 1;   transform: scale(1); }
+}
+
 /* ─── Symptom tag pills ─────────────────────────────────────────── */
 .symptom-tag {
   display: inline-flex;

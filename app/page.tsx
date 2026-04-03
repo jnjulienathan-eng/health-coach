@@ -401,7 +401,9 @@ export default function App() {
         )}
 
         {/* ── COACH TAB ────────────────────────────────────────── */}
-        {activeTab === 'coach' && <CoachTab />}
+        {activeTab === 'coach' && (
+          <CoachTab today={entry} cycleDay={cycleDay} currentDate={currentDate} />
+        )}
 
         {/* ── DASHBOARD TAB ────────────────────────────────────── */}
         {activeTab === 'dashboard' && <DashboardTab />}
