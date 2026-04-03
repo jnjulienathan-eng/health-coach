@@ -29,6 +29,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${dmSans.variable} ${dmMono.variable} h-full antialiased`}
+      style={{ colorScheme: 'light' }}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
