@@ -19,6 +19,77 @@ interface Props {
   currentDate: string
 }
 
+// ─── Score bullet helpers ──────────────────────────────────────────
+function getBehaviorBullets(entry: DailyEntry): { text: string; ok: boolean }[] {
+  const bullets: { text: string; ok: boolean }[] = []
+  const sup = entry.supplements
+
+  // Supplements
+  const suppLogged = sup.morning_stack_taken || sup.evening_stack_taken || sup.progesterone_taken || sup.estradiol_taken
+  if (suppLogged) {
+    const parts = [
+      sup.morning_stack_taken && 'AM',
+      sup.evening_stack_taken && 'PM',
+      sup.progesterone_taken && 'Prog',
+      sup.estradiol_taken && 'E2',
+    ].filter(Boolean).join(', ')
+    bullets.push({ text: `Supplements taken (${parts})`, ok: true })
+  } else {
+    bullets.push({ text: 'Supplements not logged', ok: false })
+  }
+
+  // Bedtime
+  if (entry.sleep.bedtime) {
+    const [h, m] = entry.sleep.bedtime.split(':').map(Number)
+    const diff = Math.abs(h * 60 + m - (21 * 60 + 45))
+    if (diff <= 30) {
+      bullets.push({ text: `Bedtime on target (${entry.sleep.bedtime})`, ok: true })
+    } else {
+      bullets.push({ text: `Bedtime off target (${entry.sleep.bedtime}, target 21:45)`, ok: false })
+    }
+  } else {
+    bullets.push({ text: 'Bedtime not logged', ok: false })
+  }
+
+  // Nutrition
+  const p = entry.nutrition.total_protein
+  const f = entry.nutrition.total_fiber
+  if (p != null || f != null) {
+    const parts = [
+      p != null && `${Math.round(p)}g protein`,
+      f != null && `${Math.round(f)}g fiber`,
+    ].filter(Boolean).join(', ')
+    const ok = (p == null || p >= 130) && (f == null || f >= 30)
+    bullets.push({ text: `Nutrition: ${parts}`, ok })
+  } else {
+    bullets.push({ text: 'Nutrition not logged', ok: false })
+  }
+
+  return bullets
+}
+
+function getOutcomeBullets(entry: DailyEntry): { text: string; ok: boolean }[] {
+  const bullets: { text: string; ok: boolean }[] = []
+
+  if (entry.sleep.hrv != null) {
+    const hrv = entry.sleep.hrv
+    bullets.push({ text: `HRV ${hrv}ms — ${hrv >= 88 ? 'above baseline' : 'below baseline'}`, ok: hrv >= 88 })
+  }
+
+  if (entry.sleep.duration_min != null) {
+    const h = Math.floor(entry.sleep.duration_min / 60)
+    const m = entry.sleep.duration_min % 60
+    const ok = entry.sleep.duration_min >= 450 && entry.sleep.duration_min <= 510
+    bullets.push({ text: `Sleep ${h}h ${m}m — ${ok ? 'on target' : entry.sleep.duration_min < 450 ? 'below target' : 'over target'}`, ok })
+  }
+
+  if (entry.sleep.rested != null) {
+    bullets.push({ text: `Rested ${entry.sleep.rested}/5`, ok: entry.sleep.rested >= 4 })
+  }
+
+  return bullets
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────
 function chartDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')
@@ -31,7 +102,7 @@ function durationToH(min: number | null): number | null {
 }
 
 // ─── Score card ───────────────────────────────────────────────────
-function ScoreCard({ label, score }: { label: string; score: number }) {
+function ScoreCard({ label, score, bullets }: { label: string; score: number; bullets?: { text: string; ok: boolean }[] }) {
   const color = scoreColor(score)
   const word  = scoreLabel(score)
   return (
@@ -39,7 +110,7 @@ function ScoreCard({ label, score }: { label: string; score: number }) {
       style={{
         flex: 1,
         textAlign: 'center',
-        padding: '24px 12px 20px',
+        padding: '24px 12px 16px',
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
         borderRadius: 16,
@@ -78,6 +149,35 @@ function ScoreCard({ label, score }: { label: string; score: number }) {
       >
         {label}
       </div>
+      {bullets && bullets.length > 0 && (
+        <div
+          style={{
+            marginTop: 10,
+            paddingTop: 10,
+            borderTop: '1px solid var(--color-border)',
+            textAlign: 'left',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}
+        >
+          {bullets.map((b, i) => (
+            <div
+              key={i}
+              style={{
+                fontSize: 11,
+                lineHeight: 1.4,
+                color: b.ok ? 'var(--color-text-secondary)' : 'var(--color-text-dim)',
+                display: 'flex',
+                gap: 4,
+              }}
+            >
+              <span style={{ flexShrink: 0 }}>{b.ok ? '✓' : '✗'}</span>
+              <span>{b.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -220,8 +320,8 @@ export default function DashboardTab({ today, currentDate }: Props) {
 
       {/* ── Score cards ───────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 12 }}>
-        <ScoreCard label="Behavior" score={todayBehavior} />
-        <ScoreCard label="Outcome"  score={todayOutcome}  />
+        <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(today)} />
+        <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(today)} />
       </div>
 
       {/* ── No data message ───────────────────────────────────────── */}

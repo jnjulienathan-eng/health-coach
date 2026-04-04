@@ -64,9 +64,12 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
   const [chatInput,        setChatInput]        = useState('')
   const [chatLoading,      setChatLoading]      = useState(false)
   const [isListening,      setIsListening]      = useState(false)
+  const [answerInput,      setAnswerInput]      = useState('')
+  const [answerListening,  setAnswerListening]  = useState(false)
 
   const chatEndRef    = useRef<HTMLDivElement>(null)
   const inputRef      = useRef<HTMLInputElement>(null)
+  const answerRef     = useRef<HTMLInputElement>(null)
   const hasFetched    = useRef(false)
 
   // Auto-scroll chat to bottom
@@ -105,6 +108,67 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
     hasFetched.current = true
     generateBriefing()
   }, [today, generateBriefing])
+
+  // ── Answer input (Coach asks) ────────────────────────────────────
+  const startAnswerListening = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      alert('Voice input is not supported in this browser. Try Chrome or Safari.')
+      return
+    }
+    const recognition = new SR()
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.lang = 'en-US'
+
+    recognition.onstart = () => setAnswerListening(true)
+    recognition.onend   = () => setAnswerListening(false)
+    recognition.onerror = () => setAnswerListening(false)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
+      const transcript: string = e.results[0][0].transcript
+      setAnswerInput((prev) => (prev ? prev + ' ' + transcript : transcript))
+      answerRef.current?.focus()
+    }
+
+    recognition.start()
+  }
+
+  const sendAnswer = async () => {
+    const ans = answerInput.trim()
+    if (!ans || chatLoading) return
+
+    setAnswerInput('')
+    const newHistory: ChatMessage[] = [...chatMessages, { role: 'user', content: ans }]
+    setChatMessages(newHistory)
+    setChatLoading(true)
+
+    try {
+      const res = await fetch('/api/coach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'chat',
+          today,
+          cycleDay,
+          currentDate,
+          message: ans,
+          history: chatMessages,
+        }),
+      })
+      const json = await res.json()
+      if (json.error) throw new Error(json.error)
+      setChatMessages([...newHistory, { role: 'assistant', content: json.response }])
+    } catch (e) {
+      setChatMessages([
+        ...newHistory,
+        { role: 'assistant', content: `Error: ${e instanceof Error ? e.message : 'Something went wrong'}` },
+      ])
+    } finally {
+      setChatLoading(false)
+    }
+  }
 
   // ── Voice input ──────────────────────────────────────────────────
   const startListening = () => {
@@ -293,6 +357,78 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
               >
                 {briefing[key]}
               </p>
+
+              {key === 'question' && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'center',
+                  }}
+                >
+                  <input
+                    ref={answerRef}
+                    type="text"
+                    value={answerInput}
+                    onChange={(e) => setAnswerInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer() } }}
+                    placeholder="Answer Coach's question..."
+                    style={{
+                      flex: 1,
+                      height: 40,
+                      padding: '0 12px',
+                      fontSize: 14,
+                      color: 'var(--color-text-primary)',
+                      background: 'var(--color-bg)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 10,
+                      outline: 'none',
+                      fontFamily: 'var(--font-sans)',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={startAnswerListening}
+                    aria-label={answerListening ? 'Listening…' : 'Voice input'}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: answerListening ? 'var(--color-primary-light)' : 'var(--color-bg)',
+                      border: `1px solid ${answerListening ? 'var(--color-danger)' : 'var(--color-border)'}`,
+                      borderRadius: 10,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <MicIcon active={answerListening} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendAnswer}
+                    disabled={!answerInput.trim() || chatLoading}
+                    aria-label="Send answer"
+                    style={{
+                      width: 40,
+                      height: 40,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: answerInput.trim() && !chatLoading ? 'var(--color-primary)' : 'var(--color-border)',
+                      border: 'none',
+                      borderRadius: 10,
+                      cursor: answerInput.trim() && !chatLoading ? 'pointer' : 'default',
+                      flexShrink: 0,
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    <SendIcon />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
 

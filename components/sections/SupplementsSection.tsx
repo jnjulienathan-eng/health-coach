@@ -4,6 +4,137 @@ import { useState } from 'react'
 import type { SupplementsData } from '@/lib/types'
 import Section from '@/components/ui/Section'
 
+// ─── Dose parsing ─────────────────────────────────────────────────
+function parseDose(label: string): { name: string; dose: string | null } {
+  const m = label.match(/^(.+?)\s*\(([^)]+)\)\s*$/)
+  return m ? { name: m[1], dose: m[2] } : { name: label, dose: null }
+}
+
+// ─── Editable inline label (name + dose in parens) ────────────────
+function EditableLabel({ label, textStyle }: { label: string; textStyle?: React.CSSProperties }) {
+  const { name, dose } = parseDose(label)
+  const [editing, setEditing] = useState(false)
+  const [draftDose, setDraftDose] = useState(dose ?? '')
+  const [savedDose, setSavedDose] = useState<string | null>(null)
+
+  const displayLabel = savedDose !== null
+    ? (savedDose ? `${name} (${savedDose})` : name)
+    : label
+
+  if (editing) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+        <span style={textStyle}>{name}</span>
+        <input
+          value={draftDose}
+          onChange={(e) => setDraftDose(e.target.value)}
+          placeholder="dose"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { setSavedDose(draftDose); setEditing(false) }
+            if (e.key === 'Escape') { setEditing(false) }
+          }}
+          style={{
+            width: 72,
+            fontSize: 13,
+            padding: '1px 6px',
+            border: '1px solid var(--color-primary)',
+            borderRadius: 6,
+            background: 'var(--color-bg)',
+            color: 'var(--color-text-primary)',
+            fontFamily: 'var(--font-sans)',
+            outline: 'none',
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => { setSavedDose(draftDose); setEditing(false) }}
+          style={{
+            fontSize: 12,
+            color: 'var(--color-primary)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '0 2px',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          Done
+        </button>
+      </span>
+    )
+  }
+
+  return (
+    <span
+      style={{ ...textStyle, cursor: 'pointer' }}
+      onClick={() => { setDraftDose(savedDose ?? dose ?? ''); setEditing(true) }}
+      title="Tap to edit dose"
+    >
+      {displayLabel}
+    </span>
+  )
+}
+
+// ─── Editable dose (for HormoneCard's separate dose prop) ─────────
+function EditableDose({ defaultDose }: { defaultDose: string }) {
+  const [editing, setEditing] = useState(false)
+  const [draftDose, setDraftDose] = useState(defaultDose)
+  const [savedDose, setSavedDose] = useState<string | null>(null)
+
+  if (editing) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <input
+          value={draftDose}
+          onChange={(e) => setDraftDose(e.target.value)}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { setSavedDose(draftDose); setEditing(false) }
+            if (e.key === 'Escape') { setEditing(false) }
+          }}
+          style={{
+            width: 100,
+            fontSize: 12,
+            padding: '1px 6px',
+            border: '1px solid var(--color-primary)',
+            borderRadius: 6,
+            background: 'var(--color-bg)',
+            color: 'var(--color-text-primary)',
+            fontFamily: 'var(--font-sans)',
+            outline: 'none',
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => { setSavedDose(draftDose); setEditing(false) }}
+          style={{
+            fontSize: 12,
+            color: 'var(--color-primary)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '0 2px',
+            fontFamily: 'var(--font-sans)',
+          }}
+        >
+          Done
+        </button>
+      </span>
+    )
+  }
+
+  return (
+    <span
+      style={{ fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+      onClick={() => { setDraftDose(savedDose ?? defaultDose); setEditing(true) }}
+      title="Tap to edit dose"
+    >
+      {savedDose ?? defaultDose}
+    </span>
+  )
+}
+
 interface Props {
   data: SupplementsData
   onChange: (data: SupplementsData) => void
@@ -349,8 +480,8 @@ function HormoneCard({
         <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--color-text-primary)' }}>
           {label}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-          {dose}
+        <div style={{ marginTop: 2 }}>
+          <EditableDose defaultDose={dose} />
         </div>
       </div>
       <input
@@ -385,15 +516,14 @@ function SupplementItem({
         background: taken ? 'var(--color-surface)' : 'var(--color-bg)',
       }}
     >
-      <span
-        style={{
+      <EditableLabel
+        label={label}
+        textStyle={{
           fontSize: 14,
           color: taken ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
           textDecoration: taken ? 'none' : 'line-through',
         }}
-      >
-        {label}
-      </span>
+      />
       <input
         type="checkbox"
         checked={taken}
@@ -431,15 +561,14 @@ function CyclicItem({
       }}
     >
       <div style={{ flex: 1 }}>
-        <div
-          style={{
+        <EditableLabel
+          label={label}
+          textStyle={{
             fontSize: 14,
             color: active ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
             fontWeight: active ? 500 : 400,
           }}
-        >
-          {label}
-        </div>
+        />
         <div
           style={{
             fontSize: 11,
