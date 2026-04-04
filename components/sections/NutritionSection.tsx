@@ -59,6 +59,19 @@ const DEFAULT_BREAKFAST_TEMPLATES: BreakfastTemplate[] = [
   { id: 'b5', name: 'Sourdough toast + egg',   protein: 18, fiber: 3, fat: 10, carbs: 32, calories: 290, description: '' },
 ]
 
+// ─── Mic icon ────────────────────────────────────────────────────
+function MicIcon({ active }: { active: boolean }) {
+  const c = active ? 'var(--color-danger)' : 'var(--color-text-secondary)'
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+      <rect x="7" y="1" width="6" height="10" rx="3" stroke={c} strokeWidth="1.5" />
+      <path d="M4 9.5a6 6 0 0012 0" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="10" y1="15.5" x2="10" y2="18.5" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="7" y1="18.5" x2="13" y2="18.5" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 // ─── MacroBar component ──────────────────────────────────────────
 function MacroBar({
   label,
@@ -122,15 +135,20 @@ function MealRow({
   meal,
   onChange,
   showEstimate = false,
+  showVoice = false,
+  noBorder = false,
   placeholder = 'What did you eat?',
 }: {
   label: string
   meal: MealMacros
   onChange: (m: MealMacros) => void
   showEstimate?: boolean
+  showVoice?: boolean
+  noBorder?: boolean
   placeholder?: string
 }) {
   const [estimating, setEstimating] = useState(false)
+  const [listening, setListening] = useState(false)
 
   const hasMacros =
     meal.protein != null || meal.fat != null || meal.carbs != null || meal.calories != null
@@ -154,23 +172,49 @@ function MealRow({
     }
   }
 
+  const startListening = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      alert('Voice input is not supported in this browser. Try Chrome or Safari.')
+      return
+    }
+    const recognition = new SR()
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.lang = 'en-US'
+
+    recognition.onstart = () => setListening(true)
+    recognition.onend   = () => setListening(false)
+    recognition.onerror = () => setListening(false)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
+      const transcript: string = e.results[0][0].transcript
+      onChange({ ...meal, description: meal.description ? meal.description + ' ' + transcript : transcript })
+    }
+
+    recognition.start()
+  }
+
   const setMacro = (k: keyof MealMacros, v: number | null | string) =>
     onChange({ ...meal, [k]: v })
 
   return (
-    <div style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: 16 }}>
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 500,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          color: 'var(--color-text-secondary)',
-          marginBottom: 8,
-        }}
-      >
-        {label}
-      </div>
+    <div style={{ borderBottom: noBorder ? 'none' : '1px solid var(--color-border)', paddingBottom: noBorder ? 0 : 16 }}>
+      {label && (
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'var(--color-text-secondary)',
+            marginBottom: 8,
+          }}
+        >
+          {label}
+        </div>
+      )}
 
       {/* Description */}
       <div style={{ display: 'flex', gap: 8, marginBottom: hasMacros ? 10 : 0 }}>
@@ -192,6 +236,27 @@ function MealRow({
             fontFamily: 'var(--font-sans)',
           }}
         />
+        {showVoice && (
+          <button
+            type="button"
+            onClick={startListening}
+            aria-label={listening ? 'Listening…' : 'Voice input'}
+            style={{
+              flexShrink: 0,
+              width: 40,
+              alignSelf: 'stretch',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: listening ? 'var(--color-primary-light)' : 'var(--color-surface)',
+              border: `1px solid ${listening ? 'var(--color-danger)' : 'var(--color-border)'}`,
+              borderRadius: 8,
+              cursor: 'pointer',
+            }}
+          >
+            <MicIcon active={listening} />
+          </button>
+        )}
         {showEstimate && (
           <button
             type="button"
@@ -303,6 +368,9 @@ export default function NutritionSection({
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const [showIncidentals, setShowIncidentals] = useState(false)
+  const [breakfastCustom, setBreakfastCustom] = useState(
+    !data.breakfast.template_name && !!data.breakfast.description
+  )
 
   const effectiveTemplates =
     templates.length > 0 ? templates : DEFAULT_BREAKFAST_TEMPLATES
@@ -504,7 +572,7 @@ export default function NutritionSection({
             </div>
 
             {/* Template picker */}
-            {!data.breakfast.template_name && (
+            {!data.breakfast.template_name && !breakfastCustom && (
               <div className="scroll-row" style={{ marginBottom: 10 }}>
                 {effectiveTemplates.map((t) => (
                   <button
@@ -528,7 +596,49 @@ export default function NutritionSection({
                     )}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setBreakfastCustom(true)}
+                  className="btn-template"
+                  style={{ minWidth: 80 }}
+                >
+                  <span style={{ fontSize: 12 }}>Other</span>
+                </button>
               </div>
+            )}
+
+            {/* Custom free-text mode */}
+            {!data.breakfast.template_name && breakfastCustom && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBreakfastCustom(false)
+                    updateMeal('breakfast', { ...data.breakfast, description: '', protein: null, fiber: null, fat: null, carbs: null, calories: null })
+                  }}
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--color-primary)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                    marginBottom: 8,
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  ← Templates
+                </button>
+                <MealRow
+                  label=""
+                  meal={data.breakfast}
+                  onChange={(m) => updateMeal('breakfast', m)}
+                  showEstimate
+                  showVoice
+                  noBorder
+                  placeholder="Describe what you had…"
+                />
+              </>
             )}
 
             {data.breakfast.template_name && (
@@ -538,7 +648,10 @@ export default function NutritionSection({
                 </span>
                 <button
                   type="button"
-                  onClick={() => updateMeal('breakfast', { ...data.breakfast, template_name: null, description: '' })}
+                  onClick={() => {
+                    updateMeal('breakfast', { ...data.breakfast, template_name: null, description: '' })
+                    setBreakfastCustom(false)
+                  }}
                   style={{
                     fontSize: 12,
                     color: 'var(--color-primary)',
@@ -613,6 +726,7 @@ export default function NutritionSection({
             meal={data.lunch}
             onChange={(m) => updateMeal('lunch', m)}
             showEstimate
+            showVoice
             placeholder="Describe what you had…"
           />
 
@@ -622,6 +736,7 @@ export default function NutritionSection({
             meal={data.dinner}
             onChange={(m) => updateMeal('dinner', m)}
             showEstimate
+            showVoice
             placeholder="Describe what you had…"
           />
 
