@@ -1,57 +1,259 @@
 import { createClient } from '@supabase/supabase-js'
-import type { DailyEntry } from './types'
+import type { DailyEntry, TrainingSession, Symptom } from './types'
 import { emptyEntry } from './types'
+import { behaviorScore, outcomeScore } from './scores'
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
 )
 
-// Maps the JSONB checkins row → DailyEntry, filling missing fields with defaults.
-function rowToEntry(row: Record<string, unknown>): DailyEntry {
-  const date = row.date as string
-  const base = emptyEntry(date)
+// ─── rowToEntry: flat Supabase row + sessions → DailyEntry ────────
+function rowToEntry(row: Record<string, unknown>, sessions: TrainingSession[] = []): DailyEntry {
+  const r = row
   return {
-    date,
-    sleep:       { ...base.sleep,       ...(row.sleep       as object || {}) },
-    training:    { ...base.training,    ...(row.training    as object || {}) },
-    nutrition:   { ...base.nutrition,   ...(row.nutrition   as object || {}) },
-    supplements: { ...base.supplements, ...(row.supplements as object || {}) },
-    context:     { ...base.context,     ...(row.context     as object || {}) },
-  }
-}
-
-export async function loadEntry(date: string): Promise<DailyEntry> {
-  const { data, error } = await supabase
-    .from('daily_entries')
-    .select('*')
-    .eq('date', date)
-    .maybeSingle()
-
-  if (error) throw error
-  if (!data) return emptyEntry(date)
-  return rowToEntry(data as Record<string, unknown>)
-}
-
-export async function saveEntry(entry: DailyEntry): Promise<void> {
-  const { error } = await supabase.from('daily_entries').upsert(
-    {
-      date:        entry.date,
-      sleep:       entry.sleep,
-      training:    entry.training,
-      nutrition:   entry.nutrition,
-      supplements: entry.supplements,
-      context:     entry.context,
-      updated_at:  new Date().toISOString(),
+    date: r.date as string,
+    sleep: {
+      bedtime:      (r.bedtime          as string  | null) ?? null,
+      duration_min: (r.sleep_duration_min as number | null) ?? null,
+      hrv:          (r.hrv              as number  | null) ?? null,
+      rhr:          (r.rhr              as number  | null) ?? null,
+      rested:       (r.rested           as number  | null) ?? null,
     },
-    { onConflict: 'date' }
-  )
-  if (error) {
-    console.error('Supabase upsert error:', JSON.stringify(error))
-    throw error
+    training: {
+      sessions,
+      cycled_today:    (r.cycled_today    as boolean | null) ?? false,
+      cycling_minutes: (r.cycling_minutes as number  | null) ?? null,
+    },
+    nutrition: {
+      pre_workout_snack: {
+        description: (r.pre_workout_snack as string) ?? '',
+        protein: null, fiber: null, fat: null, carbs: null, calories: null,
+      },
+      breakfast: {
+        template_name: (r.breakfast_template    as string  | null) ?? null,
+        description:   (r.breakfast_description as string) ?? '',
+        protein:       (r.breakfast_protein     as number  | null) ?? null,
+        fiber:         (r.breakfast_fiber       as number  | null) ?? null,
+        fat:           (r.breakfast_fat         as number  | null) ?? null,
+        carbs:         (r.breakfast_carbs       as number  | null) ?? null,
+        calories:      (r.breakfast_calories    as number  | null) ?? null,
+      },
+      lunch: {
+        description: (r.lunch_description as string) ?? '',
+        protein:     (r.lunch_protein     as number | null) ?? null,
+        fiber:       (r.lunch_fiber       as number | null) ?? null,
+        fat:         (r.lunch_fat         as number | null) ?? null,
+        carbs:       (r.lunch_carbs       as number | null) ?? null,
+        calories:    (r.lunch_calories    as number | null) ?? null,
+      },
+      dinner: {
+        description: (r.dinner_description as string) ?? '',
+        protein:     (r.dinner_protein     as number | null) ?? null,
+        fiber:       (r.dinner_fiber       as number | null) ?? null,
+        fat:         (r.dinner_fat         as number | null) ?? null,
+        carbs:       (r.dinner_carbs       as number | null) ?? null,
+        calories:    (r.dinner_calories    as number | null) ?? null,
+      },
+      incidentals: {
+        description: (r.incidentals_description as string) ?? '',
+        protein:     (r.incidentals_protein     as number | null) ?? null,
+        fiber:       (r.incidentals_fiber       as number | null) ?? null,
+        fat:         (r.incidentals_fat         as number | null) ?? null,
+        carbs:       (r.incidentals_carbs       as number | null) ?? null,
+        calories:    (r.incidentals_calories    as number | null) ?? null,
+      },
+      total_protein:  (r.total_protein  as number | null) ?? null,
+      total_fiber:    (r.total_fiber    as number | null) ?? null,
+      total_fat:      (r.total_fat      as number | null) ?? null,
+      total_carbs:    (r.total_carbs    as number | null) ?? null,
+      total_calories: (r.total_calories as number | null) ?? null,
+    },
+    supplements: {
+      morning_stack_taken:      (r.morning_stack_taken      as boolean | null) ?? false,
+      morning_exceptions:       [],   // no flat column — runtime-only
+      evening_stack_taken:      (r.evening_stack_taken      as boolean | null) ?? false,
+      evening_exceptions:       [],   // no flat column — runtime-only
+      progesterone_taken:       (r.progesterone_taken       as boolean | null) ?? false,
+      estradiol_taken:          (r.estradiol_taken          as boolean | null) ?? false,
+      ashwagandha_taken:        (r.ashwagandha_taken        as boolean | null) ?? false,
+      dim_taken:                (r.dim_taken                as boolean | null) ?? false,
+      phosphatidylserine_taken: (r.phosphatidylserine_taken as boolean | null) ?? false,
+    },
+    context: {
+      stress_level: (r.stress_level as number  | null) ?? null,
+      symptoms:     (r.symptoms     as Symptom[]) ?? [],
+      travelling:   (r.travelling   as boolean | null) ?? false,
+      notes:        (r.notes        as string) ?? '',
+      // cycle_day persisted as top-level column, surfaced here for runtime use
+      ...(r.cycle_day != null ? { cycle_day: r.cycle_day as number } : {}),
+    } as DailyEntry['context'],
   }
 }
 
+// ─── Load training sessions for a set of dates ────────────────────
+async function loadSessionsForDates(dates: string[]): Promise<Record<string, TrainingSession[]>> {
+  if (!dates.length) return {}
+  const { data, error } = await supabase
+    .from('training_sessions')
+    .select('*')
+    .in('date', dates)
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.error('Failed to load training_sessions:', JSON.stringify(error))
+    return {}
+  }
+
+  const map: Record<string, TrainingSession[]> = {}
+  for (const row of data ?? []) {
+    const d = row.date as string
+    if (!map[d]) map[d] = []
+    map[d].push({
+      id:               row.id              as string,
+      activity_type:    row.activity_type   as string,
+      duration_min:     row.duration_min    as number,
+      perceived_effort: (row.perceived_effort as number | null) ?? null,
+      active_calories:  (row.active_calories  as number | null) ?? null,
+    })
+  }
+  return map
+}
+
+// ─── saveEntry ────────────────────────────────────────────────────
+export async function saveEntry(entry: DailyEntry): Promise<void> {
+  const cycleDay = (entry.context as unknown as Record<string, unknown>).cycle_day as number | undefined
+
+  const flat = {
+    user_id:    'julie',
+    date:       entry.date,
+    updated_at: new Date().toISOString(),
+
+    // Sleep
+    bedtime:            entry.sleep.bedtime,
+    sleep_duration_min: entry.sleep.duration_min,
+    hrv:                entry.sleep.hrv,
+    rhr:                entry.sleep.rhr,
+    rested:             entry.sleep.rested,
+
+    // Training (cycled only — sessions go to training_sessions table)
+    cycled_today:    entry.training.cycled_today,
+    cycling_minutes: entry.training.cycling_minutes,
+
+    // Nutrition — pre_workout_snack is description-only in schema
+    pre_workout_snack:    entry.nutrition.pre_workout_snack.description || null,
+
+    breakfast_template:    entry.nutrition.breakfast.template_name,
+    breakfast_description: entry.nutrition.breakfast.description || null,
+    breakfast_protein:     entry.nutrition.breakfast.protein,
+    breakfast_fiber:       entry.nutrition.breakfast.fiber,
+    breakfast_fat:         entry.nutrition.breakfast.fat,
+    breakfast_carbs:       entry.nutrition.breakfast.carbs,
+    breakfast_calories:    entry.nutrition.breakfast.calories,
+
+    lunch_description: entry.nutrition.lunch.description || null,
+    lunch_protein:     entry.nutrition.lunch.protein,
+    lunch_fiber:       entry.nutrition.lunch.fiber,
+    lunch_fat:         entry.nutrition.lunch.fat,
+    lunch_carbs:       entry.nutrition.lunch.carbs,
+    lunch_calories:    entry.nutrition.lunch.calories,
+
+    dinner_description: entry.nutrition.dinner.description || null,
+    dinner_protein:     entry.nutrition.dinner.protein,
+    dinner_fiber:       entry.nutrition.dinner.fiber,
+    dinner_fat:         entry.nutrition.dinner.fat,
+    dinner_carbs:       entry.nutrition.dinner.carbs,
+    dinner_calories:    entry.nutrition.dinner.calories,
+
+    incidentals_description: entry.nutrition.incidentals.description || null,
+    incidentals_protein:     entry.nutrition.incidentals.protein,
+    incidentals_fiber:       entry.nutrition.incidentals.fiber,
+    incidentals_fat:         entry.nutrition.incidentals.fat,
+    incidentals_carbs:       entry.nutrition.incidentals.carbs,
+    incidentals_calories:    entry.nutrition.incidentals.calories,
+
+    total_protein:  entry.nutrition.total_protein,
+    total_fiber:    entry.nutrition.total_fiber,
+    total_fat:      entry.nutrition.total_fat,
+    total_carbs:    entry.nutrition.total_carbs,
+    total_calories: entry.nutrition.total_calories,
+
+    // Supplements
+    morning_stack_taken:      entry.supplements.morning_stack_taken,
+    evening_stack_taken:      entry.supplements.evening_stack_taken,
+    progesterone_taken:       entry.supplements.progesterone_taken,
+    estradiol_taken:          entry.supplements.estradiol_taken,
+    ashwagandha_taken:        entry.supplements.ashwagandha_taken,
+    dim_taken:                entry.supplements.dim_taken,
+    phosphatidylserine_taken: entry.supplements.phosphatidylserine_taken,
+
+    // Context
+    cycle_day:    cycleDay ?? null,
+    stress_level: entry.context.stress_level,
+    travelling:   entry.context.travelling,
+    symptoms:     entry.context.symptoms,
+    notes:        entry.context.notes || null,
+
+    // Computed scores
+    behavior_score: behaviorScore(entry),
+    outcome_score:  outcomeScore(entry),
+  }
+
+  const { error: upsertError } = await supabase
+    .from('daily_entries')
+    .upsert(flat, { onConflict: 'date' })
+
+  if (upsertError) {
+    console.error('saveEntry upsert error:', JSON.stringify(upsertError))
+    throw upsertError
+  }
+
+  // ── Training sessions: replace all for this date ───────────────
+  const { error: deleteError } = await supabase
+    .from('training_sessions')
+    .delete()
+    .eq('date', entry.date)
+    .eq('user_id', 'julie')
+
+  if (deleteError) {
+    console.error('saveEntry delete sessions error:', JSON.stringify(deleteError))
+    throw deleteError
+  }
+
+  if (entry.training.sessions.length > 0) {
+    const { error: insertError } = await supabase
+      .from('training_sessions')
+      .insert(
+        entry.training.sessions.map(s => ({
+          user_id:          'julie',
+          date:             entry.date,
+          activity_type:    s.activity_type,
+          duration_min:     s.duration_min,
+          perceived_effort: s.perceived_effort,
+          active_calories:  s.active_calories,
+        }))
+      )
+
+    if (insertError) {
+      console.error('saveEntry insert sessions error:', JSON.stringify(insertError))
+      throw insertError
+    }
+  }
+}
+
+// ─── loadEntry ────────────────────────────────────────────────────
+export async function loadEntry(date: string): Promise<DailyEntry> {
+  const [rowResult, sessionsMap] = await Promise.all([
+    supabase.from('daily_entries').select('*').eq('date', date).maybeSingle(),
+    loadSessionsForDates([date]),
+  ])
+
+  if (rowResult.error) throw rowResult.error
+  if (!rowResult.data) return emptyEntry(date)
+  return rowToEntry(rowResult.data as Record<string, unknown>, sessionsMap[date] ?? [])
+}
+
+// ─── loadAllEntries ───────────────────────────────────────────────
 export async function loadAllEntries(): Promise<DailyEntry[]> {
   const { data, error } = await supabase
     .from('daily_entries')
@@ -59,9 +261,13 @@ export async function loadAllEntries(): Promise<DailyEntry[]> {
     .order('date', { ascending: false })
 
   if (error) throw error
-  return (data || []).map((row) => rowToEntry(row as Record<string, unknown>))
+  const rows = (data ?? []) as Record<string, unknown>[]
+  const dates = rows.map(r => r.date as string)
+  const sessionsMap = await loadSessionsForDates(dates)
+  return rows.map(r => rowToEntry(r, sessionsMap[r.date as string] ?? []))
 }
 
+// ─── loadRecentEntries ────────────────────────────────────────────
 export async function loadRecentEntries(days: number): Promise<DailyEntry[]> {
   const since = new Date()
   since.setDate(since.getDate() - days)
@@ -74,24 +280,44 @@ export async function loadRecentEntries(days: number): Promise<DailyEntry[]> {
     .order('date', { ascending: false })
 
   if (error) throw error
-  return (data || []).map((row) => rowToEntry(row as Record<string, unknown>))
+  const rows = (data ?? []) as Record<string, unknown>[]
+  const dates = rows.map(r => r.date as string)
+  const sessionsMap = await loadSessionsForDates(dates)
+  return rows.map(r => rowToEntry(r, sessionsMap[r.date as string] ?? []))
 }
 
-// Check if a given date's sleep data has been logged
+// ─── isSleepLogged ────────────────────────────────────────────────
 export async function isSleepLogged(date: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('daily_entries')
-    .select('sleep')
+    .select('hrv, sleep_duration_min')
     .eq('date', date)
     .maybeSingle()
 
   if (error || !data) return false
-  const sleep = data.sleep as Record<string, unknown> | null
-  if (!sleep) return false
-  return sleep.hrv != null || sleep.duration_min != null
+  const r = data as Record<string, unknown>
+  return r.hrv != null || r.sleep_duration_min != null
 }
 
-// Breakfast templates stored in meal_templates table
+// ─── deriveCycleDay ───────────────────────────────────────────────
+export async function deriveCycleDay(): Promise<number | null> {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yStr = yesterday.toISOString().split('T')[0]
+
+  const { data } = await supabase
+    .from('daily_entries')
+    .select('cycle_day')
+    .eq('date', yStr)
+    .maybeSingle()
+
+  if (!data) return null
+  const prev = (data as Record<string, unknown>).cycle_day
+  if (typeof prev !== 'number' || prev <= 0) return null
+  return prev + 1
+}
+
+// ─── Breakfast templates (hardcoded) ─────────────────────────────
 export interface BreakfastTemplate {
   id: string
   name: string
@@ -103,31 +329,12 @@ export interface BreakfastTemplate {
   description?: string
 }
 
-// Derive today's cycle day from yesterday's stored context.cycle_day + 1
-export async function deriveCycleDay(): Promise<number | null> {
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yStr = yesterday.toISOString().split('T')[0]
-
-  const { data } = await supabase
-    .from('daily_entries')
-    .select('context')
-    .eq('date', yStr)
-    .maybeSingle()
-
-  if (!data?.context) return null
-  const ctx = data.context as Record<string, unknown>
-  const prev = ctx.cycle_day
-  if (typeof prev !== 'number' || prev <= 0) return null
-  return prev + 1
-}
-
 export async function loadBreakfastTemplates(): Promise<BreakfastTemplate[]> {
   return [
-    { id: '1', name: 'Yogurt bowl',                    protein: 41, carbs: 55, fat: 36, fiber: 17, calories: 712 },
-    { id: '2', name: 'Chickpea pancake + sardines',    protein: 35, carbs: 28, fat: 12, fiber: 8,  calories: 360 },
-    { id: '3', name: 'Cottage cheese pancakes',        protein: 32, carbs: 24, fat: 10, fiber: 2,  calories: 320 },
-    { id: '4', name: 'Japanese rice & natto bowl',     protein: 35, carbs: 52, fat: 14, fiber: 6,  calories: 480 },
-    { id: '5', name: 'Sourdough toast + egg',          protein: 18, carbs: 32, fat: 10, fiber: 3,  calories: 290 },
+    { id: '1', name: 'Yogurt bowl',                 protein: 41, carbs: 55, fat: 36, fiber: 17, calories: 712 },
+    { id: '2', name: 'Chickpea pancake + sardines', protein: 35, carbs: 28, fat: 12, fiber: 8,  calories: 360 },
+    { id: '3', name: 'Cottage cheese pancakes',     protein: 32, carbs: 24, fat: 10, fiber: 2,  calories: 320 },
+    { id: '4', name: 'Japanese rice & natto bowl',  protein: 35, carbs: 52, fat: 14, fiber: 6,  calories: 480 },
+    { id: '5', name: 'Sourdough toast + egg',       protein: 18, carbs: 32, fat: 10, fiber: 3,  calories: 290 },
   ]
 }
