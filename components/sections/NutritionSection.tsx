@@ -149,6 +149,7 @@ function MealRow({
 }) {
   const [estimating, setEstimating] = useState(false)
   const [listening, setListening] = useState(false)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
 
   const hasMacros =
     meal.protein != null || meal.fat != null || meal.carbs != null || meal.calories != null
@@ -173,10 +174,11 @@ function MealRow({
   }
 
   const startListening = () => {
+    setVoiceError(null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) {
-      alert('Voice input is not supported in this browser. Try Chrome or Safari.')
+      setVoiceError('Voice not supported on this browser — please type instead.')
       return
     }
     const recognition = new SR()
@@ -186,14 +188,34 @@ function MealRow({
 
     recognition.onstart = () => setListening(true)
     recognition.onend   = () => setListening(false)
-    recognition.onerror = () => setListening(false)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (e: any) => {
+      setListening(false)
+      console.error('SpeechRecognition error:', e.error)
+      const messages: Record<string, string> = {
+        'not-allowed':            'Microphone permission denied. Allow mic access in browser settings.',
+        'audio-capture':          'No microphone found.',
+        'network':                'Network error — speech recognition requires internet.',
+        'no-speech':              'No speech detected. Try again.',
+        'aborted':                '',
+        'language-not-supported': 'Language not supported.',
+      }
+      const msg = messages[e.error as string] ?? `Voice error: ${e.error}`
+      if (msg) setVoiceError(msg)
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
       const transcript: string = e.results[0][0].transcript
       onChange({ ...meal, description: meal.description ? meal.description + ' ' + transcript : transcript })
     }
 
-    recognition.start()
+    try {
+      recognition.start()
+    } catch (err) {
+      setListening(false)
+      console.error('SpeechRecognition start error:', err)
+      setVoiceError('Could not start voice input. Try again.')
+    }
   }
 
   const setMacro = (k: keyof MealMacros, v: number | null | string) =>
@@ -282,6 +304,13 @@ function MealRow({
           </button>
         )}
       </div>
+
+      {/* Voice error */}
+      {voiceError && (
+        <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 6 }}>
+          {voiceError}
+        </div>
+      )}
 
       {/* Macros grid */}
       {hasMacros && (

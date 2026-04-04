@@ -64,8 +64,10 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
   const [chatInput,        setChatInput]        = useState('')
   const [chatLoading,      setChatLoading]      = useState(false)
   const [isListening,      setIsListening]      = useState(false)
+  const [voiceError,       setVoiceError]       = useState<string | null>(null)
   const [answerInput,      setAnswerInput]      = useState('')
   const [answerListening,  setAnswerListening]  = useState(false)
+  const [answerVoiceError, setAnswerVoiceError] = useState<string | null>(null)
 
   const chatEndRef    = useRef<HTMLDivElement>(null)
   const inputRef      = useRef<HTMLInputElement>(null)
@@ -111,10 +113,11 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
 
   // ── Answer input (Coach asks) ────────────────────────────────────
   const startAnswerListening = () => {
+    setAnswerVoiceError(null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) {
-      alert('Voice input is not supported in this browser. Try Chrome or Safari.')
+      setAnswerVoiceError('Voice not supported on this browser — please type instead.')
       return
     }
     const recognition = new SR()
@@ -124,7 +127,21 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
 
     recognition.onstart = () => setAnswerListening(true)
     recognition.onend   = () => setAnswerListening(false)
-    recognition.onerror = () => setAnswerListening(false)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (e: any) => {
+      setAnswerListening(false)
+      console.error('SpeechRecognition error:', e.error)
+      const messages: Record<string, string> = {
+        'not-allowed':            'Microphone permission denied. Allow mic access in browser settings.',
+        'audio-capture':          'No microphone found.',
+        'network':                'Network error — speech recognition requires internet.',
+        'no-speech':              'No speech detected. Try again.',
+        'aborted':                '',
+        'language-not-supported': 'Language not supported.',
+      }
+      const msg = messages[e.error as string] ?? `Voice error: ${e.error}`
+      if (msg) setAnswerVoiceError(msg)
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
       const transcript: string = e.results[0][0].transcript
@@ -132,7 +149,13 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
       answerRef.current?.focus()
     }
 
-    recognition.start()
+    try {
+      recognition.start()
+    } catch (err) {
+      setAnswerListening(false)
+      console.error('SpeechRecognition start error:', err)
+      setAnswerVoiceError('Could not start voice input. Try again.')
+    }
   }
 
   const sendAnswer = async () => {
@@ -172,10 +195,11 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
 
   // ── Voice input ──────────────────────────────────────────────────
   const startListening = () => {
+    setVoiceError(null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) {
-      alert('Voice input is not supported in this browser. Try Chrome or Safari.')
+      setVoiceError('Voice not supported on this browser — please type instead.')
       return
     }
     const recognition = new SR()
@@ -185,7 +209,21 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
 
     recognition.onstart = () => setIsListening(true)
     recognition.onend   = () => setIsListening(false)
-    recognition.onerror = () => setIsListening(false)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (e: any) => {
+      setIsListening(false)
+      console.error('SpeechRecognition error:', e.error)
+      const messages: Record<string, string> = {
+        'not-allowed':            'Microphone permission denied. Allow mic access in browser settings.',
+        'audio-capture':          'No microphone found.',
+        'network':                'Network error — speech recognition requires internet.',
+        'no-speech':              'No speech detected. Try again.',
+        'aborted':                '',
+        'language-not-supported': 'Language not supported.',
+      }
+      const msg = messages[e.error as string] ?? `Voice error: ${e.error}`
+      if (msg) setVoiceError(msg)
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
       const transcript: string = e.results[0][0].transcript
@@ -193,7 +231,13 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
       inputRef.current?.focus()
     }
 
-    recognition.start()
+    try {
+      recognition.start()
+    } catch (err) {
+      setIsListening(false)
+      console.error('SpeechRecognition start error:', err)
+      setVoiceError('Could not start voice input. Try again.')
+    }
   }
 
   // ── Send chat message ────────────────────────────────────────────
@@ -359,75 +403,82 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
               </p>
 
               {key === 'question' && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    display: 'flex',
-                    gap: 8,
-                    alignItems: 'center',
-                  }}
-                >
-                  <input
-                    ref={answerRef}
-                    type="text"
-                    value={answerInput}
-                    onChange={(e) => setAnswerInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer() } }}
-                    placeholder="Answer Coach's question..."
+                <>
+                  <div
                     style={{
-                      flex: 1,
-                      height: 40,
-                      padding: '0 12px',
-                      fontSize: 14,
-                      color: 'var(--color-text-primary)',
-                      background: 'var(--color-bg)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 10,
-                      outline: 'none',
-                      fontFamily: 'var(--font-sans)',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={startAnswerListening}
-                    aria-label={answerListening ? 'Listening…' : 'Voice input'}
-                    style={{
-                      width: 40,
-                      height: 40,
+                      marginTop: 12,
                       display: 'flex',
+                      gap: 8,
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      background: answerListening ? 'var(--color-primary-light)' : 'var(--color-bg)',
-                      border: `1px solid ${answerListening ? 'var(--color-danger)' : 'var(--color-border)'}`,
-                      borderRadius: 10,
-                      cursor: 'pointer',
-                      flexShrink: 0,
                     }}
                   >
-                    <MicIcon active={answerListening} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={sendAnswer}
-                    disabled={!answerInput.trim() || chatLoading}
-                    aria-label="Send answer"
-                    style={{
-                      width: 40,
-                      height: 40,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      background: answerInput.trim() && !chatLoading ? 'var(--color-primary)' : 'var(--color-border)',
-                      border: 'none',
-                      borderRadius: 10,
-                      cursor: answerInput.trim() && !chatLoading ? 'pointer' : 'default',
-                      flexShrink: 0,
-                      transition: 'background 0.15s',
-                    }}
-                  >
-                    <SendIcon />
-                  </button>
-                </div>
+                    <input
+                      ref={answerRef}
+                      type="text"
+                      value={answerInput}
+                      onChange={(e) => setAnswerInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer() } }}
+                      placeholder="Answer Coach's question..."
+                      style={{
+                        flex: 1,
+                        height: 40,
+                        padding: '0 12px',
+                        fontSize: 14,
+                        color: 'var(--color-text-primary)',
+                        background: 'var(--color-bg)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 10,
+                        outline: 'none',
+                        fontFamily: 'var(--font-sans)',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={startAnswerListening}
+                      aria-label={answerListening ? 'Listening…' : 'Voice input'}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: answerListening ? 'var(--color-primary-light)' : 'var(--color-bg)',
+                        border: `1px solid ${answerListening ? 'var(--color-danger)' : 'var(--color-border)'}`,
+                        borderRadius: 10,
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <MicIcon active={answerListening} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={sendAnswer}
+                      disabled={!answerInput.trim() || chatLoading}
+                      aria-label="Send answer"
+                      style={{
+                        width: 40,
+                        height: 40,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: answerInput.trim() && !chatLoading ? 'var(--color-primary)' : 'var(--color-border)',
+                        border: 'none',
+                        borderRadius: 10,
+                        cursor: answerInput.trim() && !chatLoading ? 'pointer' : 'default',
+                        flexShrink: 0,
+                        transition: 'background 0.15s',
+                      }}
+                    >
+                      <SendIcon />
+                    </button>
+                  </div>
+                  {answerVoiceError && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-danger)' }}>
+                      {answerVoiceError}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ))}
@@ -611,6 +662,13 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
             <SendIcon />
           </button>
         </div>
+
+        {/* Chat voice error */}
+        {voiceError && (
+          <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: -8 }}>
+            {voiceError}
+          </div>
+        )}
 
         {/* Suggested starters — only when no chat yet */}
         {chatMessages.length === 0 && (
