@@ -201,7 +201,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
 
   const { error: upsertError } = await supabase
     .from('daily_entries')
-    .upsert(flat, { onConflict: 'date' })
+    .upsert(flat, { onConflict: 'user_id,date' })
 
   if (upsertError) {
     console.error('saveEntry upsert error:', JSON.stringify(upsertError))
