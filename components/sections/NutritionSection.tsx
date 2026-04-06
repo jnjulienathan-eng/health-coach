@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { NutritionData, MealMacros, BreakfastMeal } from '@/lib/types'
 import { MACRO_TARGETS } from '@/lib/types'
 import type { BreakfastTemplate } from '@/lib/db'
@@ -59,15 +59,25 @@ const DEFAULT_BREAKFAST_TEMPLATES: BreakfastTemplate[] = [
   { id: 'b5', name: 'Sourdough toast + egg',   protein: 18, fiber: 3, fat: 10, carbs: 32, calories: 290, description: '' },
 ]
 
-// ─── Mic icon ────────────────────────────────────────────────────
-function MicIcon({ active }: { active: boolean }) {
-  const c = active ? 'var(--color-danger)' : 'var(--color-text-secondary)'
+// ─── Spinner icon (uses @keyframes spin from globals.css) ────────
+function SpinnerIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-      <rect x="7" y="1" width="6" height="10" rx="3" stroke={c} strokeWidth="1.5" />
-      <path d="M4 9.5a6 6 0 0012 0" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="10" y1="15.5" x2="10" y2="18.5" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="7" y1="18.5" x2="13" y2="18.5" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      style={{ animation: 'spin 0.8s linear infinite', transformOrigin: 'center center' }}
+    >
+      <circle
+        cx="8"
+        cy="8"
+        r="6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeDasharray="20 16"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
@@ -135,7 +145,7 @@ function MealRow({
   meal,
   onChange,
   showEstimate = false,
-  showVoice = false,
+  noMacros = false,
   noBorder = false,
   placeholder = 'What did you eat?',
 }: {
@@ -143,37 +153,84 @@ function MealRow({
   meal: MealMacros
   onChange: (m: MealMacros) => void
   showEstimate?: boolean
-  showVoice?: boolean
+  noMacros?: boolean
   noBorder?: boolean
   placeholder?: string
 }) {
+  const [actionSheetOpen, setActionSheetOpen] = useState(false)
   const [estimating, setEstimating] = useState(false)
+  const [analysing, setAnalysing] = useState(false)
   const [listening, setListening] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const [thumbnail, setThumbnail] = useState<string | null>(null)
 
-  const hasMacros =
-    meal.protein != null || meal.fat != null || meal.carbs != null || meal.calories != null
+  const plusRef = useRef<HTMLDivElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const libraryInputRef = useRef<HTMLInputElement>(null)
 
-  const estimate = async () => {
-    if (!meal.description.trim()) return
-    setEstimating(true)
-    try {
-      const res = await fetch('/api/macros', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: meal.description }),
-      })
-      const macros = await res.json()
-      if (!res.ok || macros.error) return
-      onChange({ ...meal, ...macros })
-    } catch {
-      // silently fail — user can enter manually
-    } finally {
-      setEstimating(false)
+  // Close action sheet on outside click
+  useEffect(() => {
+    if (!actionSheetOpen) return
+    const handler = (e: MouseEvent) => {
+      if (plusRef.current && !plusRef.current.contains(e.target as Node)) {
+        setActionSheetOpen(false)
+      }
     }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [actionSheetOpen])
+
+  // Auto-clear photo error after 3 seconds
+  useEffect(() => {
+    if (!photoError) return
+    const t = setTimeout(() => setPhotoError(null), 3000)
+    return () => clearTimeout(t)
+  }, [photoError])
+
+  const handleFile = async (file: File) => {
+    setActionSheetOpen(false)
+    setPhotoError(null)
+
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target?.result as string
+      const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+      if (!match) {
+        setPhotoError('Could not read image file.')
+        return
+      }
+      const [, mediaType, base64] = match
+      setThumbnail(dataUrl)
+      setAnalysing(true)
+
+      try {
+        const res = await fetch('/api/vision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64, mediaType, mealType: label }),
+        })
+        const data = await res.json()
+        if (!res.ok || data.error) {
+          setPhotoError(data.error || 'Vision analysis failed.')
+          return
+        }
+        if (noMacros) {
+          onChange({ ...meal, description: data.description || meal.description })
+        } else {
+          onChange({ ...meal, ...data })
+        }
+      } catch {
+        setPhotoError('Failed to analyse photo. Please try again.')
+      } finally {
+        setAnalysing(false)
+      }
+    }
+    reader.readAsDataURL(file)
   }
 
   const startListening = () => {
+    setActionSheetOpen(false)
     setVoiceError(null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -191,7 +248,6 @@ function MealRow({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
       setListening(false)
-      console.error('SpeechRecognition error:', e.error)
       const messages: Record<string, string> = {
         'not-allowed':            'Microphone permission denied. Allow mic access in browser settings.',
         'audio-capture':          'No microphone found.',
@@ -218,8 +274,32 @@ function MealRow({
     }
   }
 
+  const estimate = async () => {
+    if (!meal.description.trim()) return
+    setEstimating(true)
+    try {
+      const res = await fetch('/api/macros', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: meal.description }),
+      })
+      const macros = await res.json()
+      if (!res.ok || macros.error) return
+      onChange({ ...meal, ...macros })
+    } catch {
+      // silently fail — user can enter manually
+    } finally {
+      setEstimating(false)
+    }
+  }
+
   const setMacro = (k: keyof MealMacros, v: number | null | string) =>
     onChange({ ...meal, [k]: v })
+
+  const hasMacros =
+    meal.protein != null || meal.fat != null || meal.carbs != null || meal.calories != null
+
+  const plusBusy = analysing || listening
 
   return (
     <div style={{ borderBottom: noBorder ? 'none' : '1px solid var(--color-border)', paddingBottom: noBorder ? 0 : 16 }}>
@@ -238,18 +318,153 @@ function MealRow({
         </div>
       )}
 
-      {/* Description */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: hasMacros ? 10 : 0 }}>
+      {/* Button row: [+] [thumbnail?] textarea [Estimate?] */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: (!noMacros && hasMacros) ? 10 : 0 }}>
+
+        {/* + button and action sheet */}
+        <div ref={plusRef} style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => !plusBusy && setActionSheetOpen((v) => !v)}
+            aria-label={listening ? 'Listening…' : analysing ? 'Analysing…' : 'Add via photo or voice'}
+            style={{
+              width: 40,
+              height: 40,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: listening
+                ? 'var(--color-primary-light)'
+                : 'var(--color-surface)',
+              border: `1px solid ${listening ? 'var(--color-danger)' : 'var(--color-border)'}`,
+              borderRadius: 8,
+              cursor: plusBusy ? 'default' : 'pointer',
+              fontSize: 20,
+              color: listening
+                ? 'var(--color-danger)'
+                : analysing
+                ? 'var(--color-text-dim)'
+                : 'var(--color-text-secondary)',
+              lineHeight: 1,
+            }}
+          >
+            {analysing ? <SpinnerIcon /> : '+'}
+          </button>
+
+          {/* Action sheet */}
+          {actionSheetOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: 4,
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 10,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+                zIndex: 200,
+                minWidth: 196,
+                overflow: 'hidden',
+              }}
+            >
+              {(
+                [
+                  { emoji: '📷', label: 'Take photo',          onClick: () => { setActionSheetOpen(false); cameraInputRef.current?.click() } },
+                  { emoji: '🖼️', label: 'Choose from library', onClick: () => { setActionSheetOpen(false); libraryInputRef.current?.click() } },
+                  { emoji: '🎤', label: 'Speak',               onClick: startListening },
+                ] as { emoji: string; label: string; onClick: () => void }[]
+              ).map(({ emoji, label: optLabel, onClick }, idx, arr) => (
+                <button
+                  key={optLabel}
+                  type="button"
+                  onClick={onClick}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    width: '100%',
+                    padding: '12px 14px',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: idx < arr.length - 1 ? '1px solid var(--color-border)' : 'none',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    color: 'var(--color-text-primary)',
+                    textAlign: 'left',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  <span>{emoji}</span>
+                  <span>{optLabel}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Hidden file inputs */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            if (e.target.files?.[0]) handleFile(e.target.files[0])
+            e.target.value = ''
+          }}
+        />
+        <input
+          ref={libraryInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            if (e.target.files?.[0]) handleFile(e.target.files[0])
+            e.target.value = ''
+          }}
+        />
+
+        {/* Thumbnail */}
+        {thumbnail && (
+          <button
+            type="button"
+            onClick={() => setThumbnail(null)}
+            aria-label="Remove photo"
+            style={{
+              flexShrink: 0,
+              width: 48,
+              height: 48,
+              padding: 0,
+              border: '1px solid var(--color-border)',
+              borderRadius: 6,
+              overflow: 'hidden',
+              cursor: 'pointer',
+              background: 'none',
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={thumbnail}
+              alt="Meal photo"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          </button>
+        )}
+
+        {/* Textarea */}
         <textarea
           value={meal.description}
           onChange={(e) => setMacro('description', e.target.value)}
-          placeholder={placeholder}
+          placeholder={analysing ? 'Analysing photo…' : placeholder}
           rows={2}
+          disabled={analysing}
           style={{
             flex: 1,
             padding: '10px 12px',
             fontSize: 14,
-            color: 'var(--color-text-primary)',
+            color: analysing ? 'var(--color-text-dim)' : 'var(--color-text-primary)',
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
             borderRadius: 8,
@@ -258,27 +473,8 @@ function MealRow({
             fontFamily: 'var(--font-sans)',
           }}
         />
-        {showVoice && (
-          <button
-            type="button"
-            onClick={startListening}
-            aria-label={listening ? 'Listening…' : 'Voice input'}
-            style={{
-              flexShrink: 0,
-              width: 40,
-              alignSelf: 'stretch',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: listening ? 'var(--color-primary-light)' : 'var(--color-surface)',
-              border: `1px solid ${listening ? 'var(--color-danger)' : 'var(--color-border)'}`,
-              borderRadius: 8,
-              cursor: 'pointer',
-            }}
-          >
-            <MicIcon active={listening} />
-          </button>
-        )}
+
+        {/* Estimate button */}
         {showEstimate && (
           <button
             type="button"
@@ -287,6 +483,7 @@ function MealRow({
             style={{
               flexShrink: 0,
               width: 52,
+              alignSelf: 'stretch',
               background: 'var(--color-primary-light)',
               border: '1px solid var(--color-primary)',
               borderRadius: 8,
@@ -305,22 +502,22 @@ function MealRow({
         )}
       </div>
 
-      {/* Voice error */}
-      {voiceError && (
-        <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 6 }}>
-          {voiceError}
+      {/* Errors */}
+      {(voiceError || photoError) && (
+        <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 6, marginBottom: 2 }}>
+          {photoError || voiceError}
         </div>
       )}
 
       {/* Macros grid */}
-      {hasMacros && (
+      {!noMacros && hasMacros && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
           {(
             [
-              { key: 'protein',  label: 'P',  unit: 'g'   },
-              { key: 'fiber',    label: 'F',  unit: 'g'   },
-              { key: 'fat',      label: 'Fat', unit: 'g'  },
-              { key: 'carbs',    label: 'C',  unit: 'g'   },
+              { key: 'protein',  label: 'P',   unit: 'g'    },
+              { key: 'fiber',    label: 'F',   unit: 'g'    },
+              { key: 'fat',      label: 'Fat', unit: 'g'    },
+              { key: 'carbs',    label: 'C',   unit: 'g'    },
               { key: 'calories', label: 'Cal', unit: 'kcal' },
             ] as { key: keyof MealMacros; label: string; unit: string }[]
           ).map(({ key, label, unit }) => (
@@ -364,7 +561,7 @@ function MealRow({
       )}
 
       {/* Show macros button if none */}
-      {!hasMacros && meal.description && (
+      {!noMacros && !hasMacros && meal.description && (
         <button
           type="button"
           onClick={() => onChange({ ...meal, protein: null, fiber: null, fat: null, carbs: null, calories: null })}
@@ -577,11 +774,12 @@ export default function NutritionSection({
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Pre-workout snack */}
+          {/* Pre-workout snack — + button only, no macro fields */}
           <MealRow
             label="Pre-workout snack"
             meal={data.pre_workout_snack}
             onChange={(m) => updateMeal('pre_workout_snack', m)}
+            noMacros
             placeholder="Small snack before training…"
           />
 
@@ -636,7 +834,7 @@ export default function NutritionSection({
               </div>
             )}
 
-            {/* Custom free-text mode */}
+            {/* Custom free-text mode — + replaces separate mic */}
             {!data.breakfast.template_name && breakfastCustom && (
               <>
                 <button
@@ -663,7 +861,6 @@ export default function NutritionSection({
                   meal={data.breakfast}
                   onChange={(m) => updateMeal('breakfast', m)}
                   showEstimate
-                  showVoice
                   noBorder
                   placeholder="Describe what you had…"
                 />
@@ -755,7 +952,6 @@ export default function NutritionSection({
             meal={data.lunch}
             onChange={(m) => updateMeal('lunch', m)}
             showEstimate
-            showVoice
             placeholder="Describe what you had…"
           />
 
@@ -765,7 +961,6 @@ export default function NutritionSection({
             meal={data.dinner}
             onChange={(m) => updateMeal('dinner', m)}
             showEstimate
-            showVoice
             placeholder="Describe what you had…"
           />
 
@@ -836,11 +1031,12 @@ export default function NutritionSection({
                   ))}
                 </div>
 
-                {/* Free text + macros */}
+                {/* Free text + macros + estimate */}
                 <MealRow
                   label="Other incidentals"
                   meal={data.incidentals}
                   onChange={(m) => updateMeal('incidentals', m)}
+                  showEstimate
                   placeholder="Snacks, treats, extras…"
                 />
               </div>
