@@ -8,6 +8,7 @@ import type { DailyEntry } from '@/lib/types'
 import SleepSection from '@/components/sections/SleepSection'
 import TrainingSection from '@/components/sections/TrainingSection'
 import NutritionSection from '@/components/sections/NutritionSection'
+import HydrationSection from '@/components/sections/HydrationSection'
 import SupplementsSection from '@/components/sections/SupplementsSection'
 import ContextSection from '@/components/sections/ContextSection'
 import CoachTab from '@/components/CoachTab'
@@ -357,6 +358,13 @@ export default function App() {
                   templates={templates}
                   onChange={(nutrition) => update({ nutrition })}
                   onSave={() => save('nutrition')}
+                  saving={saving}
+                />
+                <HydrationSection
+                  data={entry.hydration_ml}
+                  sessions={entry.training.sessions}
+                  onChange={(hydration_ml) => update({ hydration_ml })}
+                  onSave={() => save('hydration')}
                   saving={saving}
                 />
                 <SupplementsSection

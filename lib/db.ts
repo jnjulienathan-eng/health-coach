@@ -88,6 +88,7 @@ function rowToEntry(row: Record<string, unknown>, sessions: TrainingSession[] = 
       // cycle_day persisted as top-level column, surfaced here for runtime use
       ...(r.cycle_day != null ? { cycle_day: r.cycle_day as number } : {}),
     } as DailyEntry['context'],
+    hydration_ml: (r.hydration_ml as number | null) ?? null,
   }
 }
 
@@ -193,6 +194,9 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     travelling:   entry.context.travelling,
     symptoms:     entry.context.symptoms,
     notes:        entry.context.notes || null,
+
+    // Hydration
+    hydration_ml: entry.hydration_ml ?? null,
 
     // Computed scores
     behavior_score: behaviorScore(entry),

@@ -89,6 +89,7 @@ export interface DailyEntry {
   nutrition: NutritionData
   supplements: SupplementsData
   context: ContextData
+  hydration_ml: number | null
 }
 
 // ─── Defaults ────────────────────────────────────────────────────
@@ -145,6 +146,7 @@ export function emptyEntry(date: string): DailyEntry {
     nutrition: emptyNutrition(),
     supplements: emptySupplements(),
     context: emptyContext(),
+    hydration_ml: null,
   }
 }
 

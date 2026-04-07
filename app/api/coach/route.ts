@@ -61,6 +61,7 @@ function formatEntry(entry: DailyEntry, cd?: number | null): string {
     meals.length ? `Meals: ${meals.join(' / ')}` : null,
     `Supplements: morning ${sup.morning_stack_taken ? '✓' : '✗'}${sup.morning_exceptions.length ? ` (skipped: ${sup.morning_exceptions.join(', ')})` : ''} | evening ${sup.evening_stack_taken ? '✓' : '✗'} | progesterone ${sup.progesterone_taken ? '✓' : '✗'} | estradiol ${sup.estradiol_taken ? '✓' : '✗'}`,
     `Context: cycle day ${effectiveCd ?? '?'} | stress ${c.stress_level ?? '?'}/5${c.symptoms.length ? ` | symptoms: ${c.symptoms.join(', ')}` : ''}${c.travelling ? ' | travelling' : ''}${c.notes ? ` | "${c.notes}"` : ''}`,
+    `Hydration: ${entry.hydration_ml != null ? `${entry.hydration_ml}ml` : 'not logged'}`,
   ].filter(Boolean)
 
   return lines.join('\n')
@@ -123,11 +124,12 @@ async function getCoachContext(
     const base = emptyEntry(date)
     return {
       date,
-      sleep:       { ...base.sleep,       ...(row.sleep       as object || {}) },
-      training:    { ...base.training,    ...(row.training    as object || {}) },
-      nutrition:   { ...base.nutrition,   ...(row.nutrition   as object || {}) },
-      supplements: { ...base.supplements, ...(row.supplements as object || {}) },
-      context:     { ...base.context,     ...(row.context     as object || {}) },
+      sleep:        { ...base.sleep,        ...(row.sleep        as object || {}) },
+      training:     { ...base.training,     ...(row.training     as object || {}) },
+      nutrition:    { ...base.nutrition,    ...(row.nutrition    as object || {}) },
+      supplements:  { ...base.supplements,  ...(row.supplements  as object || {}) },
+      context:      { ...base.context,      ...(row.context      as object || {}) },
+      hydration_ml: (row.hydration_ml as number | null) ?? null,
     }
   })
 
@@ -182,6 +184,7 @@ MORNING RULES:
 - DO NOT mention today's protein, fiber, or calorie totals. The day has just started. Nutrition field = what to eat TODAY based on recent macro gaps, not what has been logged.
 - Training: apply HRV framework strictly. Recommend full rest ONLY if HRV < 50ms OR she is sick. HRV 50–80ms = recommend easy movement, NOT rest. If cycle day > 60 AND HRV is low, note that hormonal fluctuation (not fitness) is likely the cause and encourage gentle movement anyway.
 - Nutrition: give specific food recommendations for the day ahead based on RECENT MACRO GAPS from the 7-day history. Name actual foods. Example: "Your fiber has been low this week — prioritise lentils or chickpeas at lunch."
+- Hydration: check yesterday's hydration in LAST 7 DAYS. If it was below 1500ml, note it as a likely contributor to any HRV or RHR anomalies today. Regardless, remind her to start with 500ml of water before coffee — weave this into the insight or nutrition field naturally.
 - Insight: something genuinely interesting from her data, cycle phase, season, or perimenopause context. Never generic. Rotate topics — correlations, seasonal food, supplement timing, patterns she may not have noticed.
 - Question: one question you're genuinely curious about given her data.
 
@@ -215,6 +218,7 @@ MIDDAY RULES:
 - Keep to 3–4 sentences TOTAL across all non-null fields. Be brief.
 - Supplement check: if morning_stack_taken is false (✗), remind her to take her morning stack — she has a watch reminder but often takes it late.
 - Nutrition: identify the single most important macro gap to close this afternoon with a specific food suggestion.
+- Hydration: check today's hydration in TODAY'S DATA. If it is below 1000ml and it is after 12:00, add a nudge — "You're behind on water — aim for at least 500ml before dinner." Weave into insight or nutrition field.
 - Training: ${needsTrainingNudge ? 'It is a weekend and no training session has been logged yet and it is before 14:00 — give a gentle encouraging push to get out and move.' : 'Set training to null — no training nudge needed right now.'}
 - Set recovery and question to null.
 
@@ -242,6 +246,7 @@ You are Julie's personal health coach. It is EVENING — provide a reflective cl
 
 EVENING RULES:
 - Full day review against targets. Now appropriate to note gaps in protein (target 130–140g), fiber (target 30–35g), supplements.
+- Hydration: include today's hydration in the review. Hydration target is 3000ml on training days, 2500ml on rest days (check training sessions in TODAY'S DATA). Flag gently if below target — include in the nutrition field.
 - ${afterEight ? 'It is after 20:00 — include a bedtime nudge in the insight field: her target is 21:45.' : 'Note anything worth carrying into tomorrow.'}
 - Note anything worth carrying into tomorrow.
 - Set question to null.
