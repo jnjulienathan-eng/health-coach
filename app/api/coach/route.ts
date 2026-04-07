@@ -42,17 +42,7 @@ function formatEntry(entry: DailyEntry, cd?: number | null): string {
     ? t.sessions.map(sess => {
         let hrStr = ''
         if (sess.avg_heart_rate != null) {
-          const hr = sess.avg_heart_rate
-          const type = sess.activity_type.toLowerCase()
-          let moderateStart: number, hardStart: number
-          if      (type === 'swim')                       { moderateStart = 135; hardStart = 150 }
-          else if (type === 'run')                        { moderateStart = 145; hardStart = 160 }
-          else if (type === 'cycle')                      { moderateStart = 130; hardStart = 150 }
-          else if (type === 'egym' || type === 'strength') { moderateStart = 120; hardStart = 135 }
-          else if (type === 'walk')                       { moderateStart = 115; hardStart = 130 }
-          else                                            { moderateStart = 130; hardStart = 150 }
-          const zone = hr >= hardStart ? 'Hard' : hr >= moderateStart ? 'Moderate' : 'Easy'
-          hrStr = ` avgHR:${hr}bpm(${zone})`
+          hrStr = ` avgHR:${sess.avg_heart_rate}bpm(${hrZone(sess.avg_heart_rate, sess.activity_type)})`
         }
         return `${sess.activity_type} ${sess.duration_min}min${hrStr}${sess.active_calories ? ` ${sess.active_calories}kcal` : ''}`
       }).join(' + ')
@@ -82,15 +72,43 @@ function formatEntry(entry: DailyEntry, cd?: number | null): string {
   return lines.join('\n')
 }
 
-// ─── Calorie target line ──────────────────────────────────────────
-const TDEE = 2106
+// ─── HR zone helper ───────────────────────────────────────────────
+function hrZone(hr: number, activityType: string): 'Easy' | 'Moderate' | 'Hard' {
+  const t = activityType.toLowerCase()
+  let moderateStart: number, hardStart: number
+  if      (t === 'swim')                       { moderateStart = 135; hardStart = 150 }
+  else if (t === 'run')                        { moderateStart = 145; hardStart = 160 }
+  else if (t === 'cycle')                      { moderateStart = 130; hardStart = 150 }
+  else if (t === 'egym' || t === 'strength')   { moderateStart = 120; hardStart = 135 }
+  else if (t === 'walk')                       { moderateStart = 115; hardStart = 130 }
+  else                                         { moderateStart = 130; hardStart = 150 }
+  if (hr >= hardStart)     return 'Hard'
+  if (hr >= moderateStart) return 'Moderate'
+  return 'Easy'
+}
 
+// ─── Dynamic calorie target ───────────────────────────────────────
+function getDailyCalorieTarget(sessions: DailyEntry['training']['sessions']): number {
+  const totalMinutes = sessions.reduce((sum, s) => sum + (s.duration_min || 0), 0)
+  const hasHard = sessions.some(s => s.avg_heart_rate != null && hrZone(s.avg_heart_rate, s.activity_type) === 'Hard')
+  const sessionCount = sessions.length
+
+  if (sessionCount === 0) return 1800
+  if (totalMinutes < 45 && !hasHard) return 1950
+  if (totalMinutes <= 75 && sessionCount === 1) return 2100
+  if (hasHard || sessionCount >= 2) return 2300
+  if (sessionCount >= 2 && hasHard) return 2500
+  return 1800
+}
+
+// ─── Calorie target line ──────────────────────────────────────────
 function calorieTargetLine(today: DailyEntry): string {
+  const target = getDailyCalorieTarget(today.training.sessions)
   const logged = today.nutrition.total_calories
-  if (logged == null) return `Calorie target: ${TDEE} kcal. Logged so far: not yet logged.`
-  const delta = TDEE - logged
-  if (delta >= 0) return `Calorie target: ${TDEE} kcal. Logged so far: ${logged} kcal. Remaining: ${delta} kcal.`
-  return `Calorie target: ${TDEE} kcal. Logged so far: ${logged} kcal. Over by ${Math.abs(delta)} kcal.`
+  if (logged == null) return `Calorie target: ${target} kcal (based on today's training). Logged so far: not yet logged.`
+  const delta = target - logged
+  if (delta >= 0) return `Calorie target: ${target} kcal (based on today's training). Logged so far: ${logged} kcal. Remaining: ${delta} kcal.`
+  return `Calorie target: ${target} kcal (based on today's training). Logged so far: ${logged} kcal. Over by ${Math.abs(delta)} kcal.`
 }
 
 // ─── Build full context block ──────────────────────────────────────
