@@ -89,6 +89,7 @@ function hrZone(hr: number, activityType: string): 'Easy' | 'Moderate' | 'Hard' 
 
 // ─── Dynamic calorie target ───────────────────────────────────────
 function getDailyCalorieTarget(sessions: DailyEntry['training']['sessions']): number {
+  console.log('[calorie-target] sessions:', JSON.stringify(sessions))
   const totalMinutes = sessions.reduce((sum, s) => sum + (s.duration_min || 0), 0)
   const hasHard = sessions.some(s => s.avg_heart_rate != null && hrZone(s.avg_heart_rate, s.activity_type) === 'Hard')
   const sessionCount = sessions.length
