@@ -92,6 +92,7 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
           today,
           cycleDay,
           currentDate,
+          currentTime: new Date().toISOString(),
         }),
       })
       const json = await res.json()
