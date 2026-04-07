@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import type { DailyEntry } from '@/lib/types'
+import { rowToEntry } from '@/lib/db'
 
 // ─── Julie's fixed health profile ─────────────────────────────────
 const JULIE_PROFILE = `
@@ -118,20 +119,9 @@ async function getCoachContext(
 
   if (error) throw error
 
-  const { emptyEntry } = await import('@/lib/types')
-  const history7: DailyEntry[] = (data || []).map((row) => {
-    const date = row.date as string
-    const base = emptyEntry(date)
-    return {
-      date,
-      sleep:        { ...base.sleep,        ...(row.sleep        as object || {}) },
-      training:     { ...base.training,     ...(row.training     as object || {}) },
-      nutrition:    { ...base.nutrition,    ...(row.nutrition    as object || {}) },
-      supplements:  { ...base.supplements,  ...(row.supplements  as object || {}) },
-      context:      { ...base.context,      ...(row.context      as object || {}) },
-      hydration_ml: (row.hydration_ml as number | null) ?? null,
-    }
-  })
+  const history7: DailyEntry[] = (data || []).map((row) =>
+    rowToEntry(row as Record<string, unknown>)
+  )
 
   const todayEntry = history7.find(e => e.date === currentDate) ?? null
 

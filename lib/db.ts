@@ -9,7 +9,7 @@ export const supabase = createClient(
 )
 
 // ─── rowToEntry: flat Supabase row + sessions → DailyEntry ────────
-function rowToEntry(row: Record<string, unknown>, sessions: TrainingSession[] = []): DailyEntry {
+export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSession[] = []): DailyEntry {
   const r = row
   return {
     date: r.date as string,
