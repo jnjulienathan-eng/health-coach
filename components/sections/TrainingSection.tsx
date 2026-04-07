@@ -3,7 +3,22 @@
 import { useState } from 'react'
 import type { TrainingData, TrainingSession, ActivityType } from '@/lib/types'
 import Section from '@/components/ui/Section'
-import TapScale from '@/components/ui/TapScale'
+
+// ─── HR zone derivation ───────────────────────────────────────────
+function hrZone(hr: number, activityType: string): { label: string; color: string } {
+  const t = activityType.toLowerCase()
+  let moderateStart: number, hardStart: number
+  if      (t === 'swim')                     { moderateStart = 135; hardStart = 150 }
+  else if (t === 'run')                      { moderateStart = 145; hardStart = 160 }
+  else if (t === 'cycle')                    { moderateStart = 130; hardStart = 150 }
+  else if (t === 'egym' || t === 'strength') { moderateStart = 120; hardStart = 135 }
+  else if (t === 'walk')                     { moderateStart = 115; hardStart = 130 }
+  else                                       { moderateStart = 130; hardStart = 150 }
+
+  if (hr >= hardStart)     return { label: 'Hard',     color: 'var(--color-danger)'  }
+  if (hr >= moderateStart) return { label: 'Moderate', color: 'var(--color-amber)'   }
+  return                          { label: 'Easy',     color: 'var(--color-success)' }
+}
 
 interface Props {
   data: TrainingData
@@ -37,7 +52,7 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
   const [showCustomForm, setShowCustomForm] = useState(false)
   const [customName, setCustomName] = useState('')
   const [customMin, setCustomMin] = useState<number>(30)
-  const [customEffort, setCustomEffort] = useState<number | null>(null)
+  const [customHR, setCustomHR] = useState<number | null>(null)
   const [customCal, setCustomCal] = useState<number | null>(null)
 
   const isComplete = data.sessions.length > 0 || data.cycled_today
@@ -49,7 +64,7 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
       id: crypto.randomUUID(),
       activity_type: type,
       duration_min: defaultMin,
-      perceived_effort: null,
+      avg_heart_rate: null,
       active_calories: null,
     }
     change({ ...data, sessions: [...data.sessions, session] })
@@ -191,12 +206,30 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
                 </div>
               </div>
 
-              {/* Effort */}
+              {/* Avg HR */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 8 }}>
-                  Effort <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--color-text-dim)' }}>optional</span>
+                  Avg HR <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--color-text-dim)' }}>optional</span>
                 </div>
-                <TapScale value={customEffort} onChange={setCustomEffort} lowLabel="easy" highLabel="max effort" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={customHR ?? ''}
+                    onChange={(e) => setCustomHR(e.target.value === '' ? null : parseInt(e.target.value))}
+                    placeholder="—"
+                    style={{ width: 72, height: 44, padding: '0 10px', fontFamily: 'var(--font-mono)', fontSize: 20, color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                  <span style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>bpm</span>
+                  {customHR != null && customName.trim() && (() => {
+                    const zone = hrZone(customHR, customName.trim())
+                    return (
+                      <span style={{ fontSize: 12, fontWeight: 500, color: zone.color, marginLeft: 4 }}>
+                        {zone.label}
+                      </span>
+                    )
+                  })()}
+                </div>
               </div>
 
               {/* Add button */}
@@ -208,13 +241,13 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
                     id: crypto.randomUUID(),
                     activity_type: customName.trim() || 'Other',
                     duration_min: customMin || 0,
-                    perceived_effort: customEffort,
+                    avg_heart_rate: customHR,
                     active_calories: customCal,
                   }
                   change({ ...data, sessions: [...data.sessions, session] })
                   setCustomName('')
                   setCustomMin(30)
-                  setCustomEffort(null)
+                  setCustomHR(null)
                   setCustomCal(null)
                   setShowCustomForm(false)
                 }}
@@ -416,7 +449,7 @@ function SessionCard({
         </div>
       </div>
 
-      {/* Effort */}
+      {/* Avg HR */}
       <div>
         <div
           style={{
@@ -428,7 +461,7 @@ function SessionCard({
             marginBottom: 8,
           }}
         >
-          Perceived effort
+          Avg HR
           <span
             style={{
               fontWeight: 400,
@@ -440,12 +473,38 @@ function SessionCard({
             optional
           </span>
         </div>
-        <TapScale
-          value={session.perceived_effort}
-          onChange={(v) => onChange({ perceived_effort: v })}
-          lowLabel="easy"
-          highLabel="max effort"
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={session.avg_heart_rate ?? ''}
+            onChange={(e) =>
+              onChange({ avg_heart_rate: e.target.value === '' ? null : parseInt(e.target.value) })
+            }
+            placeholder="—"
+            style={{
+              width: 72,
+              height: 44,
+              padding: '0 10px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 20,
+              color: 'var(--color-text-primary)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8,
+              outline: 'none',
+            }}
+          />
+          <span style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>bpm</span>
+          {session.avg_heart_rate != null && (() => {
+            const zone = hrZone(session.avg_heart_rate, session.activity_type)
+            return (
+              <span style={{ fontSize: 13, fontWeight: 500, color: zone.color }}>
+                {zone.label}
+              </span>
+            )
+          })()}
+        </div>
       </div>
     </div>
   )

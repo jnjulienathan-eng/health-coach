@@ -1,4 +1,4 @@
-import type { DailyEntry } from './types'
+import type { DailyEntry, TrainingSession } from './types'
 
 // ─── Behavior Score (0–100) ───────────────────────────────────────
 // What you controlled: nutrition, supplements, bedtime, training vs HRV, active calories
@@ -35,17 +35,29 @@ export function behaviorScore(entry: DailyEntry): number {
   }
 
   // 4. Training appropriate to HRV — 20%
+  // Zone intensity: 1=Easy, 2=Moderate, 3=Hard derived from avg_heart_rate + activity type
+  function sessionZone(sess: TrainingSession): number {
+    const hr = sess.avg_heart_rate
+    if (hr == null) return 2
+    const t = sess.activity_type.toLowerCase()
+    if (t === 'swim')                       return hr >= 150 ? 3 : hr >= 135 ? 2 : 1
+    if (t === 'run')                        return hr >= 160 ? 3 : hr >= 145 ? 2 : 1
+    if (t === 'cycle')                      return hr >= 150 ? 3 : hr >= 130 ? 2 : 1
+    if (t === 'egym' || t === 'strength')   return hr >= 135 ? 3 : hr >= 120 ? 2 : 1
+    if (t === 'walk')                       return hr >= 130 ? 3 : hr >= 115 ? 2 : 1
+    return hr >= 150 ? 3 : hr >= 130 ? 2 : 1
+  }
   const hrv = entry.sleep.hrv
   if (hrv != null) {
     const sessions    = entry.training.sessions
     const hasSessions = sessions.length > 0
-    const avgEffort   = hasSessions
-      ? sessions.reduce((s, x) => s + (x.perceived_effort ?? 3), 0) / sessions.length
+    const avgZone     = hasSessions
+      ? sessions.reduce((s, x) => s + sessionZone(x), 0) / sessions.length
       : 0
     let s = 50
-    if      (hrv > 100) s = hasSessions ? Math.min(100, avgEffort * 20) : 30
+    if      (hrv > 100) s = hasSessions ? Math.min(100, avgZone * 33) : 30
     else if (hrv >= 80) s = hasSessions ? 85 : 40
-    else if (hrv >= 60) s = hasSessions ? Math.max(20, 90 - Math.max(0, avgEffort - 2) * 25) : 75
+    else if (hrv >= 60) s = hasSessions ? Math.max(20, 90 - Math.max(0, avgZone - 1) * 35) : 75
     else                s = hasSessions ? 25 : 100
     components.push({ score: s, weight: 20 })
   }

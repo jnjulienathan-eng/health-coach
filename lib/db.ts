@@ -116,11 +116,11 @@ async function loadSessionsForDates(dates: string[]): Promise<Record<string, Tra
     const d = row.date as string
     if (!map[d]) map[d] = []
     map[d].push({
-      id:               row.id              as string,
-      activity_type:    row.activity_type   as string,
-      duration_min:     row.duration_min    as number,
-      perceived_effort: (row.perceived_effort as number | null) ?? null,
-      active_calories:  (row.active_calories  as number | null) ?? null,
+      id:             row.id              as string,
+      activity_type:  row.activity_type   as string,
+      duration_min:   row.duration_min    as number,
+      avg_heart_rate: (row.avg_heart_rate as number | null) ?? null,
+      active_calories: (row.active_calories as number | null) ?? null,
     })
   }
   return map
@@ -240,12 +240,12 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
       .from('training_sessions')
       .insert(
         entry.training.sessions.map(s => ({
-          user_id:          'julie',
-          date:             entry.date,
-          activity_type:    s.activity_type,
-          duration_min:     s.duration_min,
-          perceived_effort: s.perceived_effort,
-          active_calories:  s.active_calories,
+          user_id:        'julie',
+          date:           entry.date,
+          activity_type:  s.activity_type,
+          duration_min:   s.duration_min,
+          avg_heart_rate: s.avg_heart_rate,
+          active_calories: s.active_calories,
         }))
       )
 

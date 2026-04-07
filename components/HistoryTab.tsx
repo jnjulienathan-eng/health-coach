@@ -119,7 +119,7 @@ function EntryDetail({ entry }: { entry: DailyEntry }) {
 
   const trainParts = t.sessions.length > 0
     ? t.sessions.map(sess =>
-        `${activityEmoji(sess.activity_type)} ${sess.activity_type} ${sess.duration_min}min${sess.perceived_effort ? ` effort ${sess.perceived_effort}/5` : ''}`
+        `${activityEmoji(sess.activity_type)} ${sess.activity_type} ${sess.duration_min}min${sess.avg_heart_rate ? ` ${sess.avg_heart_rate}bpm` : ''}`
       ).join('  ')
     : null
 

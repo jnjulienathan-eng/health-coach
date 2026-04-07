@@ -39,9 +39,23 @@ function formatEntry(entry: DailyEntry, cd?: number | null): string {
     : '?'
 
   const sessions = t.sessions.length
-    ? t.sessions.map(sess =>
-        `${sess.activity_type} ${sess.duration_min}min${sess.perceived_effort ? ` effort:${sess.perceived_effort}/5` : ''}${sess.active_calories ? ` ${sess.active_calories}kcal` : ''}`
-      ).join(' + ')
+    ? t.sessions.map(sess => {
+        let hrStr = ''
+        if (sess.avg_heart_rate != null) {
+          const hr = sess.avg_heart_rate
+          const type = sess.activity_type.toLowerCase()
+          let moderateStart: number, hardStart: number
+          if      (type === 'swim')                       { moderateStart = 135; hardStart = 150 }
+          else if (type === 'run')                        { moderateStart = 145; hardStart = 160 }
+          else if (type === 'cycle')                      { moderateStart = 130; hardStart = 150 }
+          else if (type === 'egym' || type === 'strength') { moderateStart = 120; hardStart = 135 }
+          else if (type === 'walk')                       { moderateStart = 115; hardStart = 130 }
+          else                                            { moderateStart = 130; hardStart = 150 }
+          const zone = hr >= hardStart ? 'Hard' : hr >= moderateStart ? 'Moderate' : 'Easy'
+          hrStr = ` avgHR:${hr}bpm(${zone})`
+        }
+        return `${sess.activity_type} ${sess.duration_min}min${hrStr}${sess.active_calories ? ` ${sess.active_calories}kcal` : ''}`
+      }).join(' + ')
     : 'Rest'
 
   const meals: string[] = []

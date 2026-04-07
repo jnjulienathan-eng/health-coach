@@ -15,7 +15,7 @@ export interface TrainingSession {
   id: string
   activity_type: string   // ActivityType for quick-add; any string for custom
   duration_min: number
-  perceived_effort: number | null   // 1–5
+  avg_heart_rate: number | null
   active_calories: number | null
 }
 
