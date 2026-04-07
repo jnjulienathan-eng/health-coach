@@ -359,6 +359,7 @@ export default function App() {
                   onChange={(nutrition) => update({ nutrition })}
                   onSave={() => save('nutrition')}
                   saving={saving}
+                  sessions={entry.training.sessions}
                 />
                 <HydrationSection
                   data={entry.hydration_ml}

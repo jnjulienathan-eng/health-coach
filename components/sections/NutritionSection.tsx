@@ -621,6 +621,7 @@ export default function NutritionSection({
   sessions = [],
 }: Props) {
   const calorieTarget = getDailyCalorieTarget(sessions)
+  console.log('[NutritionSection] sessions:', JSON.stringify(sessions), '→ target:', calorieTarget)
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const [showIncidentals, setShowIncidentals] = useState(false)
