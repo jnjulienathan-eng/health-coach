@@ -95,12 +95,171 @@ function buildContext(
   ].join('\n')
 }
 
-// ─── Route handler ────────────────────────────────────────────────
-export async function POST(req: NextRequest) {
+// ─── Fetch last 7 days + today from Supabase ─────────────────────
+async function getCoachContext(
+  userId: string | null,
+  currentDate: string,
+): Promise<{ history7: DailyEntry[]; todayEntry: DailyEntry | null }> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
   )
+
+  const since = new Date(currentDate + 'T00:00:00')
+  since.setDate(since.getDate() - 7)
+  const sinceStr = since.toISOString().split('T')[0]
+
+  const { data, error } = await supabase
+    .from('daily_entries')
+    .select('*')
+    .gte('date', sinceStr)
+    .order('date', { ascending: false })
+
+  if (error) throw error
+
+  const { emptyEntry } = await import('@/lib/types')
+  const history7: DailyEntry[] = (data || []).map((row) => {
+    const date = row.date as string
+    const base = emptyEntry(date)
+    return {
+      date,
+      sleep:       { ...base.sleep,       ...(row.sleep       as object || {}) },
+      training:    { ...base.training,    ...(row.training    as object || {}) },
+      nutrition:   { ...base.nutrition,   ...(row.nutrition   as object || {}) },
+      supplements: { ...base.supplements, ...(row.supplements as object || {}) },
+      context:     { ...base.context,     ...(row.context     as object || {}) },
+    }
+  })
+
+  const todayEntry = history7.find(e => e.date === currentDate) ?? null
+
+  // userId reserved for future per-user filtering
+  void userId
+
+  return { history7, todayEntry }
+}
+
+// ─── Determine time-of-day mode ───────────────────────────────────
+type CoachMode = 'morning' | 'midday' | 'evening'
+
+function getCoachMode(currentTime: string | undefined): CoachMode {
+  if (!currentTime) return 'morning'
+  const timeStr = currentTime.includes('T')
+    ? currentTime.split('T')[1].substring(0, 5)
+    : currentTime.substring(0, 5)
+  const hour = parseInt(timeStr.split(':')[0], 10)
+  if (isNaN(hour)) return 'morning'
+  if (hour < 10) return 'morning'
+  if (hour < 17) return 'midday'
+  return 'evening'
+}
+
+function parseHour(currentTime: string | undefined, fallback: number): number {
+  if (!currentTime) return fallback
+  const timeStr = currentTime.includes('T')
+    ? currentTime.split('T')[1].substring(0, 5)
+    : currentTime.substring(0, 5)
+  const h = parseInt(timeStr.split(':')[0], 10)
+  return isNaN(h) ? fallback : h
+}
+
+// ─── Build mode-specific briefing prompt ─────────────────────────
+function buildBriefingPrompt(
+  ctx: string,
+  mode: CoachMode,
+  today: DailyEntry,
+  currentDate: string,
+  currentTime: string | undefined,
+): string {
+  if (mode === 'morning') {
+    return `${ctx}
+
+---
+
+You are Julie's personal health coach. It is MORNING — generate a forward-looking briefing for today.
+
+MORNING RULES:
+- DO NOT mention today's protein, fiber, or calorie totals. The day has just started. Nutrition field = what to eat TODAY based on recent macro gaps, not what has been logged.
+- Training: apply HRV framework strictly. Recommend full rest ONLY if HRV < 50ms OR she is sick. HRV 50–80ms = recommend easy movement, NOT rest. If cycle day > 60 AND HRV is low, note that hormonal fluctuation (not fitness) is likely the cause and encourage gentle movement anyway.
+- Nutrition: give specific food recommendations for the day ahead based on RECENT MACRO GAPS from the 7-day history. Name actual foods. Example: "Your fiber has been low this week — prioritise lentils or chickpeas at lunch."
+- Insight: something genuinely interesting from her data, cycle phase, season, or perimenopause context. Never generic. Rotate topics — correlations, seasonal food, supplement timing, patterns she may not have noticed.
+- Question: one question you're genuinely curious about given her data.
+
+Return ONLY valid JSON with exactly these five fields:
+{
+  "recovery": "One sentence with specific HRV number and comparison to her ~88ms baseline.",
+  "training": "Specific directive based on HRV framework. Name the activity and intensity. Only recommend full rest if HRV < 50ms or she is sick — otherwise suggest easy movement.",
+  "nutrition": "One specific food priority for the day ahead based on recent macro gaps. Name actual foods. Do NOT reference today's logged totals.",
+  "insight": "Something genuinely interesting and specific to Julie's data, cycle phase, season, or perimenopause context. Never generic.",
+  "question": "One question to deepen understanding. Something you're genuinely curious about given her data."
+}
+
+Rules: Direct and warm. Never generic. Never sycophantic. Use her actual numbers. No markdown formatting inside the JSON strings.`
+  }
+
+  if (mode === 'midday') {
+    const dayOfWeek = new Date(currentDate + 'T00:00:00').getDay() // 0=Sun, 6=Sat
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+    const hour = parseHour(currentTime, 12)
+    const isBefore14 = hour < 14
+    const hasTraining = today.training.sessions.length > 0
+    const needsTrainingNudge = isWeekend && isBefore14 && !hasTraining
+
+    return `${ctx}
+
+---
+
+You are Julie's personal health coach. It is MIDDAY — provide a brief course-correction check-in.
+
+MIDDAY RULES:
+- Keep to 3–4 sentences TOTAL across all non-null fields. Be brief.
+- Supplement check: if morning_stack_taken is false (✗), remind her to take her morning stack — she has a watch reminder but often takes it late.
+- Nutrition: identify the single most important macro gap to close this afternoon with a specific food suggestion.
+- Training: ${needsTrainingNudge ? 'It is a weekend and no training session has been logged yet and it is before 14:00 — give a gentle encouraging push to get out and move.' : 'Set training to null — no training nudge needed right now.'}
+- Set recovery and question to null.
+
+Return ONLY valid JSON with exactly these five fields:
+{
+  "recovery": null,
+  "training": ${needsTrainingNudge ? '"Gentle weekend training nudge — no session logged yet, encourage her to get out and move."' : 'null'},
+  "nutrition": "The most important macro gap to close this afternoon. One specific food suggestion.",
+  "insight": "Supplement reminder if morning stack not taken, otherwise a brief useful observation. One sentence.",
+  "question": null
+}
+
+Rules: Brief and direct. 3–4 sentences total across all non-null fields. No markdown formatting inside the JSON strings.`
+  }
+
+  // evening
+  const hour = parseHour(currentTime, 18)
+  const afterEight = hour >= 20
+
+  return `${ctx}
+
+---
+
+You are Julie's personal health coach. It is EVENING — provide a reflective close-of-day review.
+
+EVENING RULES:
+- Full day review against targets. Now appropriate to note gaps in protein (target 130–140g), fiber (target 30–35g), supplements.
+- ${afterEight ? 'It is after 20:00 — include a bedtime nudge in the insight field: her target is 21:45.' : 'Note anything worth carrying into tomorrow.'}
+- Note anything worth carrying into tomorrow.
+- Set question to null.
+
+Return ONLY valid JSON with exactly these five fields:
+{
+  "recovery": "Brief note on today's sleep/recovery quality and how the day went, or null if nothing notable.",
+  "training": "Today's training review — did she hit her targets? Any note for tomorrow's session.",
+  "nutrition": "Full day nutrition review against targets. Call out protein, fiber, fat gaps. Note supplement adherence if incomplete.",
+  "insight": "${afterEight ? 'Include bedtime nudge (target: 21:45). ' : ''}Something worth carrying into tomorrow — a pattern, adjustment, or context note.",
+  "question": null
+}
+
+Rules: Reflective and warm. Use her actual numbers. No markdown formatting inside the JSON strings.`
+}
+
+// ─── Route handler ────────────────────────────────────────────────
+export async function POST(req: NextRequest) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
   try {
@@ -109,60 +268,21 @@ export async function POST(req: NextRequest) {
       today: DailyEntry
       cycleDay: number | null
       currentDate: string
+      currentTime?: string
       message?: string
       history?: Array<{ role: 'user' | 'assistant'; content: string }>
     }
 
-    const { type, today, cycleDay, currentDate: currentDateRaw, message, history = [] } = body
+    const { type, today, cycleDay, currentDate: currentDateRaw, currentTime, message, history = [] } = body
     const currentDate = currentDateRaw ?? new Date().toISOString().split('T')[0]
 
-    // Load last 7 days from Supabase
-    const since = new Date(currentDate + 'T00:00:00')
-    since.setDate(since.getDate() - 7)
-    const sinceStr = since.toISOString().split('T')[0]
-
-    const { data, error } = await supabase
-      .from('daily_entries')
-      .select('*')
-      .gte('date', sinceStr)
-      .order('date', { ascending: false })
-
-    if (error) throw error
-
-    // Map rows to DailyEntry shape
-    const { emptyEntry } = await import('@/lib/types')
-    const history7: DailyEntry[] = (data || []).map((row) => {
-      const date = row.date as string
-      const base = emptyEntry(date)
-      return {
-        date,
-        sleep:       { ...base.sleep,       ...(row.sleep       as object || {}) },
-        training:    { ...base.training,    ...(row.training    as object || {}) },
-        nutrition:   { ...base.nutrition,   ...(row.nutrition   as object || {}) },
-        supplements: { ...base.supplements, ...(row.supplements as object || {}) },
-        context:     { ...base.context,     ...(row.context     as object || {}) },
-      }
-    })
+    const { history7 } = await getCoachContext(null, currentDate)
 
     const ctx = buildContext(history7, today, cycleDay, currentDate)
+    const mode = getCoachMode(currentTime)
 
     if (type === 'briefing') {
-      const prompt = `${ctx}
-
----
-
-You are Julie's personal health coach. Based on today's sleep data and her recent history, generate a morning briefing.
-
-Return ONLY valid JSON with exactly these five fields:
-{
-  "recovery": "One sentence with specific HRV number and comparison to her ~88ms baseline.",
-  "training": "Specific directive based on HRV framework. Be concrete — name the activity and intensity. Not wishy-washy.",
-  "nutrition": "One priority for today with a specific food suggestion. Based on recent macro gaps or patterns.",
-  "insight": "Something genuinely interesting and specific to Julie's data, cycle phase, season, or perimenopause context. Never generic. Rotate topics — correlations, seasonal food, supplement timing, pattern she may not have noticed.",
-  "question": "One question to deepen understanding. Something you're genuinely curious about given her data."
-}
-
-Rules: Direct and warm. Never generic. Never sycophantic. Use her actual numbers. No markdown formatting inside the JSON strings.`
+      const prompt = buildBriefingPrompt(ctx, mode, today, currentDate, currentTime)
 
       const msg = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
@@ -178,8 +298,16 @@ Rules: Direct and warm. Never generic. Never sycophantic. Use her actual numbers
       return Response.json({ briefing })
 
     } else {
-      // Reactive chat
+      // Reactive chat — mode-aware system prompt
+      const modeContext = mode === 'morning'
+        ? 'It is MORNING. Focus on what she should do today. Do not reference today\'s nutrition totals — the day has just started.'
+        : mode === 'midday'
+        ? 'It is MIDDAY. Course-correction tone. Reference what she has logged so far today.'
+        : 'It is EVENING. Reflective tone. The full day is visible — reference totals and gaps freely.'
+
       const systemPrompt = `You are Julie's personal health coach. You have full access to her health data and profile below. Answer her questions directly and specifically — use her actual data. Never give generic advice. Be like a brilliant, warm friend who has a PhD in sports medicine, nutrition, and women's health and has been paying close attention to her specifically.
+
+${modeContext}
 
 ${ctx}`
 
