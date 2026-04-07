@@ -68,6 +68,17 @@ function formatEntry(entry: DailyEntry, cd?: number | null): string {
   return lines.join('\n')
 }
 
+// ─── Calorie target line ──────────────────────────────────────────
+const TDEE = 2106
+
+function calorieTargetLine(today: DailyEntry): string {
+  const logged = today.nutrition.total_calories
+  if (logged == null) return `Calorie target: ${TDEE} kcal. Logged so far: not yet logged.`
+  const delta = TDEE - logged
+  if (delta >= 0) return `Calorie target: ${TDEE} kcal. Logged so far: ${logged} kcal. Remaining: ${delta} kcal.`
+  return `Calorie target: ${TDEE} kcal. Logged so far: ${logged} kcal. Over by ${Math.abs(delta)} kcal.`
+}
+
 // ─── Build full context block ──────────────────────────────────────
 function buildContext(
   history7: DailyEntry[],
@@ -88,6 +99,7 @@ function buildContext(
     `CURRENT CONTEXT`,
     `Date: ${currentDate} | Month: ${month} | Cycle day: ${cycleDay ?? '?'}`,
     `Current symptoms: ${today.context.symptoms.length ? today.context.symptoms.join(', ') : 'none'}`,
+    calorieTargetLine(today),
     '',
     `TODAY'S DATA`,
     formatEntry(today, cycleDay),
@@ -227,8 +239,11 @@ Rules: Brief and direct. 3–4 sentences total across all non-null fields. No ma
   // evening
   const hour = parseHour(currentTime, 18)
   const afterEight = hour >= 20
+  const napLine = today.sleep.nap_minutes != null
+    ? `Julie napped for ${today.sleep.nap_minutes} minutes today — factor into recovery context.`
+    : ''
 
-  return `${ctx}
+  return `${ctx}${napLine ? `\nRECOVERY NOTE: ${napLine}` : ''}
 
 ---
 
@@ -294,11 +309,14 @@ export async function POST(req: NextRequest) {
 
     } else {
       // Reactive chat — mode-aware system prompt
+      const napNote = today.sleep.nap_minutes != null
+        ? ` Julie napped for ${today.sleep.nap_minutes} minutes today — include in recovery context.`
+        : ''
       const modeContext = mode === 'morning'
         ? 'It is MORNING. Focus on what she should do today. Do not reference today\'s nutrition totals — the day has just started.'
         : mode === 'midday'
         ? 'It is MIDDAY. Course-correction tone. Reference what she has logged so far today.'
-        : 'It is EVENING. Reflective tone. The full day is visible — reference totals and gaps freely.'
+        : `It is EVENING. Reflective tone. The full day is visible — reference totals and gaps freely.${napNote}`
 
       const systemPrompt = `You are Julie's personal health coach. You have full access to her health data and profile below. Answer her questions directly and specifically — use her actual data. Never give generic advice. Be like a brilliant, warm friend who has a PhD in sports medicine, nutrition, and women's health and has been paying close attention to her specifically.
 

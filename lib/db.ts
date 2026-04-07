@@ -19,6 +19,7 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
       hrv:          (r.hrv              as number  | null) ?? null,
       rhr:          (r.rhr              as number  | null) ?? null,
       rested:       (r.rested           as number  | null) ?? null,
+      nap_minutes:  (r.nap_minutes      as number  | null) ?? null,
     },
     training: {
       sessions,
@@ -28,7 +29,11 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
     nutrition: {
       pre_workout_snack: {
         description: (r.pre_workout_snack as string) ?? '',
-        protein: null, fiber: null, fat: null, carbs: null, calories: null,
+        protein:  (r.pre_workout_snack_protein  as number | null) ?? null,
+        fiber:    (r.pre_workout_snack_fiber     as number | null) ?? null,
+        fat:      (r.pre_workout_snack_fat       as number | null) ?? null,
+        carbs:    (r.pre_workout_snack_carbs     as number | null) ?? null,
+        calories: (r.pre_workout_snack_calories  as number | null) ?? null,
       },
       breakfast: {
         template_name: (r.breakfast_template    as string  | null) ?? null,
@@ -136,13 +141,19 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     hrv:                entry.sleep.hrv,
     rhr:                entry.sleep.rhr,
     rested:             entry.sleep.rested,
+    nap_minutes:        entry.sleep.nap_minutes ?? null,
 
     // Training (cycled only — sessions go to training_sessions table)
     cycled_today:    entry.training.cycled_today,
     cycling_minutes: entry.training.cycling_minutes,
 
-    // Nutrition — pre_workout_snack is description-only in schema
-    pre_workout_snack:    entry.nutrition.pre_workout_snack.description || null,
+    // Nutrition
+    pre_workout_snack:          entry.nutrition.pre_workout_snack.description || null,
+    pre_workout_snack_protein:  entry.nutrition.pre_workout_snack.protein,
+    pre_workout_snack_fiber:    entry.nutrition.pre_workout_snack.fiber,
+    pre_workout_snack_fat:      entry.nutrition.pre_workout_snack.fat,
+    pre_workout_snack_carbs:    entry.nutrition.pre_workout_snack.carbs,
+    pre_workout_snack_calories: entry.nutrition.pre_workout_snack.calories,
 
     breakfast_template:    entry.nutrition.breakfast.template_name,
     breakfast_description: entry.nutrition.breakfast.description || null,

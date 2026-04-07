@@ -774,12 +774,12 @@ export default function NutritionSection({
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Pre-workout snack — + button only, no macro fields */}
+          {/* Pre-workout snack */}
           <MealRow
             label="Pre-workout snack"
             meal={data.pre_workout_snack}
             onChange={(m) => updateMeal('pre_workout_snack', m)}
-            noMacros
+            showEstimate
             placeholder="Small snack before training…"
           />
 

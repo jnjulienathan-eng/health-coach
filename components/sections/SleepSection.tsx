@@ -212,6 +212,11 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
           />
         </Field>
 
+        {/* Nap */}
+        <Field label="Nap" unit="min">
+          <NumInput value={data.nap_minutes} onChange={(v) => set('nap_minutes', v)} width={80} />
+        </Field>
+
         {/* Save */}
         <button
           type="button"

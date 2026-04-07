@@ -5,6 +5,7 @@ export interface SleepData {
   hrv: number | null              // ms
   rhr: number | null              // bpm
   rested: number | null           // 1–5 tap scale
+  nap_minutes: number | null      // daytime nap in minutes
 }
 
 // ─── Training ────────────────────────────────────────────────────
@@ -94,7 +95,7 @@ export interface DailyEntry {
 
 // ─── Defaults ────────────────────────────────────────────────────
 export function emptySleep(): SleepData {
-  return { bedtime: null, duration_min: null, hrv: null, rhr: null, rested: null }
+  return { bedtime: null, duration_min: null, hrv: null, rhr: null, rested: null, nap_minutes: null }
 }
 
 export function emptyTraining(): TrainingData {
