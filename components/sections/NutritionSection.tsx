@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import type { NutritionData, MealMacros, BreakfastMeal } from '@/lib/types'
+import type { NutritionData, MealMacros, BreakfastMeal, TrainingSession } from '@/lib/types'
 import { MACRO_TARGETS } from '@/lib/types'
 import type { BreakfastTemplate } from '@/lib/db'
 import Section from '@/components/ui/Section'
@@ -12,6 +12,34 @@ interface Props {
   onChange: (data: NutritionData) => void
   onSave: () => void
   saving?: boolean
+  sessions?: TrainingSession[]
+}
+
+// ─── Dynamic calorie target ───────────────────────────────────────
+function hrZone(hr: number, activityType: string): 'Easy' | 'Moderate' | 'Hard' {
+  const t = activityType.toLowerCase()
+  let moderateStart: number, hardStart: number
+  if      (t === 'swim')                       { moderateStart = 135; hardStart = 150 }
+  else if (t === 'run')                        { moderateStart = 145; hardStart = 160 }
+  else if (t === 'cycle')                      { moderateStart = 130; hardStart = 150 }
+  else if (t === 'egym' || t === 'strength')   { moderateStart = 120; hardStart = 135 }
+  else if (t === 'walk')                       { moderateStart = 115; hardStart = 130 }
+  else                                         { moderateStart = 130; hardStart = 150 }
+  if (hr >= hardStart)     return 'Hard'
+  if (hr >= moderateStart) return 'Moderate'
+  return 'Easy'
+}
+
+function getDailyCalorieTarget(sessions: TrainingSession[]): number {
+  const totalMinutes = sessions.reduce((sum, s) => sum + (s.duration_min || 0), 0)
+  const hasHard = sessions.some(s => s.avg_heart_rate != null && hrZone(s.avg_heart_rate, s.activity_type) === 'Hard')
+  const sessionCount = sessions.length
+  if (sessionCount === 0) return 1800
+  if (totalMinutes < 45 && !hasHard) return 1950
+  if (sessionCount >= 2 && hasHard) return 2500
+  if (hasHard || sessionCount >= 2) return 2300
+  if (totalMinutes <= 75) return 2100
+  return 2100
 }
 
 // ─── Compute daily totals ────────────────────────────────────────
@@ -590,7 +618,9 @@ export default function NutritionSection({
   onChange,
   onSave,
   saving,
+  sessions = [],
 }: Props) {
+  const calorieTarget = getDailyCalorieTarget(sessions)
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const [showIncidentals, setShowIncidentals] = useState(false)
@@ -756,16 +786,16 @@ export default function NutritionSection({
                   style={{
                     fontFamily: 'var(--font-mono)',
                     color:
-                      data.total_calories < MACRO_TARGETS.calories.min
+                      data.total_calories < calorieTarget * 0.9
                         ? 'var(--color-danger)'
-                        : data.total_calories > MACRO_TARGETS.calories.max
+                        : data.total_calories > calorieTarget * 1.1
                         ? 'var(--color-amber)'
                         : 'var(--color-success)',
                   }}
                 >
                   {data.total_calories} kcal
                   <span style={{ color: 'var(--color-text-dim)', fontFamily: 'var(--font-sans)' }}>
-                    {' / '}{MACRO_TARGETS.calories.min}–{MACRO_TARGETS.calories.max}
+                    {' / '}{calorieTarget}
                   </span>
                 </span>
               </div>
