@@ -95,10 +95,10 @@ function getDailyCalorieTarget(sessions: DailyEntry['training']['sessions']): nu
 
   if (sessionCount === 0) return 1800
   if (totalMinutes < 45 && !hasHard) return 1950
-  if (totalMinutes <= 75 && sessionCount === 1) return 2100
-  if (hasHard || sessionCount >= 2) return 2300
   if (sessionCount >= 2 && hasHard) return 2500
-  return 1800
+  if (hasHard || sessionCount >= 2) return 2300
+  if (totalMinutes <= 75) return 2100
+  return 2100
 }
 
 // ─── Calorie target line ──────────────────────────────────────────
