@@ -27,8 +27,8 @@ function yesterdayStr() {
 }
 
 function shiftDay(dateStr: string, delta: number) {
-  const d = new Date(dateStr + 'T00:00:00')
-  d.setDate(d.getDate() + delta)
+  const d = new Date(dateStr + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + delta)
   return d.toISOString().split('T')[0]
 }
 
