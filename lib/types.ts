@@ -59,7 +59,9 @@ export interface SupplementsData {
   evening_stack_taken: boolean
   evening_exceptions: string[]     // names of items NOT taken from evening stack
   progesterone_taken: boolean
+  progesterone_mg: number | null   // mg per day, e.g. 200
   estradiol_taken: boolean
+  estradiol_sprays: number | null  // spray count, e.g. 1
   ashwagandha_taken: boolean       // cyclic
   dim_taken: boolean               // cyclic
   phosphatidylserine_taken: boolean // cyclic
@@ -76,7 +78,7 @@ export type Symptom =
   | 'Other'
 
 export interface ContextData {
-  stress_level: number | null      // 1–5
+  hrv_score: number | null         // 20–200 ms
   symptoms: Symptom[]
   travelling: boolean
   notes: string
@@ -128,7 +130,9 @@ export function emptySupplements(): SupplementsData {
     evening_stack_taken: false,
     evening_exceptions: [],
     progesterone_taken: false,
+    progesterone_mg: null,
     estradiol_taken: false,
+    estradiol_sprays: null,
     ashwagandha_taken: false,
     dim_taken: false,
     phosphatidylserine_taken: false,
@@ -136,7 +140,7 @@ export function emptySupplements(): SupplementsData {
 }
 
 export function emptyContext(): ContextData {
-  return { stress_level: null, symptoms: [], travelling: false, notes: '' }
+  return { hrv_score: null, symptoms: [], travelling: false, notes: '' }
 }
 
 export function emptyEntry(date: string): DailyEntry {
@@ -171,7 +175,7 @@ export const MACRO_TARGETS = {
   protein:  { min: 130, max: 140, flagBelow: 120 },
   fiber:    { min: 30,  max: 35,  flagBelow: 25 },
   fat:      { min: 60,  max: 75,  flagAbove: 90 },
-  carbs:    { min: 100, max: 130, flagAbove: 150 },
+  carbs:    { min: 130, max: 160, flagAbove: 180 },
   calories: { min: 1700, max: 1800 },
 } as const
 

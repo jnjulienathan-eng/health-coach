@@ -260,14 +260,26 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
           <StackLabel text="Hormones" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <HormoneCard
-              label="Progesterone"
-              dose="200mg"
+              label="Progesterone mg"
+              doseValue={data.progesterone_mg}
+              doseMin={0}
+              doseMax={400}
+              doseStep={25}
+              dosePlaceholder="200"
+              doseUnit="mg"
+              onDoseChange={(v) => change({ ...data, progesterone_mg: v })}
               taken={data.progesterone_taken}
               onToggle={(v) => change({ ...data, progesterone_taken: v })}
             />
             <HormoneCard
-              label="Estradiol"
-              dose="1 spray Lenzetto"
+              label="Estradiol sprays"
+              doseValue={data.estradiol_sprays}
+              doseMin={0}
+              doseMax={10}
+              doseStep={1}
+              dosePlaceholder="1"
+              doseUnit="sprays"
+              onDoseChange={(v) => change({ ...data, estradiol_sprays: v })}
               taken={data.estradiol_taken}
               onToggle={(v) => change({ ...data, estradiol_taken: v })}
             />
@@ -454,12 +466,24 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
 // ─── Hormone card ─────────────────────────────────────────────────
 function HormoneCard({
   label,
-  dose,
+  doseValue,
+  doseMin,
+  doseMax,
+  doseStep,
+  dosePlaceholder,
+  doseUnit,
+  onDoseChange,
   taken,
   onToggle,
 }: {
   label: string
-  dose: string
+  doseValue: number | null
+  doseMin: number
+  doseMax: number
+  doseStep: number
+  dosePlaceholder: string
+  doseUnit: string
+  onDoseChange: (v: number | null) => void
   taken: boolean
   onToggle: (v: boolean) => void
 }) {
@@ -480,8 +504,31 @@ function HormoneCard({
         <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--color-text-primary)' }}>
           {label}
         </div>
-        <div style={{ marginTop: 2 }}>
-          <EditableDose defaultDose={dose} />
+        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input
+            type="number"
+            min={doseMin}
+            max={doseMax}
+            step={doseStep}
+            value={doseValue ?? ''}
+            placeholder={dosePlaceholder}
+            onChange={(e) => {
+              const v = e.target.value === '' ? null : Number(e.target.value)
+              onDoseChange(v)
+            }}
+            style={{
+              width: 64,
+              fontSize: 13,
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--color-text-primary)',
+              background: 'var(--color-bg)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 6,
+              padding: '2px 6px',
+              outline: 'none',
+            }}
+          />
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{doseUnit}</span>
         </div>
       </div>
       <input

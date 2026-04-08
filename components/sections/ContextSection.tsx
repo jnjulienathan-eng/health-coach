@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import type { ContextData, Symptom } from '@/lib/types'
 import Section from '@/components/ui/Section'
-import TapScale from '@/components/ui/TapScale'
 
 interface Props {
   data: ContextData
@@ -32,7 +31,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
   const change = (d: ContextData) => { setLocalSaved(false); setSaveError(false); onChange(d) }
 
   const isComplete =
-    data.stress_level != null || data.notes.length > 0 || data.symptoms.length > 0
+    data.hrv_score != null || data.notes.length > 0 || data.symptoms.length > 0
 
   const toggleSymptom = (s: Symptom) => {
     const symptoms = data.symptoms.includes(s)
@@ -143,7 +142,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
           </div>
         </div>
 
-        {/* ── Stress ─────────────────────────────────────────────── */}
+        {/* ── HRV Score ──────────────────────────────────────────── */}
         <div>
           <div
             style={{
@@ -152,17 +151,38 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
               letterSpacing: '0.08em',
               textTransform: 'uppercase',
               color: 'var(--color-text-secondary)',
-              marginBottom: 10,
+              marginBottom: 8,
             }}
           >
-            Stress level
+            HRV Score
           </div>
-          <TapScale
-            value={data.stress_level}
-            onChange={(v) => change({ ...data, stress_level: v })}
-            lowLabel="calm"
-            highLabel="overwhelmed"
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="number"
+              min={20}
+              max={200}
+              value={data.hrv_score ?? ''}
+              placeholder="e.g. 82"
+              onChange={(e) => {
+                const v = e.target.value === '' ? null : parseInt(e.target.value, 10)
+                change({ ...data, hrv_score: v != null && v >= 20 && v <= 200 ? v : null })
+              }}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 32,
+                fontWeight: 400,
+                lineHeight: 1,
+                color: data.hrv_score != null ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                width: 100,
+                padding: 0,
+                MozAppearance: 'textfield',
+              }}
+            />
+            <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>ms</span>
+          </div>
         </div>
 
         {/* ── Symptoms ───────────────────────────────────────────── */}

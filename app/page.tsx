@@ -120,7 +120,7 @@ export default function App() {
     try {
       const data = await loadEntry(date)
       // Auto-derive cycle day for today if not stored yet
-      if (date === todayStr() && data.context.stress_level == null && data.context.notes === '') {
+      if (date === todayStr() && data.context.hrv_score == null && data.context.notes === '') {
         const derived = await deriveCycleDay()
         if (derived != null) setCycleDay(derived)
       } else {

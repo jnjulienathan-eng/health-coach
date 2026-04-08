@@ -13,7 +13,7 @@ JULIE'S HEALTH PROFILE
 - HRV framework: >100ms = train hard | 80–100ms = moderate training | 60–80ms = easy only | <60ms = rest or gentle walk
 - HRV personal baseline: ~88ms | RHR baseline: ~52 bpm (flag above 58)
 - Sleep target: 7h30–8h30 | Bedtime target: 21:45
-- Macro targets: protein 130–140g (flag below 120g), fiber 30–35g (flag below 25g), fat 60–75g (flag above 90g), carbs 100–130g (flag above 150g), calories 1700–1800 kcal
+- Macro targets: protein 130–140g (flag below 120g), fiber 30–35g (flag below 25g), fat 60–75g (flag above 90g), carbs 130–160g (flag above 180g), calories 1700–1800 kcal
 - Diet: whole food focused, largely cow-dairy free (exceptions: cottage cheese, occasional cheese). Lower carb, not keto. Low sugar, alcohol-free, no processed foods. Loves sardines, natto, fermented foods, seasonal produce.
 - Morning stack: Creatine 5g, Vitamin D3+K2, Zinc+Selenium, Glucosamine, Omega-3, Berberine
 - Evening stack: Magnesium glycinate 200mg, L-Theanine
@@ -65,7 +65,7 @@ function formatEntry(entry: DailyEntry, cd?: number | null): string {
     `Nutrition: protein ${n.total_protein ?? '?'}g | fiber ${n.total_fiber ?? '?'}g | fat ${n.total_fat ?? '?'}g | carbs ${n.total_carbs ?? '?'}g | ${n.total_calories ?? '?'}kcal`,
     meals.length ? `Meals: ${meals.join(' / ')}` : null,
     `Supplements: morning ${sup.morning_stack_taken ? '✓' : '✗'}${sup.morning_exceptions.length ? ` (skipped: ${sup.morning_exceptions.join(', ')})` : ''} | evening ${sup.evening_stack_taken ? '✓' : '✗'} | progesterone ${sup.progesterone_taken ? '✓' : '✗'} | estradiol ${sup.estradiol_taken ? '✓' : '✗'}`,
-    `Context: cycle day ${effectiveCd ?? '?'} | stress ${c.stress_level ?? '?'}/5${c.symptoms.length ? ` | symptoms: ${c.symptoms.join(', ')}` : ''}${c.travelling ? ' | travelling' : ''}${c.notes ? ` | "${c.notes}"` : ''}`,
+    `Context: cycle day ${effectiveCd ?? '?'} | HRV score ${c.hrv_score ?? '?'}ms${c.symptoms.length ? ` | symptoms: ${c.symptoms.join(', ')}` : ''}${c.travelling ? ' | travelling' : ''}${c.notes ? ` | "${c.notes}"` : ''}`,
     `Hydration: ${entry.hydration_ml != null ? `${entry.hydration_ml}ml` : 'not logged'}`,
   ].filter(Boolean)
 

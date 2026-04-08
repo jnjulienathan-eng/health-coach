@@ -142,7 +142,7 @@ function EntryDetail({ entry }: { entry: DailyEntry }) {
     (c as unknown as Record<string,unknown>).cycle_day != null
       ? `Day ${(c as unknown as Record<string,unknown>).cycle_day}`
       : null,
-    c.stress_level != null ? `Stress ${c.stress_level}/5` : null,
+    c.hrv_score != null ? `HRV ${c.hrv_score}ms` : null,
     c.symptoms.length > 0  ? c.symptoms.join(', ')        : null,
     c.travelling           ? 'Travelling'                  : null,
   ].filter(Boolean).join(' · ')
