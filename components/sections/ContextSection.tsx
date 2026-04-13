@@ -165,7 +165,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
               placeholder="e.g. 82"
               onChange={(e) => {
                 const v = e.target.value === '' ? null : parseInt(e.target.value, 10)
-                change({ ...data, hrv_score: v != null && v >= 20 && v <= 200 ? v : null })
+                change({ ...data, hrv_score: v != null && !isNaN(v) ? v : null })
               }}
               style={{
                 fontFamily: 'var(--font-mono)',

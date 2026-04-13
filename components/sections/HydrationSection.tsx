@@ -107,8 +107,20 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
     ? cups === 6 ? ' · bonus cup!' : ' · target met'
     : ''
 
+  const summary = totalMl > 0 ? (
+    <span
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 12,
+        color: 'var(--color-text-secondary)',
+      }}
+    >
+      {cups} cups · {totalMl}ml
+    </span>
+  ) : null
+
   return (
-    <Section title="Hydration" isComplete={saved}>
+    <Section title="Hydration" isComplete={totalMl > 0} rightSlot={summary}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* ── Cup row + extra input ────────────────────────────── */}
