@@ -35,30 +35,72 @@ export function behaviorScore(entry: DailyEntry): number {
   }
 
   // 4. Training appropriate to HRV — 20%
-  // Zone intensity: 1=Easy, 2=Moderate, 3=Hard derived from avg_heart_rate + activity type
-  function sessionZone(sess: TrainingSession): number {
+  // Intensity bands (HR-based): easy < 130 | moderate 130–154 | hard 155+
+  // Core principle: going easier than HRV recommends is never penalised.
+  // Missing HRV → component weight redistributes out entirely (handled by guard below).
+  function sessionIntensity(sess: TrainingSession): 'easy' | 'moderate' | 'hard' {
     const hr = sess.avg_heart_rate
-    if (hr == null) return 2
-    const t = sess.activity_type.toLowerCase()
-    if (t === 'swim')                       return hr >= 150 ? 3 : hr >= 135 ? 2 : 1
-    if (t === 'run')                        return hr >= 160 ? 3 : hr >= 145 ? 2 : 1
-    if (t === 'cycle')                      return hr >= 150 ? 3 : hr >= 130 ? 2 : 1
-    if (t === 'egym' || t === 'strength')   return hr >= 135 ? 3 : hr >= 120 ? 2 : 1
-    if (t === 'walk')                       return hr >= 130 ? 3 : hr >= 115 ? 2 : 1
-    return hr >= 150 ? 3 : hr >= 130 ? 2 : 1
+    const t  = sess.activity_type.toLowerCase()
+    if (hr != null) {
+      if (hr >= 155) return 'hard'
+      if (hr >= 130) return 'moderate'
+      return 'easy'
+    }
+    // No HR logged: infer from type + duration
+    if (t === 'walk') return 'easy'
+    const isIntenseType = t === 'strength' || t === 'egym' || t === 'swim' || t === 'run'
+    if (isIntenseType && sess.duration_min >= 45) return 'hard'
+    return 'moderate'
   }
+
   const hrv = entry.sleep.hrv
   if (hrv != null) {
     const sessions    = entry.training.sessions
     const hasSessions = sessions.length > 0
-    const avgZone     = hasSessions
-      ? sessions.reduce((s, x) => s + sessionZone(x), 0) / sessions.length
-      : 0
-    let s = 50
-    if      (hrv > 100) s = hasSessions ? Math.min(100, avgZone * 33) : 30
-    else if (hrv >= 80) s = hasSessions ? 85 : 40
-    else if (hrv >= 60) s = hasSessions ? Math.max(20, 90 - Math.max(0, avgZone - 1) * 35) : 75
-    else                s = hasSessions ? 25 : 100
+    let s: number
+
+    if (hrv > 100) {
+      // Recommendation: train hard
+      // Full score: any session with HR 155+ or strength/swim/run ≥ 45 min
+      // 70: moderate effort (sessions logged but below hard threshold)
+      // 30: walk only or no sessions
+      const meetsHard = sessions.some(sess => {
+        const hr = sess.avg_heart_rate
+        const t  = sess.activity_type.toLowerCase()
+        return (hr != null && hr >= 155) ||
+               ((t === 'strength' || t === 'egym' || t === 'swim' || t === 'run') && sess.duration_min >= 45)
+      })
+      const walkOnly = hasSessions && sessions.every(sess => sess.activity_type.toLowerCase() === 'walk')
+      s = meetsHard ? 100 : (hasSessions && !walkOnly) ? 70 : 30
+
+    } else if (hrv >= 80) {
+      // Recommendation: moderate
+      // Full score for HR 130–154, strength, or going easy (no penalty for under-training)
+      // Penalty only for HR 170+
+      const overExerted = sessions.some(sess => sess.avg_heart_rate != null && sess.avg_heart_rate >= 170)
+      s = overExerted ? 30 : 100
+
+    } else if (hrv >= 60) {
+      // Recommendation: easy only
+      // Full score for walk/easy/no sessions
+      // 50 for moderate effort
+      // Penalty for high intensity
+      const hasHard     = sessions.some(sess => sessionIntensity(sess) === 'hard')
+      const hasModerate = sessions.some(sess => sessionIntensity(sess) === 'moderate')
+      s = hasHard ? 20 : hasModerate ? 50 : 100
+
+    } else {
+      // Recommendation: rest (HRV < 60)
+      // Full score for no training; penalty scales with intensity logged
+      if (!hasSessions) {
+        s = 100
+      } else {
+        const hasHard     = sessions.some(sess => sessionIntensity(sess) === 'hard')
+        const hasModerate = sessions.some(sess => sessionIntensity(sess) === 'moderate')
+        s = hasHard ? 10 : hasModerate ? 40 : 70
+      }
+    }
+
     components.push({ score: s, weight: 20 })
   }
 
