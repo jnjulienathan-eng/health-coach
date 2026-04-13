@@ -23,6 +23,7 @@ export interface TrainingData {
   sessions: TrainingSession[]
   cycled_today: boolean
   cycling_minutes: number | null
+  cycling_calories: number | null
 }
 
 // ─── Nutrition ───────────────────────────────────────────────────
@@ -101,7 +102,7 @@ export function emptySleep(): SleepData {
 }
 
 export function emptyTraining(): TrainingData {
-  return { sessions: [], cycled_today: false, cycling_minutes: null }
+  return { sessions: [], cycled_today: false, cycling_minutes: null, cycling_calories: null }
 }
 
 export function emptyMeal(): MealMacros {

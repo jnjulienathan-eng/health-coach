@@ -278,8 +278,10 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
         <CyclingRow
           cycled={data.cycled_today}
           minutes={data.cycling_minutes}
+          calories={data.cycling_calories}
           onCycledChange={(v) => change({ ...data, cycled_today: v })}
           onMinutesChange={(v) => change({ ...data, cycling_minutes: v })}
+          onCaloriesChange={(v) => change({ ...data, cycling_calories: v })}
         />
 
         {/* Save */}
@@ -514,66 +516,34 @@ function SessionCard({
 function CyclingRow({
   cycled,
   minutes,
+  calories,
   onCycledChange,
   onMinutesChange,
+  onCaloriesChange,
 }: {
   cycled: boolean
   minutes: number | null
+  calories: number | null
   onCycledChange: (v: boolean) => void
   onMinutesChange: (v: number | null) => void
+  onCaloriesChange: (v: number | null) => void
 }) {
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
         padding: '12px 14px',
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
         borderRadius: 10,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 20 }}>🚴</span>
-        <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>Cycled today</span>
-        <span
-          style={{
-            fontSize: 11,
-            color: 'var(--color-text-dim)',
-          }}
-        >
-          (transport)
-        </span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {cycled && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              type="number"
-              inputMode="numeric"
-              value={minutes ?? ''}
-              onChange={(e) =>
-                onMinutesChange(e.target.value === '' ? null : parseInt(e.target.value))
-              }
-              placeholder="min"
-              style={{
-                width: 56,
-                height: 36,
-                padding: '0 8px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 15,
-                color: 'var(--color-text-primary)',
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 6,
-                outline: 'none',
-                textAlign: 'center',
-              }}
-            />
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>min</span>
-          </div>
-        )}
+      {/* Toggle row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 20 }}>🚴</span>
+          <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>Cycled today</span>
+          <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>(transport)</span>
+        </div>
         <input
           type="checkbox"
           checked={cycled}
@@ -582,6 +552,65 @@ function CyclingRow({
           aria-label="Cycled today"
         />
       </div>
+
+      {/* Expanded fields when cycled */}
+      {cycled && (
+        <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={minutes ?? ''}
+              onChange={(e) =>
+                onMinutesChange(e.target.value === '' ? null : parseInt(e.target.value))
+              }
+              placeholder="—"
+              aria-label="Cycling minutes"
+              style={{
+                width: 56,
+                height: 44,
+                padding: '0 8px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 18,
+                color: 'var(--color-text-primary)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 6,
+                outline: 'none',
+                textAlign: 'center',
+              }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>min</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={calories ?? ''}
+              onChange={(e) =>
+                onCaloriesChange(e.target.value === '' ? null : parseInt(e.target.value))
+              }
+              placeholder="—"
+              aria-label="Cycling calories"
+              style={{
+                width: 64,
+                height: 44,
+                padding: '0 8px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 18,
+                color: 'var(--color-text-primary)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 6,
+                outline: 'none',
+                textAlign: 'center',
+              }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>kcal</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

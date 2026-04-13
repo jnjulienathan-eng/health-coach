@@ -104,10 +104,11 @@ export function behaviorScore(entry: DailyEntry): number {
     components.push({ score: s, weight: 20 })
   }
 
-  // 5. Active calories — 15%: target 600 kcal for intentional training
-  const calSessions = entry.training.sessions.filter(s => s.active_calories != null)
-  if (calSessions.length > 0) {
-    const total = calSessions.reduce((s, x) => s + (x.active_calories ?? 0), 0)
+  // 5. Active calories — 15%: target 600 kcal (sessions + cycling combined)
+  const calSessions  = entry.training.sessions.filter(s => s.active_calories != null)
+  const cyclingCal   = entry.training.cycling_calories ?? 0
+  if (calSessions.length > 0 || cyclingCal > 0) {
+    const total = calSessions.reduce((s, x) => s + (x.active_calories ?? 0), 0) + cyclingCal
     components.push({ score: Math.min(100, (total / 600) * 100), weight: 15 })
   }
 

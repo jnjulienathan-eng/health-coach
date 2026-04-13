@@ -23,8 +23,9 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
     },
     training: {
       sessions,
-      cycled_today:    (r.cycled_today    as boolean | null) ?? false,
-      cycling_minutes: (r.cycling_minutes as number  | null) ?? null,
+      cycled_today:     (r.cycled_today     as boolean | null) ?? false,
+      cycling_minutes:  (r.cycling_minutes  as number  | null) ?? null,
+      cycling_calories: (r.cycling_calories as number  | null) ?? null,
     },
     nutrition: {
       pre_workout_snack: {
@@ -146,8 +147,9 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     nap_minutes:        entry.sleep.nap_minutes ?? null,
 
     // Training (cycled only — sessions go to training_sessions table)
-    cycled_today:    entry.training.cycled_today,
-    cycling_minutes: entry.training.cycling_minutes,
+    cycled_today:     entry.training.cycled_today,
+    cycling_minutes:  entry.training.cycling_minutes,
+    cycling_calories: entry.training.cycling_calories ?? null,
 
     // Nutrition
     pre_workout_snack:          entry.nutrition.pre_workout_snack.description || null,
