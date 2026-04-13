@@ -189,6 +189,7 @@ function MealRow({
   const [estimating, setEstimating] = useState(false)
   const [analysing, setAnalysing] = useState(false)
   const [listening, setListening] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [thumbnail, setThumbnail] = useState<string | null>(null)
@@ -260,6 +261,7 @@ function MealRow({
   const startListening = () => {
     setActionSheetOpen(false)
     setVoiceError(null)
+    setTranscribing(false)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) {
@@ -271,11 +273,21 @@ function MealRow({
     recognition.interimResults = false
     recognition.lang = 'en-US'
 
+    let gotTranscript = false
+
     recognition.onstart = () => setListening(true)
-    recognition.onend   = () => setListening(false)
+    recognition.onend   = () => {
+      setListening(false)
+      if (!gotTranscript) {
+        setTranscribing(true)
+        setTimeout(() => setTranscribing(false), 5000)
+      }
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
       setListening(false)
+      setTranscribing(false)
+      if (gotTranscript) return
       const messages: Record<string, string> = {
         'not-allowed':            'Microphone permission denied. Allow mic access in browser settings.',
         'audio-capture':          'No microphone found.',
@@ -289,6 +301,8 @@ function MealRow({
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
+      gotTranscript = true
+      setTranscribing(false)
       const transcript: string = e.results[0][0].transcript
       onChange({ ...meal, description: meal.description ? meal.description + ' ' + transcript : transcript })
     }
@@ -297,6 +311,7 @@ function MealRow({
       recognition.start()
     } catch (err) {
       setListening(false)
+      setTranscribing(false)
       console.error('SpeechRecognition start error:', err)
       setVoiceError('Could not start voice input. Try again.')
     }
@@ -327,7 +342,7 @@ function MealRow({
   const hasMacros =
     meal.protein != null || meal.fat != null || meal.carbs != null || meal.calories != null
 
-  const plusBusy = analysing || listening
+  const plusBusy = analysing || listening || transcribing
 
   return (
     <div style={{ borderBottom: noBorder ? 'none' : '1px solid var(--color-border)', paddingBottom: noBorder ? 0 : 16 }}>
@@ -376,7 +391,7 @@ function MealRow({
               lineHeight: 1,
             }}
           >
-            {analysing ? <SpinnerIcon /> : '+'}
+            {(analysing || transcribing) ? <SpinnerIcon /> : '+'}
           </button>
 
           {/* Action sheet */}
@@ -530,10 +545,10 @@ function MealRow({
         )}
       </div>
 
-      {/* Errors */}
-      {(voiceError || photoError) && (
-        <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 6, marginBottom: 2 }}>
-          {photoError || voiceError}
+      {/* Errors / transcribing status */}
+      {(voiceError || photoError || transcribing) && (
+        <div style={{ fontSize: 12, color: transcribing ? 'var(--color-text-dim)' : 'var(--color-danger)', marginTop: 6, marginBottom: 2 }}>
+          {transcribing ? 'Transcribing…' : photoError || voiceError}
         </div>
       )}
 

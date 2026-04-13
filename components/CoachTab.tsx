@@ -63,11 +63,13 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
   const [chatMessages,     setChatMessages]     = useState<ChatMessage[]>([])
   const [chatInput,        setChatInput]        = useState('')
   const [chatLoading,      setChatLoading]      = useState(false)
-  const [isListening,      setIsListening]      = useState(false)
-  const [voiceError,       setVoiceError]       = useState<string | null>(null)
-  const [answerInput,      setAnswerInput]      = useState('')
-  const [answerListening,  setAnswerListening]  = useState(false)
-  const [answerVoiceError, setAnswerVoiceError] = useState<string | null>(null)
+  const [isListening,        setIsListening]        = useState(false)
+  const [transcribing,       setTranscribing]       = useState(false)
+  const [voiceError,         setVoiceError]         = useState<string | null>(null)
+  const [answerInput,        setAnswerInput]        = useState('')
+  const [answerListening,    setAnswerListening]    = useState(false)
+  const [answerTranscribing, setAnswerTranscribing] = useState(false)
+  const [answerVoiceError,   setAnswerVoiceError]   = useState<string | null>(null)
 
   const chatEndRef    = useRef<HTMLDivElement>(null)
   const inputRef      = useRef<HTMLInputElement>(null)
@@ -115,6 +117,7 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
   // ── Answer input (Coach asks) ────────────────────────────────────
   const startAnswerListening = () => {
     setAnswerVoiceError(null)
+    setAnswerTranscribing(false)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) {
@@ -126,11 +129,21 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
     recognition.interimResults = false
     recognition.lang = 'en-US'
 
+    let gotTranscript = false
+
     recognition.onstart = () => setAnswerListening(true)
-    recognition.onend   = () => setAnswerListening(false)
+    recognition.onend   = () => {
+      setAnswerListening(false)
+      if (!gotTranscript) {
+        setAnswerTranscribing(true)
+        setTimeout(() => setAnswerTranscribing(false), 5000)
+      }
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
       setAnswerListening(false)
+      setAnswerTranscribing(false)
+      if (gotTranscript) return
       console.error('SpeechRecognition error:', e.error)
       const messages: Record<string, string> = {
         'not-allowed':            'Microphone permission denied. Allow mic access in browser settings.',
@@ -145,6 +158,8 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
+      gotTranscript = true
+      setAnswerTranscribing(false)
       const transcript: string = e.results[0][0].transcript
       setAnswerInput((prev) => (prev ? prev + ' ' + transcript : transcript))
       answerRef.current?.focus()
@@ -154,6 +169,7 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
       recognition.start()
     } catch (err) {
       setAnswerListening(false)
+      setAnswerTranscribing(false)
       console.error('SpeechRecognition start error:', err)
       setAnswerVoiceError('Could not start voice input. Try again.')
     }
@@ -197,6 +213,7 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
   // ── Voice input ──────────────────────────────────────────────────
   const startListening = () => {
     setVoiceError(null)
+    setTranscribing(false)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) {
@@ -208,11 +225,21 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
     recognition.interimResults = false
     recognition.lang = 'en-US'
 
+    let gotTranscript = false
+
     recognition.onstart = () => setIsListening(true)
-    recognition.onend   = () => setIsListening(false)
+    recognition.onend   = () => {
+      setIsListening(false)
+      if (!gotTranscript) {
+        setTranscribing(true)
+        setTimeout(() => setTranscribing(false), 5000)
+      }
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
       setIsListening(false)
+      setTranscribing(false)
+      if (gotTranscript) return
       console.error('SpeechRecognition error:', e.error)
       const messages: Record<string, string> = {
         'not-allowed':            'Microphone permission denied. Allow mic access in browser settings.',
@@ -227,6 +254,8 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
+      gotTranscript = true
+      setTranscribing(false)
       const transcript: string = e.results[0][0].transcript
       setChatInput((prev) => (prev ? prev + ' ' + transcript : transcript))
       inputRef.current?.focus()
@@ -236,6 +265,7 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
       recognition.start()
     } catch (err) {
       setIsListening(false)
+      setTranscribing(false)
       console.error('SpeechRecognition start error:', err)
       setVoiceError('Could not start voice input. Try again.')
     }
@@ -474,9 +504,9 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
                       <SendIcon />
                     </button>
                   </div>
-                  {answerVoiceError && (
-                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-danger)' }}>
-                      {answerVoiceError}
+                  {(answerVoiceError || answerTranscribing) && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: answerTranscribing ? 'var(--color-text-dim)' : 'var(--color-danger)' }}>
+                      {answerTranscribing ? 'Transcribing…' : answerVoiceError}
                     </div>
                   )}
                 </>
@@ -664,10 +694,10 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
           </button>
         </div>
 
-        {/* Chat voice error */}
-        {voiceError && (
-          <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: -8 }}>
-            {voiceError}
+        {/* Chat voice error / transcribing */}
+        {(voiceError || transcribing) && (
+          <div style={{ fontSize: 12, color: transcribing ? 'var(--color-text-dim)' : 'var(--color-danger)', marginTop: -8 }}>
+            {transcribing ? 'Transcribing…' : voiceError}
           </div>
         )}
 
