@@ -13,12 +13,13 @@ JULIE'S HEALTH PROFILE
 - HRV framework: >100ms = train hard | 80–100ms = moderate training | 60–80ms = easy only | <60ms = rest or gentle walk
 - HRV personal baseline: ~88ms | RHR baseline: ~52 bpm (flag above 58)
 - Sleep target: 7h30–8h30 | Bedtime target: 21:45
-- Macro targets: protein 130–140g (flag below 120g), fiber 30–35g (flag below 25g), fat 60–75g (flag above 90g), carbs 130–160g (flag above 180g), calories 1700–1800 kcal
+- Calorie targets scale with training volume: Rest: ~1800 kcal | Light (walk/easy): ~1950 kcal | Moderate (one session): ~2100 kcal | High (two sessions or hard effort): ~2300 kcal | Very high (long endurance): ~2500 kcal
+- Macro targets scale with training: Protein 130g rest → 140g training days | Fiber 30–35g every day (non-negotiable) | Fat 65g rest → 70g training days | Carbs 160g rest → 180g moderate → 200g high/very high training days
+- Flag: protein below 120g, fiber below 25g, fat above 90g, carbs above 210g
 - Diet: whole food focused, largely cow-dairy free (exceptions: cottage cheese, occasional cheese). Lower carb, not keto. Low sugar, alcohol-free, no processed foods. Loves sardines, natto, fermented foods, seasonal produce.
-- Morning stack: Creatine 5g, Vitamin D3+K2, Zinc+Selenium, Glucosamine, Omega-3, Berberine
+- Morning stack: Creatine 5g, Vitamin D3+K2, Zinc+Selenium, Glucosamine, Omega-3, Berberine, DIM
 - Evening stack: Magnesium glycinate 200mg, L-Theanine
 - Hormones (daily): Progesterone 200mg (evening), Estradiol 1 spray Lenzetto
-- Cyclic supplements (currently inactive): Ashwagandha, DIM, Phosphatidylserine
 - Training: Swim 50min, eGym 35min, Run 35min, Walk 75min intentional. Cycling = transport (I:SY ebike, not training).
 - Active calorie targets: 600 kcal intentional training, ~900 kcal total
 - Cycle: currently irregular, recent cycles 54–80+ days. Luteal phase (~days 15–end) = lower HRV, poorer sleep, higher appetite, lower motivation — acknowledge without over-attributing.
@@ -186,8 +187,8 @@ function getCoachMode(currentTime: string | undefined): CoachMode {
     : currentTime.substring(0, 5)
   const hour = parseInt(timeStr.split(':')[0], 10)
   if (isNaN(hour)) return 'morning'
-  if (hour < 10) return 'morning'
-  if (hour < 17) return 'midday'
+  if (hour < 9) return 'morning'
+  if (hour < 20) return 'midday'
   return 'evening'
 }
 
@@ -216,9 +217,11 @@ function buildBriefingPrompt(
 You are Julie's personal health coach. It is MORNING — generate a forward-looking briefing for today.
 
 MORNING RULES:
+- CRITICAL: Check TODAY'S DATA training sessions. If any sessions are already logged, treat them as completed activities. Do not recommend them as future actions. Acknowledge what has already been done.
 - DO NOT mention today's protein, fiber, or calorie totals. The day has just started. Nutrition field = what to eat TODAY based on recent macro gaps, not what has been logged.
 - Training: apply HRV framework strictly. Recommend full rest ONLY if HRV < 50ms OR she is sick. HRV 50–80ms = recommend easy movement, NOT rest. If cycle day > 60 AND HRV is low, note that hormonal fluctuation (not fitness) is likely the cause and encourage gentle movement anyway.
 - Nutrition: give specific food recommendations for the day ahead based on RECENT MACRO GAPS from the 7-day history. Name actual foods. Example: "Your fiber has been low this week — prioritise lentils or chickpeas at lunch."
+- Calories: check yesterday's total calories against her target for that day's training volume. If significantly under (>200 kcal below target) or over (>200 kcal above target), note it briefly in the nutrition field.
 - Hydration: check yesterday's hydration in LAST 7 DAYS. If it was below 1500ml, note it as a likely contributor to any HRV or RHR anomalies today. Regardless, remind her to start with 500ml of water before coffee — weave this into the insight or nutrition field naturally.
 - Insight: something genuinely interesting from her data, cycle phase, season, or perimenopause context. Never generic. Rotate topics — correlations, seasonal food, supplement timing, patterns she may not have noticed.
 - Question: one question you're genuinely curious about given her data.
@@ -250,6 +253,7 @@ Rules: Direct and warm. Never generic. Never sycophantic. Use her actual numbers
 You are Julie's personal health coach. It is MIDDAY — provide a brief course-correction check-in.
 
 MIDDAY RULES:
+- CRITICAL: Check TODAY'S DATA training sessions. If any sessions are already logged, treat them as completed activities. Do not recommend them as future actions. Acknowledge what has already been done.
 - Keep to 3–4 sentences TOTAL across all non-null fields. Be brief.
 - Supplement check: if morning_stack_taken is false (✗), remind her to take her morning stack — she has a watch reminder but often takes it late.
 - Nutrition: identify the single most important macro gap to close this afternoon with a specific food suggestion.
@@ -283,7 +287,9 @@ Rules: Brief and direct. 3–4 sentences total across all non-null fields. No ma
 You are Julie's personal health coach. It is EVENING — provide a reflective close-of-day review.
 
 EVENING RULES:
+- CRITICAL: Check TODAY'S DATA training sessions. If any sessions are already logged, treat them as completed activities. Do not recommend them as future actions. Acknowledge what has already been done.
 - Full day review against targets. Now appropriate to note gaps in protein (target 130–140g), fiber (target 30–35g), supplements.
+- Calories: review today's total calories against her target based on today's training volume. Flag if significantly under (>200 kcal below target) or over (>200 kcal above target).
 - Hydration: include today's hydration in the review. Hydration target is 3000ml on training days, 2500ml on rest days (check training sessions in TODAY'S DATA). Flag gently if below target — include in the nutrition field.
 - ${afterEight ? 'It is after 20:00 — include a bedtime nudge in the insight field: her target is 21:45.' : 'Note anything worth carrying into tomorrow.'}
 - Note anything worth carrying into tomorrow.
@@ -319,17 +325,18 @@ export async function POST(req: NextRequest) {
     const { type, today, cycleDay, currentDate: currentDateRaw, currentTime, message, history = [] } = body
     const currentDate = currentDateRaw ?? new Date().toISOString().split('T')[0]
 
-    const { history7 } = await getCoachContext(null, currentDate)
+    const { history7, todayEntry } = await getCoachContext(null, currentDate)
+    const effectiveToday = todayEntry ?? today
 
-    const ctx = buildContext(history7, today, cycleDay, currentDate)
+    const ctx = buildContext(history7, effectiveToday, cycleDay, currentDate)
     const mode = getCoachMode(currentTime)
 
     if (type === 'briefing') {
-      const prompt = buildBriefingPrompt(ctx, mode, today, currentDate, currentTime)
+      const prompt = buildBriefingPrompt(ctx, mode, effectiveToday, currentDate, currentTime)
 
       const msg = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }],
       })
 
@@ -342,8 +349,8 @@ export async function POST(req: NextRequest) {
 
     } else {
       // Reactive chat — mode-aware system prompt
-      const napNote = today.sleep.nap_minutes != null
-        ? ` Julie napped for ${today.sleep.nap_minutes} minutes today — include in recovery context.`
+      const napNote = effectiveToday.sleep.nap_minutes != null
+        ? ` Julie napped for ${effectiveToday.sleep.nap_minutes} minutes today — include in recovery context.`
         : ''
       const modeContext = mode === 'morning'
         ? 'It is MORNING. Focus on what she should do today. Do not reference today\'s nutrition totals — the day has just started.'
@@ -364,7 +371,7 @@ ${ctx}`
 
       const msg = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        max_tokens: 2000,
         system: systemPrompt,
         messages,
       })

@@ -309,6 +309,12 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
 
   // ── Render ───────────────────────────────────────────────────────
   const sleepLogged = hasSleepData(today)
+  const currentHour = new Date().getHours()
+  const headerSubtitle = currentHour < 9
+    ? "Morning briefing · based on last night's sleep"
+    : currentHour < 20
+    ? "Midday check-in · updated as you log"
+    : "Evening review · full day summary"
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 32 }}>
@@ -329,7 +335,7 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
         </h1>
         <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
           {sleepLogged
-            ? 'Morning briefing based on last night\'s sleep data.'
+            ? headerSubtitle
             : 'Log today\'s sleep data to receive your morning briefing.'}
         </p>
       </div>

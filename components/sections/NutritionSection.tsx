@@ -3,12 +3,11 @@
 import { useState, useRef, useEffect } from 'react'
 import type { NutritionData, MealMacros, BreakfastMeal, TrainingSession } from '@/lib/types'
 import { MACRO_TARGETS } from '@/lib/types'
-import type { BreakfastTemplate } from '@/lib/db'
 import Section from '@/components/ui/Section'
 
 interface Props {
   data: NutritionData
-  templates: BreakfastTemplate[]
+  templates?: unknown[]
   onChange: (data: NutritionData) => void
   onSave: () => void
   saving?: boolean
@@ -76,15 +75,6 @@ const INCIDENTAL_CHIPS: { label: string; macros: Partial<MealMacros> }[] = [
   { label: 'Mixed nuts (handful)',       macros: { description: 'Mixed nuts, small handful', protein: 4, fiber: 2, fat: 14, carbs: 4, calories: 160 } },
   { label: 'Rye crackers (1–2)',        macros: { description: 'Rye crackers, 1-2 pieces', protein: 2, fiber: 2, fat: 1, carbs: 14, calories: 65 } },
   { label: 'Medjool date (1)',           macros: { description: 'Medjool date', protein: 0, fiber: 2, fat: 0, carbs: 18, calories: 66 } },
-]
-
-// Default breakfast templates (shown if Supabase returns none)
-const DEFAULT_BREAKFAST_TEMPLATES: BreakfastTemplate[] = [
-  { id: 'b1', name: 'Yogurt bowl',            protein: 41, fiber: 17, fat: 36, carbs: 55, calories: 712, description: 'Almond milk, chia, flax, cacao nibs, pumpkin seeds, hemp seeds, Greek yogurt 5%, blueberries, protein powder, protein muesli.' },
-  { id: 'b2', name: 'Chickpea pancake + sardines', protein: 40, fiber: 10, fat: 16, carbs: 30, calories: 420, description: '' },
-  { id: 'b3', name: 'Cottage cheese pancakes', protein: 35, fiber: 3, fat: 10, carbs: 22, calories: 310, description: '' },
-  { id: 'b4', name: 'Rice & natto bowl',       protein: 51, fiber: 5, fat: 22, carbs: 50, calories: 605, description: 'Japanese rice, natto, soft tofu, sardines.' },
-  { id: 'b5', name: 'Sourdough toast + egg',   protein: 18, fiber: 3, fat: 10, carbs: 32, calories: 290, description: '' },
 ]
 
 // ─── Spinner icon (uses @keyframes spin from globals.css) ────────
@@ -629,7 +619,6 @@ function MealRow({
 // ─── Main component ──────────────────────────────────────────────
 export default function NutritionSection({
   data,
-  templates,
   onChange,
   onSave,
   saving,
@@ -640,12 +629,6 @@ export default function NutritionSection({
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const [showIncidentals, setShowIncidentals] = useState(false)
-  const [breakfastCustom, setBreakfastCustom] = useState(
-    !data.breakfast.template_name && !!data.breakfast.description
-  )
-
-  const effectiveTemplates =
-    templates.length > 0 ? templates : DEFAULT_BREAKFAST_TEMPLATES
 
   const hasData =
     data.lunch.description ||
@@ -658,19 +641,6 @@ export default function NutritionSection({
     setSaveError(false)
     const updated = computeTotals({ ...data, [key]: meal })
     onChange(updated)
-  }
-
-  const applyTemplate = (tmpl: BreakfastTemplate) => {
-    const b: BreakfastMeal = {
-      template_name: tmpl.name,
-      description: tmpl.description || tmpl.name,
-      protein: tmpl.protein,
-      fiber: tmpl.fiber,
-      fat: tmpl.fat,
-      carbs: tmpl.carbs,
-      calories: tmpl.calories,
-    }
-    updateMeal('breakfast', b)
   }
 
   const addIncidental = (chip: { macros: Partial<MealMacros> }) => {
@@ -830,167 +800,13 @@ export default function NutritionSection({
           />
 
           {/* Breakfast */}
-          <div style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: 16 }}>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'var(--color-text-secondary)',
-                marginBottom: 10,
-              }}
-            >
-              Breakfast
-            </div>
-
-            {/* Template picker */}
-            {!data.breakfast.template_name && !breakfastCustom && (
-              <div className="scroll-row" style={{ marginBottom: 10 }}>
-                {effectiveTemplates.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => applyTemplate(t)}
-                    className="btn-template"
-                    style={{ minWidth: 110 }}
-                  >
-                    <span style={{ fontSize: 12 }}>{t.name}</span>
-                    {t.protein != null && (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: 'var(--color-text-secondary)',
-                          fontFamily: 'var(--font-mono)',
-                        }}
-                      >
-                        {t.protein}g P
-                      </span>
-                    )}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setBreakfastCustom(true)}
-                  className="btn-template"
-                  style={{ minWidth: 80 }}
-                >
-                  <span style={{ fontSize: 12 }}>Other</span>
-                </button>
-              </div>
-            )}
-
-            {/* Custom free-text mode — + replaces separate mic */}
-            {!data.breakfast.template_name && breakfastCustom && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBreakfastCustom(false)
-                    updateMeal('breakfast', { ...data.breakfast, description: '', protein: null, fiber: null, fat: null, carbs: null, calories: null })
-                  }}
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--color-primary)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
-                    marginBottom: 8,
-                    fontFamily: 'var(--font-sans)',
-                  }}
-                >
-                  ← Templates
-                </button>
-                <MealRow
-                  label=""
-                  meal={data.breakfast}
-                  onChange={(m) => updateMeal('breakfast', m)}
-                  showEstimate
-                  noBorder
-                  placeholder="Describe what you had…"
-                />
-              </>
-            )}
-
-            {data.breakfast.template_name && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ fontSize: 14, color: 'var(--color-text-primary)', fontWeight: 500 }}>
-                  {data.breakfast.template_name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    updateMeal('breakfast', { ...data.breakfast, template_name: null, description: '' })
-                    setBreakfastCustom(false)
-                  }}
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--color-primary)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Change
-                </button>
-              </div>
-            )}
-
-            {/* Macros if template selected */}
-            {data.breakfast.template_name && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
-                {(
-                  [
-                    { key: 'protein' as const,  label: 'P',    unit: 'g'    },
-                    { key: 'fiber' as const,    label: 'F',    unit: 'g'    },
-                    { key: 'fat' as const,      label: 'Fat',  unit: 'g'    },
-                    { key: 'carbs' as const,    label: 'C',    unit: 'g'    },
-                    { key: 'calories' as const, label: 'Cal',  unit: 'kcal' },
-                  ]
-                ).map(({ key, label, unit }) => (
-                  <div key={key} style={{ textAlign: 'center' }}>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={(data.breakfast[key] as number | null) ?? ''}
-                      onChange={(e) =>
-                        updateMeal('breakfast', {
-                          ...data.breakfast,
-                          [key]: e.target.value === '' ? null : Number(e.target.value),
-                        })
-                      }
-                      placeholder="—"
-                      style={{
-                        width: '100%',
-                        height: 36,
-                        textAlign: 'center',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 14,
-                        color: 'var(--color-text-primary)',
-                        background: 'var(--color-surface)',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 6,
-                        outline: 'none',
-                        padding: 0,
-                      }}
-                    />
-                    <div
-                      style={{
-                        fontSize: 9,
-                        color: 'var(--color-text-dim)',
-                        marginTop: 3,
-                        letterSpacing: '0.05em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {label} {unit}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <MealRow
+            label="Breakfast"
+            meal={data.breakfast}
+            onChange={(m) => updateMeal('breakfast', m)}
+            showEstimate
+            placeholder="Describe what you had…"
+          />
 
           {/* Lunch */}
           <MealRow
