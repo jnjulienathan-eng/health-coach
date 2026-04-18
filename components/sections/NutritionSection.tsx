@@ -685,6 +685,7 @@ export default function NutritionSection({
       fat: tmpl.fat,
       carbs: tmpl.carbs,
       calories: tmpl.calories,
+      peak_glucose_mmol: null,
     }
     updateMeal('breakfast', b)
   }
