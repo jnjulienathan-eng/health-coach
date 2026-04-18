@@ -216,7 +216,7 @@ async function getCoachContext(
 ): Promise<{ history30: DailyEntry[]; todayEntry: DailyEntry | null }> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   )
 
   const since = new Date(currentDate + 'T00:00:00')

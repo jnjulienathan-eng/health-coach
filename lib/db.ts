@@ -5,7 +5,7 @@ import { behaviorScore, outcomeScore } from './scores'
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
 // ─── rowToEntry: flat Supabase row + sessions → DailyEntry ────────
