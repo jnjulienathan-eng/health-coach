@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, loadBreakfastTemplates, deriveCycleDay } from '@/lib/db'
-import type { BreakfastTemplate } from '@/lib/db'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay } from '@/lib/db'
 import { emptyEntry } from '@/lib/types'
 import type { DailyEntry } from '@/lib/types'
 import SleepSection from '@/components/sections/SleepSection'
@@ -104,7 +103,6 @@ export default function App() {
   const [activeTab,     setActiveTab]     = useState<Tab>('today')
   const [currentDate,   setCurrentDate]   = useState(todayStr())
   const [entry,         setEntry]         = useState<DailyEntry>(emptyEntry(todayStr()))
-  const [templates,     setTemplates]     = useState<BreakfastTemplate[]>([])
   const [loading,       setLoading]       = useState(false)
   const [saving,        setSaving]        = useState(false)
   const [savedSection,  setSavedSection]  = useState<string | null>(null)
@@ -138,11 +136,6 @@ export default function App() {
   useEffect(() => {
     loadDay(currentDate)
   }, [currentDate, loadDay])
-
-  // Load breakfast templates once
-  useEffect(() => {
-    loadBreakfastTemplates().then(setTemplates).catch(console.error)
-  }, [])
 
   // Check if yesterday's sleep needs completing
   useEffect(() => {
@@ -355,7 +348,6 @@ export default function App() {
                 />
                 <NutritionSection
                   data={entry.nutrition}
-                  templates={templates}
                   onChange={(nutrition) => update({ nutrition })}
                   onSave={() => save('nutrition')}
                   saving={saving}
