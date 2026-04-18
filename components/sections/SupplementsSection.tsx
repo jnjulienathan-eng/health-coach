@@ -149,27 +149,10 @@ const MORNING_ITEMS = [
   'Glucosamine',
   'Omega-3',
   'Berberine',
+  'DIM',
 ]
 
 const EVENING_ITEMS = ['Magnesium glycinate (200mg)', 'L-Theanine']
-
-const CYCLIC_ITEMS: { key: keyof SupplementsData; label: string; note: string }[] = [
-  {
-    key: 'ashwagandha_taken',
-    label: 'Ashwagandha',
-    note: 'Activate when taking',
-  },
-  {
-    key: 'dim_taken',
-    label: 'DIM',
-    note: 'Not yet ordered — supports estrogen metabolism',
-  },
-  {
-    key: 'phosphatidylserine_taken',
-    label: 'Phosphatidylserine',
-    note: 'On pause — retry when sleep stable 4+ weeks',
-  },
-]
 
 // Label helper
 function StackLabel({ text }: { text: string }) {
@@ -189,35 +172,146 @@ function StackLabel({ text }: { text: string }) {
   )
 }
 
+// ─── Stack accordion ─────────────────────────────────────────────
+function StackAccordion({
+  items,
+  masterOn,
+  exceptions,
+  onMasterToggle,
+  onItemToggle,
+}: {
+  items: string[]
+  masterOn: boolean
+  exceptions: string[]
+  onMasterToggle: (on: boolean) => void
+  onItemToggle: (item: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const anyOn = masterOn && items.some((item) => !exceptions.includes(item))
+
+  return (
+    <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 14px',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          fontFamily: 'var(--font-sans)',
+        }}
+      >
+        <span style={{ fontSize: 13, color: anyOn ? 'var(--color-success)' : 'var(--color-text-dim)' }}>
+          {anyOn ? 'Taken' : 'Not taken'}
+        </span>
+        <span
+          style={{
+            fontSize: 14,
+            color: 'var(--color-text-dim)',
+            transform: open ? 'rotate(90deg)' : 'none',
+            transition: 'transform 200ms',
+          }}
+        >
+          ›
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ borderTop: '1px solid var(--color-border)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 14px',
+              borderBottom: '1px solid var(--color-border)',
+              background: 'var(--color-bg)',
+            }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+              Take all
+            </span>
+            <input
+              type="checkbox"
+              checked={masterOn}
+              onChange={(e) => onMasterToggle(e.target.checked)}
+              className="toggle"
+              aria-label="Take all"
+            />
+          </div>
+          {items.map((item, idx) => {
+            const on = masterOn && !exceptions.includes(item)
+            const skipped = masterOn && exceptions.includes(item)
+            return (
+              <div
+                key={item}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  borderBottom: idx < items.length - 1 ? '1px solid var(--color-border)' : 'none',
+                  background: on ? 'var(--color-surface)' : 'var(--color-bg)',
+                }}
+              >
+                <EditableLabel
+                  label={item}
+                  textStyle={{
+                    fontSize: 14,
+                    color: skipped ? 'var(--color-text-dim)' : 'var(--color-text-primary)',
+                    textDecoration: skipped ? 'line-through' : 'none',
+                  }}
+                />
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => onItemToggle(item)}
+                  className="toggle"
+                  style={{ transform: 'scale(0.85)' }}
+                  aria-label={`${item} taken`}
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function SupplementsSection({ data, onChange, onSave, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
-  const [showCyclic, setShowCyclic] = useState(false)
 
   const isComplete = data.morning_stack_taken || data.evening_stack_taken
 
   const change = (d: SupplementsData) => { setLocalSaved(false); setSaveError(false); onChange(d) }
 
-  const toggleMorningException = (item: string) => {
-    const exceptions = data.morning_exceptions.includes(item)
-      ? data.morning_exceptions.filter((e) => e !== item)
-      : [...data.morning_exceptions, item]
-    change({ ...data, morning_exceptions: exceptions })
+  const toggleMorningItem = (item: string) => {
+    const on = data.morning_stack_taken && !data.morning_exceptions.includes(item)
+    if (on) {
+      change({ ...data, morning_exceptions: [...data.morning_exceptions, item] })
+    } else if (data.morning_stack_taken) {
+      change({ ...data, morning_exceptions: data.morning_exceptions.filter((e) => e !== item) })
+    } else {
+      change({ ...data, morning_stack_taken: true, morning_exceptions: MORNING_ITEMS.filter((i) => i !== item) })
+    }
   }
 
-  const toggleEveningException = (item: string) => {
-    const exceptions = data.evening_exceptions.includes(item)
-      ? data.evening_exceptions.filter((e) => e !== item)
-      : [...data.evening_exceptions, item]
-    change({ ...data, evening_exceptions: exceptions })
-  }
-
-  const confirmMorning = () => {
-    change({ ...data, morning_stack_taken: true, morning_exceptions: [] })
-  }
-
-  const confirmEvening = () => {
-    change({ ...data, evening_stack_taken: true, evening_exceptions: [] })
+  const toggleEveningItem = (item: string) => {
+    const on = data.evening_stack_taken && !data.evening_exceptions.includes(item)
+    if (on) {
+      change({ ...data, evening_exceptions: [...data.evening_exceptions, item] })
+    } else if (data.evening_stack_taken) {
+      change({ ...data, evening_exceptions: data.evening_exceptions.filter((e) => e !== item) })
+    } else {
+      change({ ...data, evening_stack_taken: true, evening_exceptions: EVENING_ITEMS.filter((i) => i !== item) })
+    }
   }
 
   const handleSave = async () => {
@@ -289,163 +383,25 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
         {/* ── Morning stack ──────────────────────────────────────── */}
         <div>
           <StackLabel text="Morning stack" />
-          {!data.morning_stack_taken ? (
-            <button
-              type="button"
-              onClick={confirmMorning}
-              className="btn-primary"
-            >
-              All taken ✓
-            </button>
-          ) : (
-            <div
-              style={{
-                border: '1px solid var(--color-border)',
-                borderRadius: 10,
-                overflow: 'hidden',
-              }}
-            >
-              {MORNING_ITEMS.map((item) => {
-                const skipped = data.morning_exceptions.includes(item)
-                return (
-                  <SupplementItem
-                    key={item}
-                    label={item}
-                    taken={!skipped}
-                    onToggle={() => toggleMorningException(item)}
-                  />
-                )
-              })}
-            </div>
-          )}
-          {data.morning_stack_taken && (
-            <button
-              type="button"
-              onClick={() => change({ ...data, morning_stack_taken: false })}
-              style={{
-                marginTop: 6,
-                fontSize: 12,
-                color: 'var(--color-text-dim)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-              }}
-            >
-              Undo
-            </button>
-          )}
+          <StackAccordion
+            items={MORNING_ITEMS}
+            masterOn={data.morning_stack_taken}
+            exceptions={data.morning_exceptions}
+            onMasterToggle={(on) => change({ ...data, morning_stack_taken: on, morning_exceptions: [] })}
+            onItemToggle={toggleMorningItem}
+          />
         </div>
 
         {/* ── Evening stack ──────────────────────────────────────── */}
         <div>
           <StackLabel text="Evening stack" />
-          {!data.evening_stack_taken ? (
-            <button
-              type="button"
-              onClick={confirmEvening}
-              className="btn-primary"
-            >
-              All taken ✓
-            </button>
-          ) : (
-            <div
-              style={{
-                border: '1px solid var(--color-border)',
-                borderRadius: 10,
-                overflow: 'hidden',
-              }}
-            >
-              {EVENING_ITEMS.map((item) => {
-                const skipped = data.evening_exceptions.includes(item)
-                return (
-                  <SupplementItem
-                    key={item}
-                    label={item}
-                    taken={!skipped}
-                    onToggle={() => toggleEveningException(item)}
-                  />
-                )
-              })}
-            </div>
-          )}
-          {data.evening_stack_taken && (
-            <button
-              type="button"
-              onClick={() => change({ ...data, evening_stack_taken: false })}
-              style={{
-                marginTop: 6,
-                fontSize: 12,
-                color: 'var(--color-text-dim)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-              }}
-            >
-              Undo
-            </button>
-          )}
-        </div>
-
-        {/* ── Cyclic supplements ─────────────────────────────────── */}
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowCyclic((v) => !v)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 0,
-              marginBottom: showCyclic ? 10 : 0,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'var(--color-text-dim)',
-              }}
-            >
-              Cyclic / inactive
-            </span>
-            <span
-              style={{
-                fontSize: 14,
-                color: 'var(--color-text-dim)',
-                transform: showCyclic ? 'rotate(90deg)' : 'none',
-                transition: 'transform 200ms',
-              }}
-            >
-              ›
-            </span>
-          </button>
-
-          {showCyclic && (
-            <div
-              style={{
-                border: '1px solid var(--color-border)',
-                borderRadius: 10,
-                overflow: 'hidden',
-              }}
-            >
-              {CYCLIC_ITEMS.map(({ key, label, note }) => (
-                <CyclicItem
-                  key={key}
-                  label={label}
-                  note={note}
-                  active={data[key] as boolean}
-                  onToggle={(v) => change({ ...data, [key]: v })}
-                />
-              ))}
-            </div>
-          )}
+          <StackAccordion
+            items={EVENING_ITEMS}
+            masterOn={data.evening_stack_taken}
+            exceptions={data.evening_exceptions}
+            onMasterToggle={(on) => change({ ...data, evening_stack_taken: on, evening_exceptions: [] })}
+            onItemToggle={toggleEveningItem}
+          />
         </div>
 
         {/* Save */}
