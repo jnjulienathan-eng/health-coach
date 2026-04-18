@@ -202,6 +202,16 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
           </Field>
         </div>
 
+        {/* Fasting glucose */}
+        <Field label="Fasting glucose" unit="mmol/L">
+          <NumInput
+            value={data.fasting_glucose_mmol}
+            onChange={(v) => set('fasting_glucose_mmol', v)}
+            placeholder="—"
+            width={80}
+          />
+        </Field>
+
         {/* Rested scale */}
         <Field label="Rested on waking">
           <TapScale

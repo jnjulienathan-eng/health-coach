@@ -6,6 +6,7 @@ export interface SleepData {
   rhr: number | null              // bpm
   rested: number | null           // 1–5 tap scale
   nap_minutes: number | null      // daytime nap in minutes
+  fasting_glucose_mmol: number | null  // mmol/L, optional
 }
 
 // ─── Training ────────────────────────────────────────────────────
@@ -15,7 +16,7 @@ export interface TrainingSession {
   id: string
   activity_type: string   // ActivityType for quick-add; any string for custom
   duration_min: number
-  avg_heart_rate: number | null
+  zone3_plus_minutes: number | null  // minutes above ~135 bpm
   active_calories: number | null
 }
 
@@ -34,6 +35,7 @@ export interface MealMacros {
   fat: number | null
   carbs: number | null
   calories: number | null
+  peak_glucose_mmol: number | null  // mmol/L, optional
 }
 
 export interface BreakfastMeal extends MealMacros {
@@ -79,7 +81,6 @@ export type Symptom =
   | 'Other'
 
 export interface ContextData {
-  hrv_score: number | null         // 20–200 ms
   symptoms: Symptom[]
   travelling: boolean
   notes: string
@@ -98,7 +99,7 @@ export interface DailyEntry {
 
 // ─── Defaults ────────────────────────────────────────────────────
 export function emptySleep(): SleepData {
-  return { bedtime: null, duration_min: null, hrv: null, rhr: null, rested: null, nap_minutes: null }
+  return { bedtime: null, duration_min: null, hrv: null, rhr: null, rested: null, nap_minutes: null, fasting_glucose_mmol: null }
 }
 
 export function emptyTraining(): TrainingData {
@@ -106,7 +107,7 @@ export function emptyTraining(): TrainingData {
 }
 
 export function emptyMeal(): MealMacros {
-  return { description: '', protein: null, fiber: null, fat: null, carbs: null, calories: null }
+  return { description: '', protein: null, fiber: null, fat: null, carbs: null, calories: null, peak_glucose_mmol: null }
 }
 
 export function emptyNutrition(): NutritionData {
@@ -141,7 +142,7 @@ export function emptySupplements(): SupplementsData {
 }
 
 export function emptyContext(): ContextData {
-  return { hrv_score: null, symptoms: [], travelling: false, notes: '' }
+  return { symptoms: [], travelling: false, notes: '' }
 }
 
 export function emptyEntry(date: string): DailyEntry {
@@ -186,4 +187,12 @@ export function hrvZone(hrv: number): string {
   if (hrv >= 80)  return 'Moderate training'
   if (hrv >= 60)  return 'Easy only'
   return 'Rest or gentle walk'
+}
+
+// ─── Zone 3+ intensity classification ────────────────────────────
+export function zone3Intensity(zone3Minutes: number | null): 'Easy' | 'Moderate' | 'Hard' | null {
+  if (zone3Minutes == null) return null
+  if (zone3Minutes <= 5) return 'Easy'
+  if (zone3Minutes <= 15) return 'Moderate'
+  return 'Hard'
 }

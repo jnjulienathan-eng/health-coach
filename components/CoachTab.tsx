@@ -56,8 +56,19 @@ function SendIcon() {
   )
 }
 
+type CoachMode = 'wakeup' | 'posttraining' | 'afternoon' | 'earlyevening' | 'endofday'
+
+const MODE_HEADERS: Record<CoachMode, string> = {
+  wakeup:      'Wake-up briefing · sleep & recovery',
+  posttraining: 'Post-training check-in · morning update',
+  afternoon:   'Afternoon check-in · updated as you log',
+  earlyevening: 'Early evening · supplements & hydration',
+  endofday:    'End of day · full review',
+}
+
 export default function CoachTab({ today, cycleDay, currentDate }: Props) {
   const [briefing,         setBriefing]         = useState<Briefing | null>(null)
+  const [briefingMode,     setBriefingMode]     = useState<CoachMode | null>(null)
   const [briefingLoading,  setBriefingLoading]  = useState(false)
   const [briefingError,    setBriefingError]    = useState<string | null>(null)
   const [chatMessages,     setChatMessages]     = useState<ChatMessage[]>([])
@@ -100,6 +111,7 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
       const json = await res.json()
       if (json.error) throw new Error(json.error)
       setBriefing(json.briefing)
+      if (json.mode) setBriefingMode(json.mode as CoachMode)
     } catch (e) {
       setBriefingError(e instanceof Error ? e.message : 'Failed to generate briefing')
     } finally {
@@ -329,8 +341,8 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
         </h1>
         <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
           {sleepLogged
-            ? 'Morning briefing based on last night\'s sleep data.'
-            : 'Log today\'s sleep data to receive your morning briefing.'}
+            ? (briefingMode ? MODE_HEADERS[briefingMode] : 'Generating briefing…')
+            : 'Log today\'s sleep data to receive your briefing.'}
         </p>
       </div>
 

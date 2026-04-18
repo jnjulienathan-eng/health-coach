@@ -16,30 +16,14 @@ interface Props {
 }
 
 // ─── Dynamic calorie target ───────────────────────────────────────
-function hrZone(hr: number, activityType: string): 'Easy' | 'Moderate' | 'Hard' {
-  const t = activityType.toLowerCase()
-  let moderateStart: number, hardStart: number
-  if      (t === 'swim')                       { moderateStart = 135; hardStart = 150 }
-  else if (t === 'run')                        { moderateStart = 145; hardStart = 160 }
-  else if (t === 'cycle')                      { moderateStart = 130; hardStart = 150 }
-  else if (t === 'egym' || t === 'strength')   { moderateStart = 120; hardStart = 135 }
-  else if (t === 'walk')                       { moderateStart = 115; hardStart = 130 }
-  else                                         { moderateStart = 130; hardStart = 150 }
-  if (hr >= hardStart)     return 'Hard'
-  if (hr >= moderateStart) return 'Moderate'
-  return 'Easy'
-}
-
 function getDailyCalorieTarget(sessions: TrainingSession[]): number {
-  const totalMinutes = sessions.reduce((sum, s) => sum + (s.duration_min || 0), 0)
-  const hasHard = sessions.some(s => s.avg_heart_rate != null && hrZone(s.avg_heart_rate, s.activity_type) === 'Hard')
+  if (sessions.length === 0) return 1800
+  const totalZone3 = sessions.reduce((sum, s) => sum + (s.zone3_plus_minutes ?? 0), 0)
   const sessionCount = sessions.length
-  if (sessionCount === 0) return 1800
-  if (totalMinutes < 45 && !hasHard) return 1950
-  if (sessionCount >= 2 && hasHard) return 2500
-  if (hasHard || sessionCount >= 2) return 2300
-  if (totalMinutes <= 75) return 2100
-  return 2100
+  if (sessionCount >= 2 && totalZone3 >= 30) return 2500   // Very high
+  if (sessionCount >= 2 || totalZone3 >= 16) return 2300   // High
+  if (totalZone3 >= 6) return 2100                         // Moderate
+  return 1950                                              // Light
 }
 
 // ─── Compute daily totals ────────────────────────────────────────
@@ -621,6 +605,38 @@ function MealRow({
         >
           + Add macros manually
         </button>
+      )}
+
+      {/* Peak glucose — only visible when meal has a description */}
+      {!noMacros && meal.description && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', minWidth: 90 }}>
+            Peak glucose
+          </div>
+          <input
+            type="number"
+            inputMode="decimal"
+            step={0.1}
+            min={3.0}
+            max={15.0}
+            value={meal.peak_glucose_mmol ?? ''}
+            onChange={(e) => onChange({ ...meal, peak_glucose_mmol: e.target.value === '' ? null : Number(e.target.value) })}
+            placeholder="—"
+            style={{
+              width: 64,
+              height: 32,
+              padding: '0 8px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 14,
+              color: 'var(--color-text-primary)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 6,
+              outline: 'none',
+            }}
+          />
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>mmol/L</span>
+        </div>
       )}
     </div>
   )

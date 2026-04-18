@@ -119,7 +119,7 @@ function EntryDetail({ entry }: { entry: DailyEntry }) {
 
   const trainParts = t.sessions.length > 0
     ? t.sessions.map(sess =>
-        `${activityEmoji(sess.activity_type)} ${sess.activity_type} ${sess.duration_min}min${sess.avg_heart_rate ? ` ${sess.avg_heart_rate}bpm` : ''}`
+        `${activityEmoji(sess.activity_type)} ${sess.activity_type} ${sess.duration_min}min${sess.zone3_plus_minutes != null ? ` z3+:${sess.zone3_plus_minutes}m` : ''}`
       ).join('  ')
     : null
 
@@ -142,7 +142,6 @@ function EntryDetail({ entry }: { entry: DailyEntry }) {
     (c as unknown as Record<string,unknown>).cycle_day != null
       ? `Day ${(c as unknown as Record<string,unknown>).cycle_day}`
       : null,
-    c.hrv_score != null ? `HRV ${c.hrv_score}ms` : null,
     c.symptoms.length > 0  ? c.symptoms.join(', ')        : null,
     c.travelling           ? 'Travelling'                  : null,
   ].filter(Boolean).join(' · ')

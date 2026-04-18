@@ -35,18 +35,18 @@ export function behaviorScore(entry: DailyEntry): number {
   }
 
   // 4. Training appropriate to HRV — 20%
-  // Intensity bands (HR-based): easy < 130 | moderate 130–154 | hard 155+
+  // Intensity derived from zone3_plus_minutes: 0–5 = easy, 6–15 = moderate, 16+ = hard
   // Core principle: going easier than HRV recommends is never penalised.
   // Missing HRV → component weight redistributes out entirely (handled by guard below).
   function sessionIntensity(sess: TrainingSession): 'easy' | 'moderate' | 'hard' {
-    const hr = sess.avg_heart_rate
+    const z3 = sess.zone3_plus_minutes
     const t  = sess.activity_type.toLowerCase()
-    if (hr != null) {
-      if (hr >= 155) return 'hard'
-      if (hr >= 130) return 'moderate'
+    if (z3 != null) {
+      if (z3 >= 16) return 'hard'
+      if (z3 >= 6)  return 'moderate'
       return 'easy'
     }
-    // No HR logged: infer from type + duration
+    // No zone3+ logged: infer from type + duration
     if (t === 'walk') return 'easy'
     const isIntenseType = t === 'strength' || t === 'egym' || t === 'swim' || t === 'run'
     if (isIntenseType && sess.duration_min >= 45) return 'hard'
@@ -61,37 +61,23 @@ export function behaviorScore(entry: DailyEntry): number {
 
     if (hrv > 100) {
       // Recommendation: train hard
-      // Full score: any session with HR 155+ or strength/swim/run ≥ 45 min
-      // 70: moderate effort (sessions logged but below hard threshold)
-      // 30: walk only or no sessions
-      const meetsHard = sessions.some(sess => {
-        const hr = sess.avg_heart_rate
-        const t  = sess.activity_type.toLowerCase()
-        return (hr != null && hr >= 155) ||
-               ((t === 'strength' || t === 'egym' || t === 'swim' || t === 'run') && sess.duration_min >= 45)
-      })
+      const meetsHard = sessions.some(sess => sessionIntensity(sess) === 'hard')
       const walkOnly = hasSessions && sessions.every(sess => sess.activity_type.toLowerCase() === 'walk')
       s = meetsHard ? 100 : (hasSessions && !walkOnly) ? 70 : 30
 
     } else if (hrv >= 80) {
-      // Recommendation: moderate
-      // Full score for HR 130–154, strength, or going easy (no penalty for under-training)
-      // Penalty only for HR 170+
-      const overExerted = sessions.some(sess => sess.avg_heart_rate != null && sess.avg_heart_rate >= 170)
+      // Recommendation: moderate — no penalty for under-training, only for going very hard
+      const overExerted = sessions.some(sess => (sess.zone3_plus_minutes ?? 0) >= 30)
       s = overExerted ? 30 : 100
 
     } else if (hrv >= 60) {
       // Recommendation: easy only
-      // Full score for walk/easy/no sessions
-      // 50 for moderate effort
-      // Penalty for high intensity
       const hasHard     = sessions.some(sess => sessionIntensity(sess) === 'hard')
       const hasModerate = sessions.some(sess => sessionIntensity(sess) === 'moderate')
       s = hasHard ? 20 : hasModerate ? 50 : 100
 
     } else {
       // Recommendation: rest (HRV < 60)
-      // Full score for no training; penalty scales with intensity logged
       if (!hasSessions) {
         s = 100
       } else {

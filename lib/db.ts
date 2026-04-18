@@ -14,12 +14,13 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
   return {
     date: r.date as string,
     sleep: {
-      bedtime:      (r.bedtime          as string  | null) ?? null,
-      duration_min: (r.sleep_duration_min as number | null) ?? null,
-      hrv:          (r.hrv              as number  | null) ?? null,
-      rhr:          (r.rhr              as number  | null) ?? null,
-      rested:       (r.rested           as number  | null) ?? null,
-      nap_minutes:  (r.nap_minutes      as number  | null) ?? null,
+      bedtime:              (r.bedtime              as string  | null) ?? null,
+      duration_min:         (r.sleep_duration_min   as number  | null) ?? null,
+      hrv:                  (r.hrv                  as number  | null) ?? null,
+      rhr:                  (r.rhr                  as number  | null) ?? null,
+      rested:               (r.rested               as number  | null) ?? null,
+      nap_minutes:          (r.nap_minutes          as number  | null) ?? null,
+      fasting_glucose_mmol: (r.fasting_glucose_mmol as number  | null) ?? null,
     },
     training: {
       sessions,
@@ -29,45 +30,50 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
     },
     nutrition: {
       pre_workout_snack: {
-        description: (r.pre_workout_snack as string) ?? '',
-        protein:  (r.pre_workout_snack_protein  as number | null) ?? null,
-        fiber:    (r.pre_workout_snack_fiber     as number | null) ?? null,
-        fat:      (r.pre_workout_snack_fat       as number | null) ?? null,
-        carbs:    (r.pre_workout_snack_carbs     as number | null) ?? null,
-        calories: (r.pre_workout_snack_calories  as number | null) ?? null,
+        description:       (r.pre_workout_snack          as string) ?? '',
+        protein:           (r.pre_workout_snack_protein  as number | null) ?? null,
+        fiber:             (r.pre_workout_snack_fiber    as number | null) ?? null,
+        fat:               (r.pre_workout_snack_fat      as number | null) ?? null,
+        carbs:             (r.pre_workout_snack_carbs    as number | null) ?? null,
+        calories:          (r.pre_workout_snack_calories as number | null) ?? null,
+        peak_glucose_mmol: null,  // stored in JSONB — read automatically if present
       },
       breakfast: {
-        template_name: (r.breakfast_template    as string  | null) ?? null,
-        description:   (r.breakfast_description as string) ?? '',
-        protein:       (r.breakfast_protein     as number  | null) ?? null,
-        fiber:         (r.breakfast_fiber       as number  | null) ?? null,
-        fat:           (r.breakfast_fat         as number  | null) ?? null,
-        carbs:         (r.breakfast_carbs       as number  | null) ?? null,
-        calories:      (r.breakfast_calories    as number  | null) ?? null,
+        template_name:     (r.breakfast_template    as string  | null) ?? null,
+        description:       (r.breakfast_description as string) ?? '',
+        protein:           (r.breakfast_protein     as number  | null) ?? null,
+        fiber:             (r.breakfast_fiber       as number  | null) ?? null,
+        fat:               (r.breakfast_fat         as number  | null) ?? null,
+        carbs:             (r.breakfast_carbs       as number  | null) ?? null,
+        calories:          (r.breakfast_calories    as number  | null) ?? null,
+        peak_glucose_mmol: null,
       },
       lunch: {
-        description: (r.lunch_description as string) ?? '',
-        protein:     (r.lunch_protein     as number | null) ?? null,
-        fiber:       (r.lunch_fiber       as number | null) ?? null,
-        fat:         (r.lunch_fat         as number | null) ?? null,
-        carbs:       (r.lunch_carbs       as number | null) ?? null,
-        calories:    (r.lunch_calories    as number | null) ?? null,
+        description:       (r.lunch_description as string) ?? '',
+        protein:           (r.lunch_protein     as number | null) ?? null,
+        fiber:             (r.lunch_fiber       as number | null) ?? null,
+        fat:               (r.lunch_fat         as number | null) ?? null,
+        carbs:             (r.lunch_carbs       as number | null) ?? null,
+        calories:          (r.lunch_calories    as number | null) ?? null,
+        peak_glucose_mmol: null,
       },
       dinner: {
-        description: (r.dinner_description as string) ?? '',
-        protein:     (r.dinner_protein     as number | null) ?? null,
-        fiber:       (r.dinner_fiber       as number | null) ?? null,
-        fat:         (r.dinner_fat         as number | null) ?? null,
-        carbs:       (r.dinner_carbs       as number | null) ?? null,
-        calories:    (r.dinner_calories    as number | null) ?? null,
+        description:       (r.dinner_description as string) ?? '',
+        protein:           (r.dinner_protein     as number | null) ?? null,
+        fiber:             (r.dinner_fiber       as number | null) ?? null,
+        fat:               (r.dinner_fat         as number | null) ?? null,
+        carbs:             (r.dinner_carbs       as number | null) ?? null,
+        calories:          (r.dinner_calories    as number | null) ?? null,
+        peak_glucose_mmol: null,
       },
       incidentals: {
-        description: (r.incidentals_description as string) ?? '',
-        protein:     (r.incidentals_protein     as number | null) ?? null,
-        fiber:       (r.incidentals_fiber       as number | null) ?? null,
-        fat:         (r.incidentals_fat         as number | null) ?? null,
-        carbs:       (r.incidentals_carbs       as number | null) ?? null,
-        calories:    (r.incidentals_calories    as number | null) ?? null,
+        description:       (r.incidentals_description as string) ?? '',
+        protein:           (r.incidentals_protein     as number | null) ?? null,
+        fiber:             (r.incidentals_fiber       as number | null) ?? null,
+        fat:               (r.incidentals_fat         as number | null) ?? null,
+        carbs:             (r.incidentals_carbs       as number | null) ?? null,
+        calories:          (r.incidentals_calories    as number | null) ?? null,
+        peak_glucose_mmol: null,
       },
       total_protein:  (r.total_protein  as number | null) ?? null,
       total_fiber:    (r.total_fiber    as number | null) ?? null,
@@ -89,10 +95,9 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
       phosphatidylserine_taken: (r.phosphatidylserine_taken as boolean | null) ?? false,
     },
     context: {
-      hrv_score:    (r.hrv_score    as number  | null) ?? null,
-      symptoms:     (r.symptoms     as Symptom[]) ?? [],
-      travelling:   (r.travelling   as boolean | null) ?? false,
-      notes:        (r.notes        as string) ?? '',
+      symptoms:   (r.symptoms   as Symptom[]) ?? [],
+      travelling: (r.travelling as boolean | null) ?? false,
+      notes:      (r.notes      as string) ?? '',
       // cycle_day persisted as top-level column, surfaced here for runtime use
       ...(r.cycle_day != null ? { cycle_day: r.cycle_day as number } : {}),
     } as DailyEntry['context'],
@@ -119,11 +124,11 @@ async function loadSessionsForDates(dates: string[]): Promise<Record<string, Tra
     const d = row.date as string
     if (!map[d]) map[d] = []
     map[d].push({
-      id:             row.id              as string,
-      activity_type:  row.activity_type   as string,
-      duration_min:   row.duration_min    as number,
-      avg_heart_rate: (row.avg_heart_rate as number | null) ?? null,
-      active_calories: (row.active_calories as number | null) ?? null,
+      id:                row.id                as string,
+      activity_type:     row.activity_type     as string,
+      duration_min:      row.duration_min      as number,
+      zone3_plus_minutes: (row.zone3_plus_minutes as number | null) ?? null,
+      active_calories:   (row.active_calories  as number | null) ?? null,
     })
   }
   return map
@@ -139,12 +144,13 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     updated_at: new Date().toISOString(),
 
     // Sleep
-    bedtime:            entry.sleep.bedtime,
-    sleep_duration_min: entry.sleep.duration_min,
-    hrv:                entry.sleep.hrv,
-    rhr:                entry.sleep.rhr,
-    rested:             entry.sleep.rested,
-    nap_minutes:        entry.sleep.nap_minutes ?? null,
+    bedtime:              entry.sleep.bedtime,
+    sleep_duration_min:   entry.sleep.duration_min,
+    hrv:                  entry.sleep.hrv,
+    rhr:                  entry.sleep.rhr,
+    rested:               entry.sleep.rested,
+    nap_minutes:          entry.sleep.nap_minutes ?? null,
+    fasting_glucose_mmol: entry.sleep.fasting_glucose_mmol ?? null,
 
     // Training (cycled only — sessions go to training_sessions table)
     cycled_today:     entry.training.cycled_today,
@@ -206,11 +212,10 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     phosphatidylserine_taken: entry.supplements.phosphatidylserine_taken,
 
     // Context
-    cycle_day:    cycleDay ?? null,
-    hrv_score:    entry.context.hrv_score,
-    travelling:   entry.context.travelling,
-    symptoms:     entry.context.symptoms,
-    notes:        entry.context.notes || null,
+    cycle_day:  cycleDay ?? null,
+    travelling: entry.context.travelling,
+    symptoms:   entry.context.symptoms,
+    notes:      entry.context.notes || null,
 
     // Hydration
     hydration_ml: entry.hydration_ml ?? null,
@@ -246,12 +251,12 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
       .from('training_sessions')
       .insert(
         entry.training.sessions.map(s => ({
-          user_id:        'julie',
-          date:           entry.date,
-          activity_type:  s.activity_type,
-          duration_min:   s.duration_min,
-          avg_heart_rate: s.avg_heart_rate,
-          active_calories: s.active_calories,
+          user_id:            'julie',
+          date:               entry.date,
+          activity_type:      s.activity_type,
+          duration_min:       s.duration_min,
+          zone3_plus_minutes: s.zone3_plus_minutes ?? null,
+          active_calories:    s.active_calories ?? null,
         }))
       )
 

@@ -31,7 +31,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
   const change = (d: ContextData) => { setLocalSaved(false); setSaveError(false); onChange(d) }
 
   const isComplete =
-    data.hrv_score != null || data.notes.length > 0 || data.symptoms.length > 0
+    data.notes.length > 0 || data.symptoms.length > 0
 
   const toggleSymptom = (s: Symptom) => {
     const symptoms = data.symptoms.includes(s)
@@ -139,49 +139,6 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
               <br />
               <span style={{ fontSize: 11, fontWeight: 400 }}>Reset to Day 1</span>
             </button>
-          </div>
-        </div>
-
-        {/* ── HRV Score ──────────────────────────────────────────── */}
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: 'var(--color-text-secondary)',
-              marginBottom: 8,
-            }}
-          >
-            HRV Score
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="number"
-              min={20}
-              max={200}
-              value={data.hrv_score ?? ''}
-              placeholder="e.g. 82"
-              onChange={(e) => {
-                const v = e.target.value === '' ? null : parseInt(e.target.value, 10)
-                change({ ...data, hrv_score: v != null && !isNaN(v) ? v : null })
-              }}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 32,
-                fontWeight: 400,
-                lineHeight: 1,
-                color: data.hrv_score != null ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                width: 100,
-                padding: 0,
-                MozAppearance: 'textfield',
-              }}
-            />
-            <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>ms</span>
           </div>
         </div>
 
