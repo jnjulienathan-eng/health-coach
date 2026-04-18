@@ -701,6 +701,7 @@ export default function NutritionSection({
       fat:      (current.fat      ?? 0) + (chip.macros.fat      ?? 0),
       carbs:    (current.carbs    ?? 0) + (chip.macros.carbs    ?? 0),
       calories: (current.calories ?? 0) + (chip.macros.calories ?? 0),
+      peak_glucose_mmol: current.peak_glucose_mmol ?? null,
     }
     updateMeal('incidentals', merged)
   }
