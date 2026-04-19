@@ -13,6 +13,7 @@ import ContextSection from '@/components/sections/ContextSection'
 import CoachTab from '@/components/CoachTab'
 import DashboardTab from '@/components/DashboardTab'
 import HistoryTab from '@/components/HistoryTab'
+import GoalsTab from '@/components/GoalsTab'
 
 // ─── Date utilities ───────────────────────────────────────────────
 function todayStr() {
@@ -43,9 +44,20 @@ function formatDate(dateStr: string) {
 }
 
 // ─── Types ────────────────────────────────────────────────────────
-type Tab = 'today' | 'coach' | 'dashboard' | 'history'
+type Tab = 'goals' | 'today' | 'coach' | 'dashboard' | 'history'
 
 // ─── Icons ───────────────────────────────────────────────────────
+function IconBodyCipher({ active }: { active: boolean }) {
+  const c = active ? 'var(--color-primary)' : 'var(--color-text-dim)'
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <circle cx="11" cy="11" r="7" stroke={c} strokeWidth="1.5" />
+      <circle cx="11" cy="11" r="2.5" stroke={c} strokeWidth="1.5" />
+      <path d="M11 4v3M11 15v3M4 11h3M15 11h3" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function IconToday({ active }: { active: boolean }) {
   const c = active ? 'var(--color-primary)' : 'var(--color-text-dim)'
   return (
@@ -92,10 +104,11 @@ function IconHistory({ active }: { active: boolean }) {
 }
 
 const TABS: { id: Tab; label: string; Icon: React.FC<{ active: boolean }> }[] = [
-  { id: 'today',     label: 'Today',     Icon: IconToday },
-  { id: 'coach',     label: 'Coach',     Icon: IconCoach },
-  { id: 'dashboard', label: 'Dashboard', Icon: IconDashboard },
-  { id: 'history',   label: 'History',   Icon: IconHistory },
+  { id: 'goals',     label: 'BodyCipher', Icon: IconBodyCipher },
+  { id: 'today',     label: 'Today',      Icon: IconToday },
+  { id: 'coach',     label: 'Coach',      Icon: IconCoach },
+  { id: 'dashboard', label: 'Dashboard',  Icon: IconDashboard },
+  { id: 'history',   label: 'History',    Icon: IconHistory },
 ]
 
 // ─── Main app ─────────────────────────────────────────────────────
@@ -195,6 +208,11 @@ export default function App() {
         className="mx-auto w-full"
         style={{ maxWidth: '480px', padding: '20px 20px 0' }}
       >
+
+        {/* ── GOALS TAB (BodyCipher home) ───────────────────────── */}
+        {activeTab === 'goals' && (
+          <GoalsTab onNavigateDashboard={() => setActiveTab('dashboard')} />
+        )}
 
         {/* ── TODAY TAB ────────────────────────────────────────── */}
         {activeTab === 'today' && (

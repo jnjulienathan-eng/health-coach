@@ -157,6 +157,33 @@ export function emptyEntry(date: string): DailyEntry {
   }
 }
 
+// ─── Goals tab ────────────────────────────────────────────────────
+export interface BiomarkerReading {
+  id: string
+  user_id: string
+  marker: string
+  value: number
+  unit: string | null
+  recorded_on: string   // YYYY-MM-DD
+  notes: string | null
+}
+
+export interface HealthAppointment {
+  id: string
+  user_id: string
+  type: string
+  last_visit: string | null    // YYYY-MM-DD
+  interval_months: number | null
+  next_booked: string | null   // YYYY-MM-DD
+}
+
+export interface GoalsData {
+  todayScores: { behavior_score: number | null; outcome_score: number | null }
+  biomarkers: BiomarkerReading[]
+  fastingGlucose7d: (number | null)[]
+  appointments: HealthAppointment[]
+}
+
 // ─── Score helpers ────────────────────────────────────────────────
 export function scoreColor(score: number): string {
   if (score >= 75) return 'var(--color-success)'

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { DailyEntry, TrainingSession, Symptom } from './types'
+import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData } from './types'
 import { emptyEntry } from './types'
 import { behaviorScore, outcomeScore } from './scores'
 
@@ -355,6 +355,69 @@ export interface BreakfastTemplate {
   description?: string
 }
 
+// ─── getGoalsData ─────────────────────────────────────────────────
+export async function getGoalsData(): Promise<GoalsData> {
+  const today = new Date().toISOString().split('T')[0]
+  const since7d = new Date()
+  since7d.setDate(since7d.getDate() - 7)
+  const since7dStr = since7d.toISOString().split('T')[0]
+
+  const [scoresRes, biomarkersRes, glucoseRes, appointmentsRes] = await Promise.all([
+    supabase
+      .from('daily_entries')
+      .select('behavior_score, outcome_score')
+      .eq('user_id', 'julie')
+      .eq('date', today)
+      .maybeSingle(),
+    supabase
+      .from('biomarker_readings')
+      .select('*')
+      .eq('user_id', 'julie')
+      .in('marker', ['vo2_max', 'ldl', 'hdl', 'hba1c'])
+      .order('recorded_on', { ascending: false }),
+    supabase
+      .from('daily_entries')
+      .select('fasting_glucose_mmol')
+      .eq('user_id', 'julie')
+      .gte('date', since7dStr)
+      .lte('date', today)
+      .order('date', { ascending: false }),
+    supabase
+      .from('health_appointments')
+      .select('*')
+      .eq('user_id', 'julie'),
+  ])
+
+  const sr = scoresRes.data as Record<string, unknown> | null
+  const todayScores = {
+    behavior_score: sr ? (sr.behavior_score as number | null) : null,
+    outcome_score:  sr ? (sr.outcome_score  as number | null) : null,
+  }
+
+  const biomarkers = (biomarkersRes.data ?? []) as BiomarkerReading[]
+
+  const fastingGlucose7d = ((glucoseRes.data ?? []) as Record<string, unknown>[])
+    .map(row => row.fasting_glucose_mmol as number | null)
+
+  const appointments = (appointmentsRes.data ?? []) as HealthAppointment[]
+
+  return { todayScores, biomarkers, fastingGlucose7d, appointments }
+}
+
+// ─── saveAppointment ──────────────────────────────────────────────
+export async function saveAppointment(
+  id: string,
+  updates: { last_visit?: string | null; next_booked?: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from('health_appointments')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', 'julie')
+  if (error) throw error
+}
+
+// ─── Breakfast templates (hardcoded) ─────────────────────────────
 export async function loadBreakfastTemplates(): Promise<BreakfastTemplate[]> {
   return [
     { id: '1', name: 'Yogurt bowl',                 protein: 41, carbs: 55, fat: 36, fiber: 17, calories: 712 },
