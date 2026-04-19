@@ -20,7 +20,9 @@
   --color-success:        #3D9A6B;
 
   /* VO2 max spectrum bar */
+  --color-spectrum-start: #9BADB8;
   --color-spectrum-good:  #7DB89A;
+  --color-spectrum-end:   #2C7A52;
 }
 
 /* ─── Tailwind v4 theme extension ───────────────────────────────── */
