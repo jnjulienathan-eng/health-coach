@@ -211,6 +211,136 @@ _Last updated: April 18, 2026_
 
 ---
 
+## Goals Tab (BodyCipher Tab) — Specced 19 April 2026
+
+### App identity
+
+- **Name:** BodyCipher
+- **Tagline:** decode your body
+- **Tab name:** BodyCipher (the goals/home tab)
+
+---
+
+### Tab structure — three sections
+
+#### Section 1: Hero
+
+- Dynamic greeting generated via Anthropic API on tab load
+- Context passed: time of day (morning/afternoon/evening), day of week, training logged today (yes/no), HRV band (high/moderate/low/rest). Never pass cycle day.
+- Tone: witty but warm, occasionally deadpan, never cheesy, never generic fitness app energy. One sentence after "Good [time], Julie." Julie in green (#1D9E75).
+- Two score cards side by side: Behavior (green, #E1F5EE background) and Outcome (blue, #E6F1FB background)
+- Each card: label, score number, small progress ring with icon inside. No delta. No tagline on cards.
+- Tapping either card navigates to Dashboard tab
+- Score values pulled from same calculation as Dashboard, live
+
+#### Section 2: Long-term goals
+
+Section header: "Long-term goals"
+Three cards, collapsed on tab, expand inline on tap
+
+**Card 1 — VO2 max**
+
+- No ring — spectrum band instead
+- Bands: Good (31–37) / Excellent (38–43) / Superior (43+). No age shown anywhere.
+- Marker shows current value on spectrum
+- Badge shows next tier e.g. "Excellent →"
+- Sparkline: last 5–6 readings over time with dates
+- Data source: manually logged
+- Current value: 36 ml/kg/min
+- Target: 40, then keep improving — no finite ceiling
+
+**Card 2 — Cardiovascular health**
+
+- Pink heart icon next to card name
+- Headline: LDL:HDL ratio (current 2.5 — Good)
+- LDL spectrum: Optimal (<100) / Near optimal (100–129) / Borderline (130–159) / High (160+). Gradient left=green right=red. Current: 124 mg/dL.
+- HDL spectrum: Low (<40) / Acceptable (40–59) / Protective (60+). Gradient reversed. Current: 50 mg/dL.
+- Targets: LDL <100, HDL >60
+- Sparkline: ratio trend over time. One data point Oct 2024: 2.48. Dashed risk threshold line at 3.5.
+- Footer: "Last tested Oct 2024 · bloodwork overdue"
+- Tapping LDL or HDL stat opens manual entry bottom sheet: value + date
+- When new bloodwork logged, automatically updates health calendar bloodwork item
+- Data source: manual entry after each blood test
+
+**Card 3 — Glucose stability**
+
+- Amber waveform icon next to card name
+- Headline: 7-day rolling average of daily fasting glucose from context section entries. Current: 5.1 mmol/L.
+- Secondary stat: HbA1c (current 5.2%) — tappable to update via bottom sheet: value + date
+- Spectrum: Low (<4.0) / Optimal (4.0–5.4) / Good (5.5–6.0) / Watch (6.0+). Note displayed: "post-meal peaks up to 7.8 normal"
+- Sparkline: 7 daily fasting readings across current week
+- CGM toggle: on/off. When off — card goes greyed/dormant, sparkline replaced by "No active CGM sensor" + last snapshot date and value
+- Data source: daily fasting glucose auto-computed from context section entries (7-day rolling average), HbA1c manual
+
+#### Section 3: Health calendar
+
+Section header: "Health calendar"
+
+**Always visible (rolling booking cycle):**
+- Dermatologist — every 6 months
+- Dentist — every 6 months
+
+**Surfaces 4 months before due, disappears once logged:**
+- Gynaecologist — annual
+- Full bloodwork — annual (covers lipids, thyroid panel, ferritin, D3). Logging here links to cardiovascular goal card.
+- Breast scan — annual
+- Thyroid scan — annual (ultrasound, history of nodules)
+- Bone density scan — baseline, then every 2 years
+- Colonoscopy — every 10 years, lowest visual weight
+- Eye / optometrist — annual, low urgency
+
+**Each item shows:**
+- Coloured rounded square category icon
+- Name and cadence
+- Status: Done (green) / Overdue (red) / Due soon (amber) / Booked (green with date)
+- When booked: shows appointment date e.g. "Derm · 3 May" with calendar icon
+- Next due date when applicable
+
+**Tapping any item opens bottom sheet:**
+- Mark as done with date field
+- Book appointment with date field
+- Optional note field
+
+**Status tiers:**
+- Coming up — within 4 months, shows booked date if entered
+- Due / overdue — most prominent
+- All clear — item disappears until next cycle
+
+---
+
+### Visual design
+
+- White cards on tertiary background
+- Green (#3D9A6B / #1D9E75) for behavior/VO2, blue for outcome/LDL, amber for glucose, pink for cardiovascular icon
+- Spectrum bands replace finite rings for all long-term goals
+- Small coloured rounded square icons throughout
+- Motivational footer quote at bottom of tab (fixed): "Small choices. Strong direction. You're becoming who you're building."
+- BodyCipher wordmark at top of tab
+- Logo asset to be swapped in when designed — placeholder text for now
+- Overall feel: Muji meets Apple Health, warmer and more alive, not clinical
+
+---
+
+### Data connections
+
+- Behavior and Outcome scores: pulled from Dashboard calculation, live
+- VO2 max: manually logged
+- LDL/HDL: manually logged after bloodwork, links to health calendar bloodwork item
+- Glucose 7-day average: auto-computed from daily fasting glucose in context section
+- HbA1c: manually logged
+- Health calendar dates: manually entered
+- CGM toggle: manual, persists across sessions
+
+---
+
+### Deferred
+
+- Outlook calendar sync
+- Apple Health VO2 max auto-sync
+- Claude Design polish pass on icons and visual warmth
+
+---
+
 ## PROCESS REMINDERS
 
 - **Branch only.** Claude Code never pushes to main directly.
