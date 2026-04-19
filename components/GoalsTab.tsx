@@ -434,15 +434,15 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
                       cursor: 'pointer',
                       padding: 0,
                       fontFamily: 'var(--font-mono)',
-                      fontSize: 36,
+                      fontSize: vo2Max ? 36 : 15,
                       fontWeight: 700,
                       lineHeight: 1,
-                      color: 'var(--color-text-primary)',
+                      color: vo2Max ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
                     }}
                   >
-                    {vo2Max ? vo2Max.value : '–'}
+                    {vo2Max ? vo2Max.value : 'Not yet logged'}
                   </button>
-                  <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>ml/kg/min</span>
+                  {vo2Max && <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>ml/kg/min</span>}
                 </div>
               </div>
               {vo2Max && vo2NextTier(vo2Max.value) && (
@@ -581,8 +581,8 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
                 return (
                   <svg viewBox="0 0 280 76" width="100%" style={{ display: 'block' }}>
                     <defs>
-                      <filter id="vo2Glow" x="-20%" y="-50%" width="140%" height="200%">
-                        <feGaussianBlur stdDeviation="2.5" result="blur" />
+                      <filter id="vo2Glow" x="-30%" y="-80%" width="160%" height="260%">
+                        <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
                         <feMerge>
                           <feMergeNode in="blur" />
                           <feMergeNode in="SourceGraphic" />
@@ -597,7 +597,7 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
                     {points.length >= 2 && (
                       <>
                         <path d={fillPath} fill="url(#vo2FillGrad)" />
-                        <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="3" opacity="0.3" filter="url(#vo2Glow)" />
+                        <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="4" opacity="0.55" filter="url(#vo2Glow)" />
                         <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
                       </>
                     )}
