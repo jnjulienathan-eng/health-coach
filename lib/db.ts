@@ -417,6 +417,35 @@ export async function saveAppointment(
   if (error) throw error
 }
 
+// ─── getVo2SparklineData ──────────────────────────────────────────
+export async function getVo2SparklineData(): Promise<BiomarkerReading[]> {
+  const { data, error } = await supabase
+    .from('biomarker_readings')
+    .select('*')
+    .eq('user_id', 'julie')
+    .eq('marker', 'vo2_max')
+    .order('recorded_on', { ascending: true })
+    .limit(6)
+
+  if (error) throw error
+  return (data ?? []) as BiomarkerReading[]
+}
+
+// ─── saveVo2Reading ───────────────────────────────────────────────
+export async function saveVo2Reading(value: number, date: string): Promise<void> {
+  const { error } = await supabase
+    .from('biomarker_readings')
+    .insert({
+      user_id:     'julie',
+      marker:      'vo2_max',
+      value,
+      unit:        'ml/kg/min',
+      recorded_on: date,
+    })
+
+  if (error) throw error
+}
+
 // ─── Breakfast templates (hardcoded) ─────────────────────────────
 export async function loadBreakfastTemplates(): Promise<BreakfastTemplate[]> {
   return [

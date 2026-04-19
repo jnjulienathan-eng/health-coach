@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getGoalsData, saveAppointment } from '@/lib/db'
-import type { GoalsData, HealthAppointment } from '@/lib/types'
+import { getGoalsData, saveAppointment, getVo2SparklineData, saveVo2Reading } from '@/lib/db'
+import type { GoalsData, HealthAppointment, BiomarkerReading } from '@/lib/types'
 import { scoreColor } from '@/lib/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -54,15 +54,55 @@ const APPT_LABELS: Record<string, string> = {
 
 const ALWAYS_SHOW = ['dentist', 'dermatologist']
 
-// VO2 max bands for women 50–59 (scale max: 50 ml/kg/min)
+// VO2 max bands (scale max: 50 ml/kg/min)
 const VO2_SCALE_MAX = 50
 const VO2_BANDS = [
-  { label: 'Poor',      min: 0,  max: 18, color: 'var(--color-danger)' },
-  { label: 'Fair',      min: 19, max: 24, color: 'var(--color-amber)' },
-  { label: 'Good',      min: 25, max: 30, color: 'var(--color-spectrum-good)' },
-  { label: 'Excellent', min: 31, max: 37, color: 'var(--color-success)' },
-  { label: 'Superior',  min: 38, max: 50, color: 'var(--color-primary-dark)' },
+  { label: 'Poor',      rangeLabel: '<23',   start: 0,  end: 23 },
+  { label: 'Fair',      rangeLabel: '23–27', start: 23, end: 28 },
+  { label: 'Good',      rangeLabel: '28–32', start: 28, end: 33 },
+  { label: 'Excellent', rangeLabel: '33–36', start: 33, end: 37 },
+  { label: 'Superior',  rangeLabel: '37+',   start: 37, end: 50 },
 ]
+
+function vo2NextTier(value: number): string | null {
+  if (value < 23) return 'Fair'
+  if (value < 28) return 'Good'
+  if (value < 33) return 'Excellent'
+  if (value < 37) return 'Superior'
+  return null
+}
+
+function fmtSparkDate(s: string): string {
+  return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+}
+
+function buildVo2Sparkline(readings: BiomarkerReading[]): {
+  linePath: string
+  fillPath: string
+  points: { x: number; y: number; value: number; date: string }[]
+} {
+  const n = readings.length
+  if (n === 0) return { linePath: '', fillPath: '', points: [] }
+
+  const PAD_X = 22, PAD_Y = 8, W = 280, CHART_H = 48
+  const xOf = (i: number) => n === 1 ? W / 2 : PAD_X + (i / (n - 1)) * (W - 2 * PAD_X)
+  const vals = readings.map(r => r.value)
+  const minVal = Math.min(...vals), maxVal = Math.max(...vals)
+  const range = maxVal - minVal || 1
+  const yOf = (v: number) => PAD_Y + CHART_H * (1 - (v - minVal) / range)
+
+  const points = readings.map((r, i) => ({
+    x: xOf(i), y: yOf(r.value), value: r.value, date: r.recorded_on,
+  }))
+
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  const bottom = PAD_Y + CHART_H
+  const fillPath = n >= 2
+    ? `${linePath} L${points[n - 1].x.toFixed(1)},${bottom} L${points[0].x.toFixed(1)},${bottom} Z`
+    : ''
+
+  return { linePath, fillPath, points }
+}
 
 // ─── Component ────────────────────────────────────────────────────
 
@@ -77,6 +117,15 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
   const [editLastVisit, setEditLastVisit] = useState('')
   const [editNextBooked, setEditNextBooked] = useState('')
   const [saving,        setSaving]        = useState(false)
+
+  // VO2 Max card
+  const [vo2Expanded,        setVo2Expanded]        = useState(false)
+  const [vo2Sparkline,       setVo2Sparkline]        = useState<BiomarkerReading[]>([])
+  const [vo2SparklineLoaded, setVo2SparklineLoaded]  = useState(false)
+  const [vo2EntryOpen,       setVo2EntryOpen]        = useState(false)
+  const [vo2EntryValue,      setVo2EntryValue]       = useState('')
+  const [vo2EntryDate,       setVo2EntryDate]        = useState('')
+  const [vo2Saving,          setVo2Saving]           = useState(false)
 
   useEffect(() => {
     getGoalsData()
@@ -149,9 +198,53 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
     }
   }
 
-  // ── VO2 max marker position (% of bar width) ───────────────────
-  function vo2MarkerPct(value: number): number {
-    return Math.min(value, VO2_SCALE_MAX) / VO2_SCALE_MAX * 100
+  // ── VO2 Max card actions ───────────────────────────────────────
+
+  async function handleVo2Toggle() {
+    if (vo2Expanded) {
+      setVo2Expanded(false)
+      setVo2EntryOpen(false)
+      return
+    }
+    setVo2Expanded(true)
+    if (!vo2SparklineLoaded) {
+      try {
+        const sparkline = await getVo2SparklineData()
+        setVo2Sparkline(sparkline)
+        setVo2SparklineLoaded(true)
+      } catch (e) {
+        console.error('VO2 sparkline load error:', e)
+      }
+    }
+  }
+
+  function openVo2Entry(e: React.MouseEvent) {
+    e.stopPropagation()
+    setVo2EntryValue(vo2Max ? String(vo2Max.value) : '')
+    setVo2EntryDate(new Date().toISOString().split('T')[0])
+    setVo2EntryOpen(true)
+  }
+
+  async function handleSaveVo2(e: React.MouseEvent) {
+    e.stopPropagation()
+    const val = parseFloat(vo2EntryValue)
+    if (isNaN(val)) return
+    setVo2Saving(true)
+    try {
+      await saveVo2Reading(val, vo2EntryDate)
+      const [fresh, sparkline] = await Promise.all([
+        getGoalsData(),
+        getVo2SparklineData(),
+      ])
+      setData(fresh)
+      setVo2Sparkline(sparkline)
+      setVo2SparklineLoaded(true)
+      setVo2EntryOpen(false)
+    } catch (err) {
+      console.error('Save VO2 reading error:', err)
+    } finally {
+      setVo2Saving(false)
+    }
   }
 
   // ── Loading state ──────────────────────────────────────────────
@@ -283,8 +376,24 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
       </div>
 
       {/* VO2 Max card */}
-      <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <div className="card" style={{ padding: 0 }}>
+
+        {/* ── Collapsed header (always visible) ─────────────────── */}
+        <button
+          type="button"
+          onClick={handleVo2Toggle}
+          style={{
+            width: '100%',
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
             <path
               d="M9 3v8M5 7C3 7.5 2 9 2 11a3 3 0 003 3h2V7M13 7c2 .5 3 2 3 4a3 3 0 01-3 3h-2V7"
@@ -297,65 +406,224 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
             VO₂ Max
           </span>
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-dim)' }}>
-            Target: 40 ml/kg/min
+          <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
+            {vo2Max ? `${vo2Max.value} ml/kg/min` : 'Not yet logged'}
           </span>
-        </div>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${vo2Expanded ? ' open' : ''}`} style={{ flexShrink: 0 }}>
+            <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
 
-        {vo2Max ? (
-          <>
-            <div style={{ marginBottom: 14 }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 28, color: 'var(--color-text-primary)' }}>
-                {vo2Max.value}
-              </span>
-              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginLeft: 6 }}>
-                ml/kg/min
-              </span>
+        {/* ── Expanded content ──────────────────────────────────── */}
+        {vo2Expanded && (
+          <div style={{ padding: '0 16px 16px' }}>
+
+            {/* Header row: label + large value + next-tier badge */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 4 }}>
+                  VO₂ max
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <button
+                    type="button"
+                    onClick={openVo2Entry}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 36,
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      color: 'var(--color-text-primary)',
+                    }}
+                  >
+                    {vo2Max ? vo2Max.value : '–'}
+                  </button>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>ml/kg/min</span>
+                </div>
+              </div>
+              {vo2Max && vo2NextTier(vo2Max.value) && (
+                <div style={{
+                  background: 'var(--color-primary-light)',
+                  color: 'var(--color-primary-dark)',
+                  borderRadius: 20,
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  border: '1px solid var(--color-primary)',
+                  marginTop: 4,
+                  flexShrink: 0,
+                }}>
+                  {vo2NextTier(vo2Max.value)} →
+                </div>
+              )}
             </div>
 
+            {/* Inline entry form */}
+            {vo2EntryOpen && (
+              <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <div className="section-label" style={{ marginBottom: 4 }}>Value (ml/kg/min)</div>
+                    <input
+                      type="number"
+                      value={vo2EntryValue}
+                      onChange={e => setVo2EntryValue(e.target.value)}
+                      placeholder="e.g. 36"
+                      onClick={e => e.stopPropagation()}
+                      style={{ width: '100%', padding: '8px 10px' }}
+                    />
+                  </div>
+                  <div>
+                    <div className="section-label" style={{ marginBottom: 4 }}>Date</div>
+                    <input
+                      type="date"
+                      value={vo2EntryDate}
+                      onChange={e => setVo2EntryDate(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      style={{ width: '100%', padding: '8px 10px' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleSaveVo2}
+                    disabled={vo2Saving}
+                    style={{ flex: 1, height: 40, fontSize: 13 }}
+                  >
+                    {vo2Saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={e => { e.stopPropagation(); setVo2EntryOpen(false) }}
+                    style={{ flex: 1, height: 40, fontSize: 13 }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Spectrum bar */}
-            <div style={{ position: 'relative', marginBottom: 8 }}>
-              <div style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden' }}>
-                {VO2_BANDS.map((band) => {
-                  const width = ((band.max - band.min + 1) / VO2_SCALE_MAX) * 100
+            <div>
+              <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                <defs>
+                  <linearGradient id="vo2BarGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%"   style={{ stopColor: 'var(--color-spectrum-start)' }} />
+                    <stop offset="100%" style={{ stopColor: 'var(--color-spectrum-end)' }} />
+                  </linearGradient>
+                </defs>
+
+                {/* Gradient bar */}
+                <rect x="0" y="22" width="280" height="10" rx="5" fill="url(#vo2BarGrad)" />
+
+                {/* Target marker at 40 — subtle diamond + label */}
+                {(() => {
+                  const cx = (40 / VO2_SCALE_MAX) * 280
                   return (
-                    <div key={band.label} style={{ flex: `0 0 ${width}%`, background: band.color }} />
+                    <>
+                      <polygon
+                        points={`${cx},${22 - 5} ${cx + 4},${27} ${cx},${32 + 5} ${cx - 4},${27}`}
+                        fill="var(--color-text-dim)"
+                        opacity="0.35"
+                      />
+                      <text x={cx} y="38" textAnchor="middle" fontSize="7" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
+                        target
+                      </text>
+                    </>
+                  )
+                })()}
+
+                {/* Current value marker — circle with value above */}
+                {vo2Max && (() => {
+                  const cx = Math.min(vo2Max.value, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
+                  return (
+                    <>
+                      <line x1={cx} y1="16" x2={cx} y2="22" stroke="var(--color-primary)" strokeWidth="1.5" />
+                      <circle cx={cx} cy="9" r="8" fill="var(--color-surface)" stroke="var(--color-primary)" strokeWidth="1.5" />
+                      <text x={cx} y="12.5" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: 'var(--color-primary)', fontFamily: 'var(--font-mono)' }}>
+                        {vo2Max.value}
+                      </text>
+                    </>
+                  )
+                })()}
+              </svg>
+
+              {/* Band labels */}
+              <div style={{ display: 'flex', marginTop: 4 }}>
+                {VO2_BANDS.map((band, i) => {
+                  const widthPct = ((band.end - band.start) / VO2_SCALE_MAX) * 100
+                  return (
+                    <div key={band.label} style={{ flex: `0 0 ${widthPct}%`, textAlign: i === VO2_BANDS.length - 1 ? 'right' : 'left' }}>
+                      <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', letterSpacing: '0.02em' }}>
+                        {band.label}
+                      </div>
+                      <div style={{ fontSize: 8, color: 'var(--color-text-dim)', marginTop: 1 }}>
+                        {band.rangeLabel}
+                      </div>
+                    </div>
                   )
                 })}
               </div>
-              {/* Vertical marker */}
-              <div style={{
-                position: 'absolute',
-                top: 1,
-                left: `${vo2MarkerPct(vo2Max.value)}%`,
-                transform: 'translateX(-50%)',
-                width: 3,
-                height: 14,
-                background: 'var(--color-text-primary)',
-                borderRadius: 2,
-                boxShadow: '0 0 0 2px var(--color-surface)',
-              }} />
             </div>
 
-            {/* Band labels */}
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              {VO2_BANDS.map(band => (
-                <span
-                  key={band.label}
-                  style={{
-                    fontSize: 9,
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--color-text-dim)',
-                    letterSpacing: '0.02em',
-                  }}
-                >
-                  {band.label}
-                </span>
-              ))}
+            {/* Sparkline */}
+            <div style={{ marginTop: 16 }}>
+              <div className="section-label" style={{ marginBottom: 8 }}>Recent readings</div>
+              {(() => {
+                const { linePath, fillPath, points } = buildVo2Sparkline(vo2Sparkline)
+                return (
+                  <svg viewBox="0 0 280 76" width="100%" style={{ display: 'block' }}>
+                    <defs>
+                      <filter id="vo2Glow" x="-20%" y="-50%" width="140%" height="200%">
+                        <feGaussianBlur stdDeviation="2.5" result="blur" />
+                        <feMerge>
+                          <feMergeNode in="blur" />
+                          <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                      </filter>
+                      <linearGradient id="vo2FillGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%"   style={{ stopColor: 'var(--color-primary)', stopOpacity: 0.2 }} />
+                        <stop offset="100%" style={{ stopColor: 'var(--color-primary)', stopOpacity: 0 }} />
+                      </linearGradient>
+                    </defs>
+
+                    {points.length >= 2 && (
+                      <>
+                        <path d={fillPath} fill="url(#vo2FillGrad)" />
+                        <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="3" opacity="0.3" filter="url(#vo2Glow)" />
+                        <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+                      </>
+                    )}
+
+                    {points.map((p, i) => (
+                      <circle key={i} cx={p.x} cy={p.y} r="3" fill="var(--color-primary)" />
+                    ))}
+
+                    {points.map((p, i) => (
+                      <text
+                        key={i}
+                        x={p.x}
+                        y="72"
+                        textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}
+                        fontSize="8"
+                        style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}
+                      >
+                        {fmtSparkDate(p.date)}
+                      </text>
+                    ))}
+                  </svg>
+                )
+              })()}
             </div>
-          </>
-        ) : (
-          <div style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>Not yet logged</div>
+
+          </div>
         )}
       </div>
 
