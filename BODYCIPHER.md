@@ -1,4 +1,4 @@
-# NORTHSTAR
+# BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
 _Last updated: April 18, 2026_
 
@@ -19,7 +19,7 @@ _Last updated: April 18, 2026_
 
 ## PROJECT
 
-**App:** Northstar — personal health coaching web app for Julie.
+**App:** BodyCipher — decode your body. Personal health coaching web app for Julie.
 **Live:** https://health-coach-rho.vercel.app
 **Local:** `/Users/julienathan/Documents/Northstar/health-coach`
 **GitHub:** `git@github.com:jnjulienathan-eng/health-coach.git` (SSH)
@@ -195,7 +195,7 @@ _Last updated: April 18, 2026_
 4. **Behavior/Outcome score review + CGM scoring** — full audit of scoring model. Confirm empty fields treated as N/A not zero. Implement CGM sub-score logic (see scoring model above).
 5. **CGM rolling average in Coach context** — compute 30-day rolling average glucose from history and inject into Coach context block.
 6. **Food quality coaching** — one actionable nudge per day on ingredients to add/reduce (cholesterol, inflammation, micronutrients). Design TBD: daily tip vs weekly pattern view.
-7. **Commit NORTHSTAR.md to the GitHub repo** — so Claude Code reads it at the start of every session.
+7. **Commit BODYCIPHER.md to the GitHub repo** — so Claude Code reads it at the start of every session.
 
 ### Features — later
 1. **Responsive design / mobile layout** — proper mobile vs web layout differentiation.

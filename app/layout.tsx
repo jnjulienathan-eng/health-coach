@@ -16,8 +16,8 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Northstar",
-  description: "Daily health check-in",
+  title: "BodyCipher",
+  description: "decode your body",
 };
 
 export default function RootLayout({
