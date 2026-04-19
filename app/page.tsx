@@ -113,7 +113,7 @@ const TABS: { id: Tab; label: string; Icon: React.FC<{ active: boolean }> }[] = 
 
 // ─── Main app ─────────────────────────────────────────────────────
 export default function App() {
-  const [activeTab,     setActiveTab]     = useState<Tab>('today')
+  const [activeTab,     setActiveTab]     = useState<Tab>('goals')
   const [currentDate,   setCurrentDate]   = useState(todayStr())
   const [entry,         setEntry]         = useState<DailyEntry>(emptyEntry(todayStr()))
   const [loading,       setLoading]       = useState(false)
