@@ -238,16 +238,28 @@ _Last updated: April 18, 2026_
 Section header: "Long-term goals"
 Three cards, collapsed on tab, expand inline on tap
 
-**Card 1 — VO2 max**
+**Card 1 — VO2 Max**
 
-- No ring — spectrum band instead
-- Bands: Good (31–37) / Excellent (38–43) / Superior (43+). No age shown anywhere.
-- Marker shows current value on spectrum
-- Badge shows next tier e.g. "Excellent →"
-- Sparkline: last 5–6 readings over time with dates
-- Data source: manually logged
-- Current value: 36 ml/kg/min
-- Target: 40, then keep improving — no finite ceiling
+**Collapsed state:** shows card title "VO₂ Max" and current value + unit (e.g. "36 ml/kg/min"), or "Not yet logged" if no data exists. Chevron indicates expandable. Tapping anywhere on the collapsed card expands it.
+
+**Expanded state:**
+
+- **Header row:** large bold current value + "ml/kg/min" unit on the left, tappable to open inline entry form. "Not yet logged" is equally tappable when no data exists. Next-tier badge pill on the right showing the next band above current value with arrow (e.g. "Superior →").
+
+- **Spectrum bar:** full horizontal SVG gradient bar from muted blue-grey (left/poor) to deep green (right/superior). Five bands with labels and range text below the bar:
+  - Poor: <23
+  - Fair: 23–27
+  - Good: 28–32
+  - Excellent: 33–36
+  - Superior: 37+
+  
+  Bar extends to 50+ on the right. Two markers: current value circle with value label above it, and a subtle target diamond at 40 labeled "target". Gradient uses CSS custom properties only.
+
+- **Sparkline:** section header "Recent readings". SVG line chart, no axes, no grid lines. Glowy radiant green line achieved via SVG filter (feGaussianBlur + feMerge) or duplicate blurred path underneath main line, plus subtle gradient fill area beneath the line. Dots at each data point. Date labels below x-axis in month + year format (e.g. "Apr 2026"). Empty chart area with no placeholder text if no readings exist. Queries `biomarker_readings` for `marker = 'vo2_max'`, `user_id = 'julie'`, ordered ascending, limit 6.
+
+- **Inline entry form:** opens inside the card when current value or "Not yet logged" is tapped. `e.stopPropagation()` on the tap handler to prevent card collapse. Two fields: value (numeric, ml/kg/min) and date (date picker, defaults to today). Save button inserts new row to `biomarker_readings` then refreshes both current value and sparkline. Cancel closes form without saving.
+
+- **Data source:** manual entry. No finite ceiling — target is 40 now, will keep improving beyond that.
 
 **Card 2 — Cardiovascular health**
 
