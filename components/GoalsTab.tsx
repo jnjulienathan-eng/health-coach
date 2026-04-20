@@ -833,6 +833,7 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
                     fontSize: 28,
                     fontWeight: 700,
                     lineHeight: 1,
+                    letterSpacing: '-0.06em',
                     color: rc.color,
                     marginTop: 2,
                   }}>
@@ -910,23 +911,27 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
 
                 {/* ── LDL spectrum ──────────────────────────────── */}
                 <div style={{ paddingRight: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={openCardioEntry}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                      marginBottom: 8,
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 0',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>LDL</span>
-                    <button
-                      type="button"
-                      onClick={openCardioEntry}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: 0,
-                        fontSize: 12,
-                        color: 'var(--color-text-dim)',
-                      }}
-                    >
+                    <span style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>
                       {ldl ? `${ldl.value} mg/dL · target <100` : 'Tap to log · target <100'}
-                    </button>
-                  </div>
+                    </span>
+                  </button>
 
                   <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
                     <defs>
@@ -981,23 +986,27 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
 
                 {/* ── HDL spectrum ──────────────────────────────── */}
                 <div style={{ paddingRight: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={openCardioEntry}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                      marginBottom: 8,
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 0',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>HDL</span>
-                    <button
-                      type="button"
-                      onClick={openCardioEntry}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: 0,
-                        fontSize: 12,
-                        color: 'var(--color-text-dim)',
-                      }}
-                    >
+                    <span style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>
                       {hdl ? `${hdl.value} mg/dL · target >60` : 'Tap to log · target >60'}
-                    </button>
-                  </div>
+                    </span>
+                  </button>
 
                   <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
                     <defs>
@@ -1174,6 +1183,18 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
                     'Not yet tested'
                   )}
                 </div>
+
+                {/* Permanent entry point — always opens the entry form. */}
+                {!cardioEntryOpen && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={openCardioEntry}
+                    style={{ marginTop: 12, height: 40, fontSize: 13 }}
+                  >
+                    Log bloodwork
+                  </button>
+                )}
               </div>
             )}
           </div>
