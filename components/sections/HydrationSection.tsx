@@ -127,7 +127,7 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 
           {/* 6 cups */}
-          <div style={{ display: 'flex', gap: 2, flex: 1 }}>
+          <div className="hydration-cups">
             {Array.from({ length: 6 }, (_, i) => {
               const filled  = i < cups
               const isBonus = !isTrainingDay && i === 5
@@ -138,9 +138,6 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
                   onClick={() => handleCupTap(i)}
                   aria-label={`Cup ${i + 1}${filled ? ' (filled)' : ''}${isBonus ? ' bonus' : ''}`}
                   style={{
-                    minWidth:  44,
-                    minHeight: 44,
-                    flex:      1,
                     display:        'flex',
                     alignItems:     'center',
                     justifyContent: 'center',

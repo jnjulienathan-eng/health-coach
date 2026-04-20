@@ -85,7 +85,7 @@ function buildVo2Sparkline(readings: BiomarkerReading[]): {
   if (n === 0) return { linePath: '', fillPath: '', points: [] }
 
   const PAD_X = 22, PAD_Y = 8, W = 280, CHART_H = 48
-  const xOf = (i: number) => n === 1 ? W / 2 : PAD_X + (i / (n - 1)) * (W - 2 * PAD_X)
+  const xOf = (i: number) => n === 1 ? PAD_X : PAD_X + (i / (n - 1)) * (W - 2 * PAD_X)
   const vals = readings.map(r => r.value)
   const minVal = Math.min(...vals), maxVal = Math.max(...vals)
   const range = maxVal - minVal || 1
@@ -511,7 +511,7 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
             )}
 
             {/* Spectrum bar */}
-            <div>
+            <div style={{ paddingRight: 8 }}>
               <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
                 <defs>
                   <linearGradient id="vo2BarGrad" x1="0%" y1="0%" x2="100%" y2="0%">

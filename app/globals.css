@@ -20,9 +20,13 @@
   --color-success:        #3D9A6B;
 
   /* VO2 max spectrum bar */
-  --color-spectrum-start: #9BADB8;
+  --color-spectrum-start: #A8C4D4;
   --color-spectrum-good:  #7DB89A;
   --color-spectrum-end:   #2C7A52;
+
+  /* Hydration cups */
+  --hydration-cups-gap: 2px;
+  --hydration-cup-min:  44px;
 }
 
 /* ─── Tailwind v4 theme extension ───────────────────────────────── */
@@ -374,6 +378,28 @@ select option {
 }
 .scroll-row::-webkit-scrollbar {
   display: none;
+}
+
+/* ─── Hydration cups grid ───────────────────────────────────────── */
+.hydration-cups {
+  display: flex;
+  gap: var(--hydration-cups-gap);
+  flex: 1;
+  min-width: 0;
+}
+.hydration-cups > button {
+  flex: 1;
+  min-width: var(--hydration-cup-min);
+  min-height: var(--hydration-cup-min);
+}
+@media (max-width: 480px) {
+  .hydration-cups {
+    flex-wrap: wrap;
+  }
+  .hydration-cups > button {
+    flex: 0 0 calc((100% - 2 * var(--hydration-cups-gap)) / 3);
+    max-width: calc((100% - 2 * var(--hydration-cups-gap)) / 3);
+  }
 }
 
 /* ─── Yesterday prompt banner ───────────────────────────────────── */
