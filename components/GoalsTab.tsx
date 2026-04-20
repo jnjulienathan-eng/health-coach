@@ -61,7 +61,7 @@ const VO2_BANDS = [
   { label: 'Fair',      rangeLabel: '23–27', start: 23, end: 28 },
   { label: 'Good',      rangeLabel: '28–32', start: 28, end: 33 },
   { label: 'Excellent', rangeLabel: '33–36', start: 33, end: 37 },
-  { label: 'Superior',  rangeLabel: '37+',   start: 37, end: 50 },
+  { label: 'Superior',  rangeLabel: '37–50', start: 37, end: 50 },
 ]
 
 function vo2NextTier(value: number): string | null {
