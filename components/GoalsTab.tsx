@@ -73,7 +73,7 @@ function vo2NextTier(value: number): string | null {
 }
 
 function fmtSparkDate(s: string): string {
-  return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+  return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 
 function buildVo2Sparkline(readings: BiomarkerReading[]): {
@@ -530,10 +530,10 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
                     <>
                       <polygon
                         points={`${cx},${22 - 5} ${cx + 4},${27} ${cx},${32 + 5} ${cx - 4},${27}`}
-                        fill="var(--color-text-dim)"
-                        opacity="0.35"
+                        fill="var(--color-text-primary)"
+                        opacity="0.7"
                       />
-                      <text x={cx} y="38" textAnchor="middle" fontSize="7" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
+                      <text x={cx} y="38" textAnchor="middle" fontSize="7" style={{ fill: 'var(--color-text-primary)', fontFamily: 'var(--font-mono)' }}>
                         target
                       </text>
                     </>
@@ -560,7 +560,7 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
                 {VO2_BANDS.map((band, i) => {
                   const widthPct = ((band.end - band.start) / VO2_SCALE_MAX) * 100
                   return (
-                    <div key={band.label} style={{ flex: `0 0 ${widthPct}%`, textAlign: i === VO2_BANDS.length - 1 ? 'right' : 'left' }}>
+                    <div key={band.label} style={{ flex: `${i === VO2_BANDS.length - 1 ? '1 0' : '0 0'} ${widthPct}%`, textAlign: i === VO2_BANDS.length - 1 ? 'right' : 'left' }}>
                       <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', letterSpacing: '0.02em' }}>
                         {band.label}
                       </div>
