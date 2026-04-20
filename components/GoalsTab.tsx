@@ -1130,7 +1130,7 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
                               textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}
                               fontSize="10"
                               fontWeight="600"
-                              style={{ fill: 'var(--color-primary)', fontFamily: 'var(--font-mono)' }}
+                              style={{ fill: 'var(--color-primary)', fontFamily: 'var(--font-mono)', letterSpacing: '-0.06em' }}
                             >
                               {p.ratio.toFixed(2)}
                             </text>
