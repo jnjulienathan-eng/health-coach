@@ -446,6 +446,20 @@ export async function saveVo2Reading(value: number, date: string): Promise<void>
   if (error) throw error
 }
 
+// ─── saveCardioReading ────────────────────────────────────────────
+// Inserts LDL and HDL rows sharing one recorded_on date so the ratio
+// trend sparkline can pair them cleanly.
+export async function saveCardioReading(ldl: number, hdl: number, date: string): Promise<void> {
+  const { error } = await supabase
+    .from('biomarker_readings')
+    .insert([
+      { user_id: 'julie', marker: 'ldl', value: ldl, unit: 'mg/dL', recorded_on: date },
+      { user_id: 'julie', marker: 'hdl', value: hdl, unit: 'mg/dL', recorded_on: date },
+    ])
+
+  if (error) throw error
+}
+
 // ─── Breakfast templates (hardcoded) ─────────────────────────────
 export async function loadBreakfastTemplates(): Promise<BreakfastTemplate[]> {
   return [

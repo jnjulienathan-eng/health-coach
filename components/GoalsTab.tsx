@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getGoalsData, saveAppointment, getVo2SparklineData, saveVo2Reading } from '@/lib/db'
+import { getGoalsData, saveAppointment, getVo2SparklineData, saveVo2Reading, saveCardioReading } from '@/lib/db'
 import type { GoalsData, HealthAppointment, BiomarkerReading } from '@/lib/types'
 import { scoreColor } from '@/lib/types'
 
@@ -76,6 +76,86 @@ function fmtSparkDate(s: string): string {
   return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 
+// Cardiovascular scales & bands
+const LDL_SCALE_MAX = 200
+const LDL_BANDS = [
+  { label: 'Optimal',      rangeLabel: '<100',    start: 0,   end: 100 },
+  { label: 'Near optimal', rangeLabel: '100–129', start: 100, end: 130 },
+  { label: 'Borderline',   rangeLabel: '130–159', start: 130, end: 160 },
+  { label: 'High',         rangeLabel: '160+',    start: 160, end: 200 },
+]
+const LDL_BAND_COLORS = [
+  'var(--color-success)',
+  'var(--color-amber)',
+  'var(--color-amber)',
+  'var(--color-danger)',
+]
+const HDL_SCALE_MAX = 100
+const HDL_BANDS = [
+  { label: 'Low',        rangeLabel: '<40',   start: 0,  end: 40  },
+  { label: 'Acceptable', rangeLabel: '40–59', start: 40, end: 60  },
+  { label: 'Protective', rangeLabel: '60+',   start: 60, end: 100 },
+]
+const HDL_BAND_COLORS = [
+  'var(--color-danger)',
+  'var(--color-amber)',
+  'var(--color-success)',
+]
+const RATIO_SCALE_MAX = 5
+const RATIO_THRESHOLD = 3.5
+
+function ldlBandIndex(v: number): number {
+  if (v < 100) return 0
+  if (v < 130) return 1
+  if (v < 160) return 2
+  return 3
+}
+
+function hdlBandIndex(v: number): number {
+  if (v < 40) return 0
+  if (v < 60) return 1
+  return 2
+}
+
+function ratioClass(r: number): { label: string; color: string } {
+  if (r < 2.5) return { label: 'Optimal',    color: 'var(--color-success)' }
+  if (r < 3.5) return { label: 'Good',       color: 'var(--color-success)' }
+  if (r < 5)   return { label: 'Borderline', color: 'var(--color-amber)'   }
+  return         { label: 'High Risk',  color: 'var(--color-danger)'  }
+}
+
+// Pair LDL & HDL readings by closest recorded_on date so we can build
+// a ratio trend sparkline from historical bloodwork.
+function pairCardioHistory(all: BiomarkerReading[]): { date: string; ratio: number }[] {
+  const ldls = all.filter(b => b.marker === 'ldl').sort((a, b) => a.recorded_on.localeCompare(b.recorded_on))
+  const hdls = all.filter(b => b.marker === 'hdl')
+  if (ldls.length === 0 || hdls.length === 0) return []
+
+  const used = new Set<string>()
+  const pairs: { date: string; ratio: number }[] = []
+  for (const ldl of ldls) {
+    const t = new Date(ldl.recorded_on + 'T00:00:00').getTime()
+    let best: BiomarkerReading | null = null
+    let bestDiff = Infinity
+    for (const h of hdls) {
+      if (used.has(h.id)) continue
+      const d = Math.abs(new Date(h.recorded_on + 'T00:00:00').getTime() - t)
+      if (d < bestDiff) { bestDiff = d; best = h }
+    }
+    if (best) {
+      used.add(best.id)
+      pairs.push({ date: ldl.recorded_on, ratio: Number((ldl.value / best.value).toFixed(2)) })
+    }
+  }
+  return pairs
+}
+
+function monthsSince(dateStr: string): number {
+  const d = new Date(dateStr + 'T00:00:00')
+  const now = new Date()
+  return (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth())
+}
+
 function buildVo2Sparkline(readings: BiomarkerReading[]): {
   linePath: string
   fillPath: string
@@ -126,6 +206,14 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
   const [vo2EntryValue,      setVo2EntryValue]       = useState('')
   const [vo2EntryDate,       setVo2EntryDate]        = useState('')
   const [vo2Saving,          setVo2Saving]           = useState(false)
+
+  // Cardiovascular card
+  const [cardioExpanded,  setCardioExpanded]  = useState(false)
+  const [cardioEntryOpen, setCardioEntryOpen] = useState(false)
+  const [cardioLdlValue,  setCardioLdlValue]  = useState('')
+  const [cardioHdlValue,  setCardioHdlValue]  = useState('')
+  const [cardioEntryDate, setCardioEntryDate] = useState('')
+  const [cardioSaving,    setCardioSaving]    = useState(false)
 
   useEffect(() => {
     getGoalsData()
@@ -244,6 +332,42 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
       console.error('Save VO2 reading error:', err)
     } finally {
       setVo2Saving(false)
+    }
+  }
+
+  // ── Cardiovascular card actions ────────────────────────────────
+
+  function handleCardioToggle() {
+    setCardioExpanded(prev => {
+      if (prev) setCardioEntryOpen(false)
+      return !prev
+    })
+  }
+
+  function openCardioEntry(e: React.MouseEvent) {
+    e.stopPropagation()
+    setCardioLdlValue(ldl ? String(ldl.value) : '')
+    setCardioHdlValue(hdl ? String(hdl.value) : '')
+    setCardioEntryDate(new Date().toISOString().split('T')[0])
+    setCardioEntryOpen(true)
+    setCardioExpanded(true)
+  }
+
+  async function handleSaveCardio(e: React.MouseEvent) {
+    e.stopPropagation()
+    const ldlN = parseFloat(cardioLdlValue)
+    const hdlN = parseFloat(cardioHdlValue)
+    if (isNaN(ldlN) || isNaN(hdlN) || !cardioEntryDate) return
+    setCardioSaving(true)
+    try {
+      await saveCardioReading(ldlN, hdlN, cardioEntryDate)
+      const fresh = await getGoalsData()
+      setData(fresh)
+      setCardioEntryOpen(false)
+    } catch (err) {
+      console.error('Save cardio reading error:', err)
+    } finally {
+      setCardioSaving(false)
     }
   }
 
@@ -632,93 +756,429 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
       </div>
 
       {/* Cardiovascular health card */}
-      <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <path
-              d="M9 15S2 10.5 2 6a4 4 0 018 0 4 4 0 018 0c0 4.5-7 9-7 9z"
-              stroke="var(--color-danger)"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-            Cardiovascular
-          </span>
-        </div>
+      {(() => {
+        const ratio      = (ldl && hdl) ? ldl.value / hdl.value : null
+        const rc         = ratio != null ? ratioClass(ratio) : null
+        const ldlBandI   = ldl ? ldlBandIndex(ldl.value) : -1
+        const hdlBandI   = hdl ? hdlBandIndex(hdl.value) : -1
+        const ldlMarker  = ldlBandI >= 0 ? LDL_BAND_COLORS[ldlBandI] : 'var(--color-text-dim)'
+        const hdlMarker  = hdlBandI >= 0 ? HDL_BAND_COLORS[hdlBandI] : 'var(--color-text-dim)'
+        const dates      = [ldl?.recorded_on, hdl?.recorded_on].filter((d): d is string => !!d).sort()
+        const mostRecent = dates.length ? dates[dates.length - 1] : null
+        const overdue    = mostRecent ? monthsSince(mostRecent) > 6 : false
+        const ratioHistory = pairCardioHistory(data?.biomarkers ?? [])
 
-        {(ldl || hdl) ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        return (
+          <div className="card" style={{ padding: 0 }}>
 
-            {ldl && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>LDL</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 15,
-                    color: ldl.value < 3.0 ? 'var(--color-success)' : 'var(--color-danger)',
-                  }}>
-                    {ldl.value}
-                  </span>
-                  <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>mmol/L</span>
-                  <span style={{
-                    display: 'inline-block',
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: ldl.value < 3.0 ? 'var(--color-success)' : 'var(--color-danger)',
-                  }} />
-                </div>
-              </div>
-            )}
-
-            {hdl && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>HDL</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 15,
-                    color: hdl.value > 1.2 ? 'var(--color-success)' : 'var(--color-danger)',
-                  }}>
-                    {hdl.value}
-                  </span>
-                  <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>mmol/L</span>
-                  <span style={{
-                    display: 'inline-block',
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: hdl.value > 1.2 ? 'var(--color-success)' : 'var(--color-danger)',
-                  }} />
-                </div>
-              </div>
-            )}
-
-            {ldl && hdl && (
-              <div style={{
+            {/* ── Header row (always visible, tap to expand) ─────── */}
+            <button
+              type="button"
+              onClick={handleCardioToggle}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 16,
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
-                borderTop: '1px solid var(--color-border)',
-                paddingTop: 10,
-              }}>
-                <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
-                  LDL/HDL ratio
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 15, color: 'var(--color-text-primary)' }}>
-                  {(ldl.value / hdl.value).toFixed(1)}
-                </span>
+                alignItems: 'flex-start',
+                gap: 12,
+              }}
+            >
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
+                <div style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: 'var(--color-heart-pink-bg)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <path
+                      d="M9 15S2 10.5 2 6a4 4 0 018 0 4 4 0 018 0c0 4.5-7 9-7 9z"
+                      fill="var(--color-heart-pink)"
+                      stroke="var(--color-heart-pink)"
+                      strokeWidth="1.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                    Cardiovascular health
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-dim)', marginTop: 2 }}>
+                    {(ldl && hdl)
+                      ? `LDL ${ldl.value} · HDL ${hdl.value} mg/dL`
+                      : 'Not yet logged'}
+                  </div>
+                </div>
+              </div>
+
+              {ratio != null && rc && (
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: 10, color: 'var(--color-text-dim)' }}>
+                    LDL:HDL ratio
+                  </div>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 28,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    color: rc.color,
+                    marginTop: 2,
+                  }}>
+                    {ratio.toFixed(1)}
+                  </div>
+                  <div style={{ fontSize: 11, color: rc.color, marginTop: 2 }}>
+                    {rc.label} <span style={{ fontSize: 9 }}>✦</span>
+                  </div>
+                </div>
+              )}
+            </button>
+
+            {/* ── Expanded content ──────────────────────────────── */}
+            {cardioExpanded && (
+              <div style={{ padding: '0 16px 16px' }}>
+
+                {/* Inline entry form */}
+                {cardioEntryOpen && (
+                  <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                      <div>
+                        <div className="section-label" style={{ marginBottom: 4 }}>LDL (mg/dL)</div>
+                        <input
+                          type="number"
+                          value={cardioLdlValue}
+                          onChange={e => setCardioLdlValue(e.target.value)}
+                          placeholder="e.g. 124"
+                          onClick={e => e.stopPropagation()}
+                          style={{ width: '100%', padding: '8px 10px' }}
+                        />
+                      </div>
+                      <div>
+                        <div className="section-label" style={{ marginBottom: 4 }}>HDL (mg/dL)</div>
+                        <input
+                          type="number"
+                          value={cardioHdlValue}
+                          onChange={e => setCardioHdlValue(e.target.value)}
+                          placeholder="e.g. 50"
+                          onClick={e => e.stopPropagation()}
+                          style={{ width: '100%', padding: '8px 10px' }}
+                        />
+                      </div>
+                      <div>
+                        <div className="section-label" style={{ marginBottom: 4 }}>Date</div>
+                        <input
+                          type="date"
+                          value={cardioEntryDate}
+                          onChange={e => setCardioEntryDate(e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          style={{ width: '100%', padding: '8px 10px' }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={handleSaveCardio}
+                        disabled={cardioSaving}
+                        style={{ flex: 1, height: 40, fontSize: 13 }}
+                      >
+                        {cardioSaving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={e => { e.stopPropagation(); setCardioEntryOpen(false) }}
+                        style={{ flex: 1, height: 40, fontSize: 13 }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── LDL spectrum ──────────────────────────────── */}
+                <div style={{ paddingRight: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>LDL</span>
+                    <button
+                      type="button"
+                      onClick={openCardioEntry}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontSize: 12,
+                        color: 'var(--color-text-dim)',
+                      }}
+                    >
+                      {ldl ? `${ldl.value} mg/dL · target <100` : 'Tap to log · target <100'}
+                    </button>
+                  </div>
+
+                  <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                    <defs>
+                      <linearGradient id="ldlBarGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%"   style={{ stopColor: 'var(--color-success)' }} />
+                        <stop offset="50%"  style={{ stopColor: 'var(--color-spectrum-yellow)' }} />
+                        <stop offset="75%"  style={{ stopColor: 'var(--color-amber)' }} />
+                        <stop offset="100%" style={{ stopColor: 'var(--color-danger)' }} />
+                      </linearGradient>
+                    </defs>
+                    <rect x="0" y="22" width="280" height="10" rx="5" fill="url(#ldlBarGrad)" />
+                    {ldl && (() => {
+                      const cx = Math.min(ldl.value, LDL_SCALE_MAX) / LDL_SCALE_MAX * 280
+                      return (
+                        <>
+                          <line x1={cx} y1="16" x2={cx} y2="22" stroke={ldlMarker} strokeWidth="1.5" />
+                          <circle cx={cx} cy="9" r="8" fill="var(--color-surface)" stroke={ldlMarker} strokeWidth="1.5" />
+                          <text x={cx} y="12.5" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: ldlMarker, fontFamily: 'var(--font-mono)' }}>
+                            {ldl.value}
+                          </text>
+                        </>
+                      )
+                    })()}
+                  </svg>
+
+                  <div style={{ display: 'flex', marginTop: 4 }}>
+                    {LDL_BANDS.map((band, i) => {
+                      const widthPct = ((band.end - band.start) / LDL_SCALE_MAX) * 100
+                      const isLast = i === LDL_BANDS.length - 1
+                      const active = i === ldlBandI
+                      return (
+                        <div key={band.label} style={{ flex: `0 0 ${widthPct}%`, minWidth: 0, textAlign: isLast ? 'right' : 'left' }}>
+                          <div style={{
+                            fontSize: 9,
+                            fontFamily: 'var(--font-mono)',
+                            fontWeight: active ? 700 : 400,
+                            color: active ? LDL_BAND_COLORS[i] : 'var(--color-text-dim)',
+                            letterSpacing: '0.02em',
+                          }}>
+                            {band.label}{active && ' ✦'}
+                          </div>
+                          <div style={{ fontSize: 8, color: 'var(--color-text-dim)', marginTop: 1 }}>
+                            {band.rangeLabel}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--color-border)', margin: '16px 0' }} />
+
+                {/* ── HDL spectrum ──────────────────────────────── */}
+                <div style={{ paddingRight: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>HDL</span>
+                    <button
+                      type="button"
+                      onClick={openCardioEntry}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontSize: 12,
+                        color: 'var(--color-text-dim)',
+                      }}
+                    >
+                      {hdl ? `${hdl.value} mg/dL · target >60` : 'Tap to log · target >60'}
+                    </button>
+                  </div>
+
+                  <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                    <defs>
+                      <linearGradient id="hdlBarGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%"   style={{ stopColor: 'var(--color-danger)' }} />
+                        <stop offset="35%"  style={{ stopColor: 'var(--color-amber)' }} />
+                        <stop offset="55%"  style={{ stopColor: 'var(--color-spectrum-yellow)' }} />
+                        <stop offset="100%" style={{ stopColor: 'var(--color-success)' }} />
+                      </linearGradient>
+                    </defs>
+                    <rect x="0" y="22" width="280" height="10" rx="5" fill="url(#hdlBarGrad)" />
+                    {hdl && (() => {
+                      const cx = Math.min(hdl.value, HDL_SCALE_MAX) / HDL_SCALE_MAX * 280
+                      return (
+                        <>
+                          <line x1={cx} y1="16" x2={cx} y2="22" stroke={hdlMarker} strokeWidth="1.5" />
+                          <circle cx={cx} cy="9" r="8" fill="var(--color-surface)" stroke={hdlMarker} strokeWidth="1.5" />
+                          <text x={cx} y="12.5" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: hdlMarker, fontFamily: 'var(--font-mono)' }}>
+                            {hdl.value}
+                          </text>
+                        </>
+                      )
+                    })()}
+                  </svg>
+
+                  <div style={{ display: 'flex', marginTop: 4 }}>
+                    {HDL_BANDS.map((band, i) => {
+                      const widthPct = ((band.end - band.start) / HDL_SCALE_MAX) * 100
+                      const isLast = i === HDL_BANDS.length - 1
+                      const active = i === hdlBandI
+                      return (
+                        <div key={band.label} style={{ flex: `0 0 ${widthPct}%`, minWidth: 0, textAlign: isLast ? 'right' : 'left' }}>
+                          <div style={{
+                            fontSize: 9,
+                            fontFamily: 'var(--font-mono)',
+                            fontWeight: active ? 700 : 400,
+                            color: active ? HDL_BAND_COLORS[i] : 'var(--color-text-dim)',
+                            letterSpacing: '0.02em',
+                          }}>
+                            {band.label}{active && ' ✦'}
+                          </div>
+                          <div style={{ fontSize: 8, color: 'var(--color-text-dim)', marginTop: 1 }}>
+                            {band.rangeLabel}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--color-border)', margin: '16px 0' }} />
+
+                {/* ── Ratio trend sparkline ─────────────────────── */}
+                <div>
+                  <div className="section-label" style={{ marginBottom: 8 }}>Ratio trend</div>
+                  {(() => {
+                    const PAD_X = 22, PAD_Y = 12, W = 280, CHART_H = 48
+                    const thresholdY = PAD_Y + CHART_H * (1 - RATIO_THRESHOLD / RATIO_SCALE_MAX)
+                    const n = ratioHistory.length
+                    const points = ratioHistory.map((p, i) => ({
+                      x: n === 1 ? PAD_X : PAD_X + (i / Math.max(1, n - 1)) * (W - 2 * PAD_X),
+                      y: PAD_Y + CHART_H * (1 - Math.min(p.ratio, RATIO_SCALE_MAX) / RATIO_SCALE_MAX),
+                      ratio: p.ratio,
+                      date: p.date,
+                    }))
+                    const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+                    const bottom = PAD_Y + CHART_H
+                    const fillPath = n >= 2
+                      ? `${linePath} L${points[n - 1].x.toFixed(1)},${bottom} L${points[0].x.toFixed(1)},${bottom} Z`
+                      : ''
+
+                    return (
+                      <svg viewBox="0 0 280 76" width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                        <defs>
+                          <filter id="ratioGlow" x="-30%" y="-80%" width="160%" height="260%">
+                            <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
+                            <feMerge>
+                              <feMergeNode in="blur" />
+                              <feMergeNode in="SourceGraphic" />
+                            </feMerge>
+                          </filter>
+                          <linearGradient id="ratioFillGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%"   style={{ stopColor: 'var(--color-primary)', stopOpacity: 0.2 }} />
+                            <stop offset="100%" style={{ stopColor: 'var(--color-primary)', stopOpacity: 0 }} />
+                          </linearGradient>
+                        </defs>
+
+                        <line
+                          x1={PAD_X}
+                          y1={thresholdY}
+                          x2={W - PAD_X}
+                          y2={thresholdY}
+                          stroke="var(--color-text-dim)"
+                          strokeWidth="1"
+                          strokeDasharray="3 3"
+                        />
+                        <text
+                          x={W - PAD_X}
+                          y={thresholdY - 3}
+                          textAnchor="end"
+                          fontSize="8"
+                          style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}
+                        >
+                          3.5 risk threshold
+                        </text>
+
+                        {n >= 2 && (
+                          <>
+                            <path d={fillPath} fill="url(#ratioFillGrad)" />
+                            <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="4" opacity="0.55" filter="url(#ratioGlow)" />
+                            <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+                          </>
+                        )}
+
+                        {points.map((p, i) => (
+                          <g key={i}>
+                            <circle cx={p.x} cy={p.y} r="3" fill="var(--color-primary)" />
+                            <text
+                              x={p.x}
+                              y={p.y - 6}
+                              textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}
+                              fontSize="10"
+                              fontWeight="600"
+                              style={{ fill: 'var(--color-primary)', fontFamily: 'var(--font-mono)' }}
+                            >
+                              {p.ratio.toFixed(2)}
+                            </text>
+                            <text
+                              x={p.x}
+                              y="72"
+                              textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}
+                              fontSize="8"
+                              style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}
+                            >
+                              {fmtSparkDate(p.date)}
+                            </text>
+                          </g>
+                        ))}
+
+                        {n === 1 && (
+                          <text
+                            x={W - PAD_X}
+                            y="66"
+                            textAnchor="end"
+                            fontSize="9"
+                            fontStyle="italic"
+                            style={{ fill: 'var(--color-text-dim)' }}
+                          >
+                            next reading?
+                          </text>
+                        )}
+                      </svg>
+                    )
+                  })()}
+                </div>
+
+                {/* Footer */}
+                <div style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: '1px solid var(--color-border)',
+                  textAlign: 'center',
+                  fontSize: 12,
+                  color: 'var(--color-text-dim)',
+                }}>
+                  {mostRecent ? (
+                    <>
+                      Last tested {fmtMonthYear(new Date(mostRecent + 'T00:00:00'))}
+                      {overdue && (
+                        <> · <span style={{ color: 'var(--color-danger)', fontWeight: 500 }}>bloodwork overdue</span></>
+                      )}
+                    </>
+                  ) : (
+                    'Not yet tested'
+                  )}
+                </div>
               </div>
             )}
-
           </div>
-        ) : (
-          <div style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>Not yet logged</div>
-        )}
-      </div>
+        )
+      })()}
 
       {/* Glucose stability card */}
       <div className="card">
