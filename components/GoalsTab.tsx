@@ -555,12 +555,16 @@ export default function GoalsTab({ onNavigateDashboard }: Props) {
                 })()}
               </svg>
 
-              {/* Band labels */}
+              {/* Band labels.
+                  minWidth: 0 overrides flex's default `min-width: auto` so narrow
+                  bands (Excellent at 8%) can't widen to fit their text and push
+                  Superior past the card's right edge. */}
               <div style={{ display: 'flex', marginTop: 4 }}>
                 {VO2_BANDS.map((band, i) => {
                   const widthPct = ((band.end - band.start) / VO2_SCALE_MAX) * 100
+                  const isLast = i === VO2_BANDS.length - 1
                   return (
-                    <div key={band.label} style={{ flex: `${i === VO2_BANDS.length - 1 ? '1 0' : '0 0'} ${widthPct}%`, textAlign: i === VO2_BANDS.length - 1 ? 'right' : 'left' }}>
+                    <div key={band.label} style={{ flex: `0 0 ${widthPct}%`, minWidth: 0, textAlign: isLast ? 'right' : 'left' }}>
                       <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', letterSpacing: '0.02em' }}>
                         {band.label}
                       </div>
