@@ -23,6 +23,7 @@ _Companion to BODYCIPHER.md — that file covers what the app does. This file co
 6. DB migrations always run in Supabase SQL editor BEFORE any code 
    changes deploy. Never do them yourself. Flag if a migration is needed 
    and wait.
+7. Update BODYCIPHER.md to reflect any changes made — new fields, removed features, backlog updates, decisions taken. Do this before the plain-English summary.
 
 ---
 
