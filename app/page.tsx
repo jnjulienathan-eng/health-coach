@@ -365,10 +365,7 @@ export default function App() {
                   saving={saving}
                 />
                 <NutritionSection
-                  data={entry.nutrition}
-                  onChange={(nutrition) => update({ nutrition })}
-                  onSave={() => save('nutrition')}
-                  saving={saving}
+                  currentDate={currentDate}
                   sessions={entry.training.sessions}
                 />
                 <HydrationSection
