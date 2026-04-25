@@ -9,6 +9,8 @@ _Companion to BODYCIPHER.md — that file covers what the app does. This file co
 1. Read BODYCIPHER.md in the project root in full.
 2. Read every file you plan to edit before writing a single line.
 3. Never assume you know the current state of a file — always read it first.
+4. If working on the nutrition section, also read /docs/NUTRITION_DATA_MODEL.md 
+   and /docs/NUTRITION_UX_FLOW.md in full before touching anything.
 
 ---
 
@@ -74,10 +76,14 @@ pasting. Do not attempt HTTPS auth.
 - fasting_glucose_mmol — lives in daily_entries (sleep section).
 - sessions — JSONB array in daily_entries. 
   Each item: {activity_type, duration_min, zone3_plus_minutes, active_calories}
-- 5 meal fields: pre_workout_snack, breakfast, lunch, dinner, incidentals.
-  Each is JSONB: {description, protein_g, fiber_g, fat_g, carbs_g, 
-  calories_kcal, peak_glucose_mmol}
-- RLS on all 4 tables. Policy: user_id = 'julie'
+- Nutrition is now ingredient-level. Six new tables: food_items, meal_logs, 
+  meal_log_items, daily_nutrition_summary, meal_templates, meal_template_items.
+  The old daily_entries.nutrition JSONB fields are legacy — do not add to them.
+  Coach reads from daily_nutrition_summary, not daily_entries.nutrition.
+  All USDA API calls go through Next.js API routes using process.env.USDA_API_KEY.
+  Never call USDA from client-side code.
+- RLS on all 10 tables. Policy: auth.uid() = user_id.
+  Never hardcode 'julie' as the user_id in any policy or query.
 
 ---
 
