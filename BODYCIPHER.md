@@ -61,13 +61,113 @@ _Last updated: April 18, 2026_
 - Active calorie target: 600 kcal intentional training
 - `avg_heart_rate` field has been removed — replaced by `zone3_plus_minutes`
 
-**Nutrition section**
-- Meals: pre-workout snack, breakfast, lunch, dinner, incidentals
-- Per meal: description field, photo upload (Claude vision macro estimation), macro fields (protein g, fiber g, fat g, carbs g, calories kcal), peak glucose mmol/L (optional, CGM)
-- Breakfast: plain description + macro fields only — NO templates, NO special logic. Identical to lunch and dinner.
-- Macro totals calculated and displayed
-- Tiered daily targets based on training volume (rest/light/moderate/high/very high)
-- Calorie warnings: NONE. Julie does not overeat and logs imperfectly by design.
+## Nutrition section — architecture and locked decisions
+
+This section was designed April 2026. Full design documents are in /docs:
+- NUTRITION_DATA_MODEL.md
+- NUTRITION_UX_FLOW.md
+
+Read both before touching any nutrition code.
+
+---
+
+### New tables (already created in Supabase)
+
+Six new tables are live. Do not run migrations for these — they already exist.
+
+- `food_items` — personal ingredient library, cached from USDA or Open Food Facts
+- `meal_logs` — one row per meal occasion
+- `meal_log_items` — one row per ingredient per meal, weight in grams only
+- `daily_nutrition_summary` — denormalized daily macro totals, upserted after every meal save/edit/delete
+- `meal_templates` — named meal presets
+- `meal_template_items` — ingredients and default weights inside a template
+
+RLS is enabled on all six tables.
+
+---
+
+### Locked architecture decisions
+
+**Everything is grams.** No servings, no ml, no other units. weight_grams is the only quantity field throughout.
+
+**Macros are never stored at the ingredient level.** They are always computed as nutrients_per_100g × weight_grams / 100 at read time. Never store pre-computed macros in meal_log_items or meal_template_items.
+
+**daily_nutrition_summary is the source of truth for the coach and dashboard.** After every meal save, edit, or delete, recompute the day's totals from meal_log_items joined to food_items and upsert into daily_nutrition_summary. The coach reads from daily_nutrition_summary — never runs join queries at load time. This replaces the current daily_entries.nutrition JSONB read for the coach.
+
+**No fixed meal slots.** No breakfast / lunch / dinner / snack enum. Meals are free-form, ordered by logged_at timestamp.
+
+**Meal names are auto-generated if blank.** Derive from logged_at time band — before 11:00 = "Morning meal", 11:00–15:00 = "Afternoon meal", 15:00–19:00 = "Evening meal", after 19:00 = "Night meal". Never store a blank name.
+
+**Day boundary is 05:00.** Anything logged between 05:00 Monday and 04:59 Tuesday belongs to Monday. Apply this when computing the date for daily_nutrition_summary.
+
+**USDA API key is in Vercel environment variables as USDA_API_KEY.** Reference as process.env.USDA_API_KEY in API routes. Never hardcode. Never expose to the browser — all USDA calls go through Next.js API routes, never directly from the client.
+
+**USDA data is cached permanently.** On first selection of a USDA result, write to food_items. On subsequent uses, read from food_items. Never re-fetch a known fdc_id.
+
+**Open Food Facts is used for barcode scanning only.** No API key required. Endpoint: world.openfoodfacts.org/api/v2/product/{barcode}. Same caching rule applies — write to food_items on first scan, read locally thereafter.
+
+**Backward compatibility — clean break.** Existing daily_entries.nutrition JSONB data is not migrated. The coach reads daily_nutrition_summary for current data. Legacy daily_entries.nutrition data for dates before the cutover is ignored.
+
+**Framer-motion is used for all nutrition UI animations.** Add as a dependency if not already present. See NUTRITION_UX_FLOW.md for specific animation requirements.
+
+**html5-qrcode is used for barcode scanning.** Add as a dependency.
+
+**Five macros are displayed everywhere consistently:** calories, protein, carbs, fat, fiber. In that order. Never show just four.
+
+**No micronutrient UI in phase 1.** Micronutrient data is stored in nutrients_per_100g JSONB and available for future use, but nothing surfaces it in the UI yet.
+
+**Templates have no meal type.** No breakfast/lunch/dinner assignment on templates. They are free-form.
+
+**Template and log are fully independent once saved.** meal_logs has no FK back to meal_templates. Editing a template never affects historical logs.
+
+---
+
+### USDA API utility function
+
+When fetching from USDA, map the nutrient array to this clean object before storing in nutrients_per_100g:
+
+```
+{
+  calories: (nutrient id 1008, kcal),
+  protein: (nutrient id 1003, g),
+  carbs: (nutrient id 1005, g),
+  fat: (nutrient id 1004, g),
+  fiber: (nutrient id 1079, g)
+}
+```
+
+Store the full USDA nutrient array as well under a raw key for future micronutrient use.
+
+---
+
+### daily_nutrition_summary upsert logic
+
+After every meal_log save, edit, or delete:
+
+1. Compute the date from logged_at using the 05:00 day boundary
+2. Query all meal_log_items for that user_id and date, joined to food_items
+3. Sum nutrients_per_100g × weight_grams / 100 for each nutrient across all items
+4. Count distinct meal_log_ids for meal_count
+5. Build logged_via_summary JSONB from the logged_via values on meal_logs for that date
+6. Upsert into daily_nutrition_summary — insert if no row exists for that user/date, update if it does
+
+---
+
+### Build sequence
+
+Follow this order strictly. DB is already done (step 1 complete).
+
+1. ~~DB migration~~ — done, tables already live in Supabase
+2. API routes — USDA search, food item caching, meal save with summary upsert, meal edit, meal delete, template CRUD
+3. Nutrition day view — macro summary bar, meal cards, log a meal entry point
+4. Ingredient search screen — search field with autocomplete, USDA results, local library results
+5. Weight entry screen — live macro preview with framer-motion
+6. Building meal screen — running list, meal total bar, animations
+7. Save confirmation screen — peak glucose field, notes, save as template option
+8. Template list screen — sorted by use_count, use/edit/delete per card
+9. Template edit view — edit mode distinct from logging mode
+10. Barcode scanning — html5-qrcode integration, Open Food Facts lookup, drops into weight entry
+
 
 **Hydration section**
 - Logs ml per day
