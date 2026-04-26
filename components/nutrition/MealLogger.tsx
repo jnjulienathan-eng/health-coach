@@ -238,6 +238,9 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
   // Photo estimation result (non-null when coming from ScreenPhotoEstimate)
   const [estimateResult, setEstimateResult] = useState<EstimateResult | null>(null)
 
+  // True when My Library is opened from "Load another template" on Screen 4
+  const [libraryFromBuilding, setLibraryFromBuilding] = useState(false)
+
   // Lock body scroll while logger is open
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -340,6 +343,30 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
     setScreen('building')
 
     // Fire-and-forget use_count bump.
+    fetch('/api/nutrition/templates', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: t.id, bump_use_count: true }),
+    }).catch(() => {})
+
+    built.forEach((bi, i) => {
+      setTimeout(() => setItems(prev => [...prev, bi]), 80 + i * 70)
+    })
+  }
+
+  // Appends a template's ingredients to the current meal without clearing
+  // existing items. Used by "Load another template" on Screen 4.
+  const appendTemplate = (t: TemplateRow) => {
+    const built: BuildingItem[] = t.items
+      .map(it => {
+        const fi = pickFoodItemFromTemplate(it)
+        return fi ? { food_item: fi, weight_grams: it.default_weight_grams } : null
+      })
+      .filter((x): x is BuildingItem => x !== null)
+
+    setLibraryFromBuilding(false)
+    setScreen('building')
+
     fetch('/api/nutrition/templates', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -565,6 +592,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                     onAddAnother={goToSearch}
                     onSave={() => setScreen('confirm')}
                     onSaveTemplate={saveTemplate}
+                    onLoadTemplate={() => { setLibraryFromBuilding(true); setScreen('library') }}
                     onBack={() => {
                       if (editingTemplate) {
                         setEditingTemplate(null)
@@ -612,8 +640,13 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                 return (
                   <ScreenLibrary
                     key="library"
-                    onBack={() => initialScreen === 'library' ? onClose() : setScreen('menu')}
-                    onUseTemplate={applyTemplate}
+                    templateOnly={libraryFromBuilding}
+                    onBack={() => {
+                      if (libraryFromBuilding) { setLibraryFromBuilding(false); setScreen('building') }
+                      else if (initialScreen === 'library') onClose()
+                      else setScreen('menu')
+                    }}
+                    onUseTemplate={libraryFromBuilding ? appendTemplate : applyTemplate}
                     onEditTemplate={startEditTemplate}
                     onNewTemplate={startNewTemplate}
                     onNewRecipe={startNewRecipe}
@@ -1317,7 +1350,7 @@ function ScreenWeight({
 function ScreenBuilding({
   mealName, items, template, setTemplateName,
   saving, saveError,
-  onEdit, onRemove, onAddAnother, onSave, onSaveTemplate, onBack,
+  onEdit, onRemove, onAddAnother, onSave, onSaveTemplate, onLoadTemplate, onBack,
 }: {
   mealName: string
   items: BuildingItem[]
@@ -1330,6 +1363,7 @@ function ScreenBuilding({
   onAddAnother: () => void
   onSave: () => void
   onSaveTemplate: () => void
+  onLoadTemplate: () => void
   onBack: () => void
 }) {
   const isTemplate = template != null
@@ -1487,6 +1521,16 @@ function ScreenBuilding({
           >
             + Add another
           </button>
+          {!isTemplate && (
+            <button
+              type="button"
+              onClick={onLoadTemplate}
+              className="btn-secondary"
+              style={{ flex: 1 }}
+            >
+              Load template
+            </button>
+          )}
           <button
             type="button"
             onClick={handleSave}
@@ -1681,9 +1725,11 @@ function ScreenTemplates({
 
 // ─── My Library: recipes + templates unified screen ──────────────────────
 function ScreenLibrary({
+  templateOnly = false,
   onBack, onUseTemplate, onEditTemplate, onNewTemplate,
   onNewRecipe, onEditRecipe, onUseRecipe,
 }: {
+  templateOnly?: boolean
   onBack: () => void
   onUseTemplate: (t: TemplateRow) => void
   onEditTemplate: (t: TemplateRow) => void
@@ -1756,7 +1802,7 @@ function ScreenLibrary({
       transition={{ duration: 0.18 }}
       style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
     >
-      <Header title="My Library" onBack={onBack} backLabel="Back" />
+      <Header title={templateOnly ? 'Load a template' : 'My Library'} onBack={onBack} backLabel="Back" />
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 24px' }}>
         {error && (
@@ -1768,8 +1814,8 @@ function ScreenLibrary({
 
         {!loading && (
           <>
-            {/* ── Recipes ──────────────────────────────────────────── */}
-            <div style={{ marginBottom: 28 }}>
+            {/* ── Recipes (hidden in template-only mode) ────────────── */}
+            {!templateOnly && <div style={{ marginBottom: 28 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingTop: 8 }}>
                 <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-text-secondary)' }}>
                   Recipes
@@ -1878,7 +1924,7 @@ function ScreenLibrary({
                   })}
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* ── Templates ────────────────────────────────────────── */}
             <div>
@@ -1886,12 +1932,14 @@ function ScreenLibrary({
                 <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-text-secondary)' }}>
                   Templates
                 </span>
-                <button
-                  type="button" onClick={onNewTemplate} className="btn-secondary"
-                  style={{ fontSize: 12, padding: '5px 10px' }}
-                >
-                  + New template
-                </button>
+                {!templateOnly && (
+                  <button
+                    type="button" onClick={onNewTemplate} className="btn-secondary"
+                    style={{ fontSize: 12, padding: '5px 10px' }}
+                  >
+                    + New template
+                  </button>
+                )}
               </div>
 
               {templates.length === 0 ? (
@@ -1930,7 +1978,15 @@ function ScreenLibrary({
                         </div>
                         <MacroLine totals={tTotals} dim />
 
-                        {isConfirming ? (
+                        {templateOnly ? (
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <button
+                              type="button" onClick={() => onUseTemplate(t)}
+                              className="btn-primary"
+                              style={{ fontSize: 12, padding: '4px 14px' }}
+                            >Use</button>
+                          </div>
+                        ) : isConfirming ? (
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
                             <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>Delete &ldquo;{t.name}&rdquo;?</span>
                             <button

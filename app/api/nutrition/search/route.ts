@@ -65,16 +65,34 @@ export async function GET(req: NextRequest) {
       if (res.ok) {
         const json = await res.json() as { foods?: Array<{ fdcId?: number; description?: string; foodNutrients?: unknown[] }> }
         const seenFdcIds = new Set(local.map(l => l.fdc_id).filter(Boolean) as string[])
+        // Collect raw USDA hits, skipping fdc_ids already in local library.
+        type RawUsda = { fdcId: string | null; name: string; n: SearchResult['nutrients_per_100g'] }
+        const rawUsda: RawUsda[] = []
         for (const f of json.foods ?? []) {
           const fdcId = f.fdcId != null ? String(f.fdcId) : null
           if (fdcId && seenFdcIds.has(fdcId)) continue   // already in local results
-          const n = parseUsdaNutrients(f.foodNutrients)
+          rawUsda.push({ fdcId, name: f.description ?? 'Unnamed', n: parseUsdaNutrients(f.foodNutrients) })
+        }
+
+        // Deduplicate by name (case-insensitive). Among duplicates prefer the
+        // entry with the most non-zero values across the five macro fields.
+        function macroScore(n: SearchResult['nutrients_per_100g']): number {
+          return [n.calories, n.protein, n.carbs, n.fat, n.fiber].filter(v => typeof v === 'number' && v > 0).length
+        }
+        const byName = new Map<string, RawUsda>()
+        for (const row of rawUsda) {
+          const key = row.name.toLowerCase()
+          const existing = byName.get(key)
+          if (!existing || macroScore(row.n) > macroScore(existing.n)) byName.set(key, row)
+        }
+
+        for (const row of byName.values()) {
           usda.push({
             source: 'usda',
             food_item_id: null,
-            fdc_id: fdcId,
-            name: f.description ?? 'Unnamed',
-            nutrients_per_100g: n,
+            fdc_id: row.fdcId,
+            name: row.name,
+            nutrients_per_100g: row.n,
           })
         }
       }
