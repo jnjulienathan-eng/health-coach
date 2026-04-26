@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import type { TrainingSession } from '@/lib/types'
 import { MACRO_TARGETS } from '@/lib/types'
 import Section from '@/components/ui/Section'
+import MealLogger from '@/components/nutrition/MealLogger'
 
 interface Props {
   currentDate: string
@@ -442,44 +443,11 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
           + Log a meal
         </button>
 
-        {/* Logger placeholder — full flow lands in Step 4 */}
         {showLogger && (
-          <div
-            onClick={() => setShowLogger(false)}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(20,40,30,0.4)',
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              zIndex: 100,
-            }}
-          >
-            <motion.div
-              initial={{ y: 200 }}
-              animate={{ y: 0 }}
-              transition={{ type: 'spring', damping: 24, stiffness: 240 }}
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: 'var(--color-surface)',
-                width: '100%', maxWidth: 480,
-                borderTopLeftRadius: 16, borderTopRightRadius: 16,
-                padding: 20, paddingBottom: 32,
-                display: 'flex', flexDirection: 'column', gap: 12,
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>
-                Log a meal
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                Logging flow coming in the next step.
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLogger(false)}
-                className="btn-secondary"
-              >
-                Close
-              </button>
-            </motion.div>
-          </div>
+          <MealLogger
+            onClose={() => setShowLogger(false)}
+            onSaved={() => { setShowLogger(false); fetchDay() }}
+          />
         )}
       </div>
     </Section>
