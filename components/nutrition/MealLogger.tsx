@@ -75,6 +75,12 @@ interface EditingTemplate {
 }
 
 // Shape returned by GET /api/nutrition/recipe
+interface RecipeIngredientRow {
+  id: string
+  weight_grams: number
+  food_items: FoodItem | FoodItem[] | null
+}
+
 interface RecipeRow {
   id: string
   name: string
@@ -84,7 +90,17 @@ interface RecipeRow {
   default_serving_grams: number | null
   food_item_id: string | null
   updated_at: string
+  recipe_ingredients: RecipeIngredientRow[]
   food_items: FoodItem | FoodItem[] | null
+}
+
+// State for the recipe builder form
+interface RecipeBuilderState {
+  id: string | null
+  name: string
+  servings: string
+  servingGrams: string
+  cookedGrams: string
 }
 
 // Shape returned by GET /api/nutrition/templates
@@ -195,6 +211,9 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
   // Template-edit mode (null = logging a meal)
   const [editingTemplate, setEditingTemplate] = useState<EditingTemplate | null>(null)
 
+  // Recipe builder mode (null = not building a recipe)
+  const [editingRecipe, setEditingRecipe] = useState<RecipeBuilderState | null>(null)
+
   // Confirm-screen fields
   const [peakGlucose, setPeakGlucose] = useState<string>('')
   const [notes, setNotes] = useState('')
@@ -237,7 +256,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
       setItems(prev => [...prev, { food_item: pending.food_item, weight_grams: pending.weight_grams }])
     }
     setPending(null)
-    setScreen('building')
+    setScreen(editingRecipe !== null ? 'recipeBuilder' : 'building')
   }
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx))
@@ -354,6 +373,67 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
     }
   }
 
+  // ─── Recipe builder handlers ───────────────────────────────────────────
+  const startNewRecipe = () => {
+    setEditingRecipe({ id: null, name: '', servings: '1', servingGrams: '', cookedGrams: '' })
+    setItems([])
+    setScreen('recipeBuilder')
+  }
+
+  const startEditRecipe = (recipe: RecipeRow) => {
+    const built: BuildingItem[] = (recipe.recipe_ingredients ?? [])
+      .map(ri => {
+        const fi = Array.isArray(ri.food_items) ? ri.food_items[0] ?? null : ri.food_items
+        return fi ? { food_item: fi, weight_grams: ri.weight_grams } : null
+      })
+      .filter((x): x is BuildingItem => x !== null)
+    setEditingRecipe({
+      id: recipe.id,
+      name: recipe.name,
+      servings: String(recipe.total_servings),
+      servingGrams: recipe.default_serving_grams != null ? String(recipe.default_serving_grams) : '',
+      cookedGrams: recipe.total_cooked_grams != null ? String(recipe.total_cooked_grams) : '',
+    })
+    setItems(built)
+    setScreen('recipeBuilder')
+  }
+
+  const saveRecipe = async () => {
+    if (!editingRecipe) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const name = editingRecipe.name.trim()
+      if (!name) { setSaveError('Recipe name is required'); setSaving(false); return }
+      const servings = parseInt(editingRecipe.servings, 10)
+      if (!servings || servings < 1) { setSaveError('Total servings must be at least 1'); setSaving(false); return }
+      const cookedGrams = editingRecipe.cookedGrams.trim() ? Number(editingRecipe.cookedGrams) : null
+      const servingGrams = editingRecipe.servingGrams.trim() ? Number(editingRecipe.servingGrams) : null
+      const payload = {
+        name,
+        total_servings: servings,
+        default_serving_grams: servingGrams,
+        total_cooked_grams: cookedGrams,
+        ingredients: items.map(it => ({ food_item_id: it.food_item.id, weight_grams: it.weight_grams })),
+      }
+      const isNew = editingRecipe.id == null
+      const res = await fetch('/api/nutrition/recipe', {
+        method: isNew ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isNew ? payload : { id: editingRecipe.id, ...payload }),
+      })
+      const j = await res.json()
+      if (!res.ok || j.error) { setSaveError(j.error ?? 'Save failed'); return }
+      setEditingRecipe(null)
+      setItems([])
+      setScreen('library')
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div
       onClick={onClose}
@@ -390,7 +470,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                     setMealName={setMealName}
                     onAddIngredients={goToSearch}
                     onBrowseLibrary={() => setScreen('library')}
-                    onCreateRecipe={() => setScreen('recipeBuilder')}
+                    onCreateRecipe={startNewRecipe}
                     onPhotoEstimate={() => setScreen('photoEstimate')}
                     onClose={onClose}
                   />
@@ -399,10 +479,17 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                 return (
                   <ScreenSearch
                     key="search"
+                    context={editingRecipe !== null ? 'recipe' : 'meal'}
                     hasItems={items.length > 0}
                     onPick={(food_item) => onItemPicked(food_item)}
                     onScan={() => setScreen('scan')}
-                    onBack={() => setScreen(items.length > 0 ? 'building' : (editingTemplate ? 'library' : 'menu'))}
+                    onCreateRecipe={startNewRecipe}
+                    onBack={() => {
+                      if (editingRecipe !== null) setScreen('recipeBuilder')
+                      else if (items.length > 0) setScreen('building')
+                      else if (editingTemplate) setScreen('library')
+                      else setScreen('menu')
+                    }}
                   />
                 )
               case 'scan':
@@ -420,7 +507,15 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                     pending={pending}
                     setPending={setPending}
                     onCommit={commitPending}
-                    onBack={() => { setPending(null); setScreen(items.length > 0 ? 'building' : 'search') }}
+                    addLabel={editingRecipe !== null ? 'Add to recipe' : 'Add to meal'}
+                    onBack={() => {
+                      setPending(null)
+                      setScreen(
+                        editingRecipe !== null
+                          ? (items.length > 0 ? 'recipeBuilder' : 'search')
+                          : (items.length > 0 ? 'building' : 'search'),
+                      )
+                    }}
                   />
                 ) : null
               case 'building':
@@ -491,8 +586,8 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                     onUseTemplate={applyTemplate}
                     onEditTemplate={startEditTemplate}
                     onNewTemplate={startNewTemplate}
-                    onNewRecipe={() => setScreen('recipeBuilder')}
-                    onEditRecipe={() => setScreen('recipeBuilder')}
+                    onNewRecipe={startNewRecipe}
+                    onEditRecipe={startEditRecipe}
                     onUseRecipe={(foodItem, servingGrams) => {
                       onItemPicked(foodItem, {
                         serving_grams: servingGrams,
@@ -502,13 +597,28 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                   />
                 )
               case 'recipeBuilder':
-                return (
+                return editingRecipe ? (
                   <ScreenRecipeBuilder
                     key="recipeBuilder"
-                    onBack={() => setScreen('library')}
-                    onSaved={() => setScreen('library')}
+                    recipeState={editingRecipe}
+                    setRecipeState={setEditingRecipe}
+                    items={items}
+                    saving={saving}
+                    saveError={saveError}
+                    onEdit={(idx) => onItemPicked(items[idx].food_item, {
+                      weight_grams: items[idx].weight_grams,
+                      editIndex: idx,
+                    })}
+                    onRemove={removeItem}
+                    onAddIngredient={() => setScreen('search')}
+                    onSave={saveRecipe}
+                    onBack={() => {
+                      setEditingRecipe(null)
+                      setItems([])
+                      setScreen('library')
+                    }}
                   />
-                )
+                ) : null
               case 'photoEstimate':
                 return (
                   <ScreenPhotoEstimate
@@ -605,11 +715,13 @@ function ScreenMenu({
 
 // ─── Screen 2: Search ─────────────────────────────────────────────────────
 function ScreenSearch({
-  hasItems, onPick, onScan, onBack,
+  context = 'meal', hasItems, onPick, onScan, onCreateRecipe, onBack,
 }: {
+  context?: 'meal' | 'recipe'
   hasItems: boolean
   onPick: (food_item: FoodItem) => void
   onScan: () => void
+  onCreateRecipe: () => void
   onBack: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -720,9 +832,9 @@ function ScreenSearch({
       style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
     >
       <Header
-        title="Add ingredient"
+        title={context === 'recipe' ? 'Add to recipe' : 'Add ingredient'}
         onBack={onBack}
-        backLabel={hasItems ? 'Back to meal' : 'Cancel'}
+        backLabel={context === 'recipe' ? 'Back to recipe' : hasItems ? 'Back to meal' : 'Cancel'}
       />
 
       <div style={{ padding: '8px 16px 12px' }}>
@@ -783,6 +895,16 @@ function ScreenSearch({
           <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
             Tab to autocomplete
           </div>
+        )}
+        {context === 'meal' && (
+          <button
+            type="button"
+            onClick={onCreateRecipe}
+            className="btn-secondary"
+            style={{ marginTop: 8, fontSize: 12, padding: '6px 12px' }}
+          >
+            Create a recipe
+          </button>
         )}
       </div>
 
@@ -1050,11 +1172,12 @@ function ScreenScan({
 
 // ─── Screen 3: Weight entry ───────────────────────────────────────────────
 function ScreenWeight({
-  pending, setPending, onCommit, onBack,
+  pending, setPending, onCommit, addLabel = 'Add to meal', onBack,
 }: {
   pending: PendingItem
   setPending: (p: PendingItem) => void
   onCommit: () => void
+  addLabel?: string
   onBack: () => void
 }) {
   const macros = useMemo(
@@ -1149,7 +1272,7 @@ function ScreenWeight({
           className="btn-primary"
           style={{ width: '100%', opacity: pending.weight_grams > 0 ? 1 : 0.5 }}
         >
-          {pending.editIndex != null ? 'Save changes' : 'Add to meal'}
+          {pending.editIndex != null ? 'Save changes' : addLabel}
         </button>
       </Footer>
     </motion.div>
@@ -1532,7 +1655,7 @@ function ScreenLibrary({
   onEditTemplate: (t: TemplateRow) => void
   onNewTemplate: () => void
   onNewRecipe: () => void
-  onEditRecipe: (recipeId: string) => void
+  onEditRecipe: (recipe: RecipeRow) => void
   onUseRecipe: (foodItem: FoodItem, servingGrams: number | null) => void
 }) {
   const [recipes, setRecipes] = useState<RecipeRow[]>([])
@@ -1705,7 +1828,7 @@ function ScreenLibrary({
                         ) : (
                           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                             <button
-                              type="button" onClick={() => onEditRecipe(recipe.id)}
+                              type="button" onClick={() => onEditRecipe(recipe)}
                               style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' }}
                             >Edit</button>
                             <button
@@ -1817,23 +1940,234 @@ function ScreenLibrary({
   )
 }
 
-// ─── Recipe builder screen (stub — filled in Task 4) ─────────────────────
+// ─── Recipe builder screen ────────────────────────────────────────────────
 function ScreenRecipeBuilder({
-  onBack,
+  recipeState, setRecipeState,
+  items, saving, saveError,
+  onEdit, onRemove, onAddIngredient, onSave, onBack,
 }: {
+  recipeState: RecipeBuilderState
+  setRecipeState: (s: RecipeBuilderState) => void
+  items: BuildingItem[]
+  saving: boolean
+  saveError: string | null
+  onEdit: (idx: number) => void
+  onRemove: (idx: number) => void
+  onAddIngredient: () => void
+  onSave: () => void
   onBack: () => void
-  onSaved: () => void
 }) {
+  const batchTotals = useMemo(() => totalsFor(items), [items])
+  const servings = parseInt(recipeState.servings, 10) || 0
+  const cookedGrams = parseFloat(recipeState.cookedGrams) || 0
+  const hasPreview = cookedGrams > 0 && servings > 0 && items.length > 0
+
+  const perServing = useMemo(() => {
+    if (!hasPreview) return null
+    const s = servings
+    return {
+      calories: batchTotals.calories / s,
+      protein:  batchTotals.protein  / s,
+      carbs:    batchTotals.carbs    / s,
+      fat:      batchTotals.fat      / s,
+      fiber:    batchTotals.fiber    / s,
+    }
+  }, [hasPreview, batchTotals, servings])
+
+  const headerTitle = recipeState.id ? `Edit: ${recipeState.name || 'Recipe'}` : 'New recipe'
+  const saveDisabled = !recipeState.name.trim() || servings < 1 || saving
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.18 }}
       style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
     >
-      <Header title="New recipe" onBack={onBack} backLabel="Cancel" />
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>Recipe builder — coming in task 4</span>
+      <Header title={headerTitle} onBack={onBack} backLabel="Cancel" />
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        <div>
+          <FieldLabel>Recipe name</FieldLabel>
+          <input
+            type="text"
+            value={recipeState.name}
+            onChange={(e) => setRecipeState({ ...recipeState, name: e.target.value })}
+            placeholder="e.g. Lentil pilaf"
+            autoFocus
+            style={{
+              width: '100%', padding: '10px 12px', fontSize: 14,
+              color: 'var(--color-text-primary)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8, outline: 'none',
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 16 }}>
+          <div>
+            <FieldLabel>Total servings</FieldLabel>
+            <input
+              type="number" inputMode="numeric" min={1} step={1}
+              value={recipeState.servings}
+              onChange={(e) => setRecipeState({ ...recipeState, servings: e.target.value })}
+              placeholder="1"
+              style={{
+                width: 80, padding: '10px 12px', fontSize: 14, fontFamily: 'var(--font-mono)',
+                color: 'var(--color-text-primary)',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8, outline: 'none',
+              }}
+            />
+          </div>
+          <div>
+            <FieldLabel>
+              Portion size — g{' '}
+              <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+            </FieldLabel>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="number" inputMode="decimal" min={1}
+                value={recipeState.servingGrams}
+                onChange={(e) => setRecipeState({ ...recipeState, servingGrams: e.target.value })}
+                placeholder="—"
+                style={{
+                  width: 80, padding: '10px 12px', fontSize: 14, fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-text-primary)',
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 8, outline: 'none',
+                }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>g</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <FieldLabel>Ingredients</FieldLabel>
+          {items.length > 0 && (
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <AnimatePresence initial={false}>
+                {items.map((it, i) => {
+                  const m = macrosFor(it.food_item.nutrients_per_100g, it.weight_grams)
+                  return (
+                    <motion.li
+                      key={`${it.food_item.id}-${i}`}
+                      layout
+                      initial={{ opacity: 0, x: -12, height: 0 }}
+                      animate={{ opacity: 1, x: 0, height: 'auto' }}
+                      exit={{ opacity: 0, x: -12, height: 0 }}
+                      transition={{ duration: 0.18 }}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      <div style={{
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 10,
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '10px 12px',
+                      }}>
+                        <button
+                          type="button" onClick={() => onEdit(i)}
+                          style={{
+                            flex: 1, minWidth: 0, textAlign: 'left',
+                            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                            display: 'flex', flexDirection: 'column', gap: 4,
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                            <span style={{ fontSize: 13, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {it.food_item.name}
+                            </span>
+                            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', flexShrink: 0 }}>
+                              {it.weight_grams}g
+                            </span>
+                          </div>
+                          <MacroLine totals={m} dim />
+                        </button>
+                        <button
+                          type="button" onClick={() => onRemove(i)} aria-label="Remove"
+                          style={{ width: 32, height: 32, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-dim)' }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </motion.li>
+                  )
+                })}
+              </AnimatePresence>
+            </ul>
+          )}
+          <button
+            type="button" onClick={onAddIngredient} className="btn-secondary"
+            style={{ fontSize: 13, padding: '8px 14px' }}
+          >
+            + Add ingredient
+          </button>
+        </div>
+
+        <div>
+          <FieldLabel>
+            Total cooked weight — g{' '}
+            <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+          </FieldLabel>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="number" inputMode="decimal" min={1}
+              value={recipeState.cookedGrams}
+              onChange={(e) => setRecipeState({ ...recipeState, cookedGrams: e.target.value })}
+              placeholder="—"
+              style={{
+                width: 120, padding: '10px 12px', fontSize: 14, fontFamily: 'var(--font-mono)',
+                color: 'var(--color-text-primary)',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8, outline: 'none',
+              }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>g</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 4 }}>
+            Weigh the finished pot. Leave blank now, add after cooking.
+          </div>
+        </div>
+
+        {saveError && (
+          <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{saveError}</div>
+        )}
       </div>
+
+      <Footer>
+        <div style={{
+          padding: '10px 12px', marginBottom: 10,
+          background: 'var(--color-bg)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 10,
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 6 }}>
+            Per serving
+          </div>
+          {perServing ? (
+            <MacroLine totals={perServing} animated />
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>
+              Add cooked weight to see macros
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saveDisabled}
+          className="btn-primary"
+          style={{ width: '100%', opacity: saveDisabled ? 0.5 : 1 }}
+        >
+          {saving ? 'Saving…' : recipeState.cookedGrams.trim() ? 'Save recipe' : 'Save as draft'}
+        </button>
+      </Footer>
     </motion.div>
   )
 }
