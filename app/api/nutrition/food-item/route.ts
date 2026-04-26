@@ -5,7 +5,8 @@
 // existing row if one already matches.
 //
 // Body: { fdc_id?: string|null, name: string,
-//         nutrients_per_100g: object, source: 'usda'|'open_food_facts'|'custom' }
+//         nutrients_per_100g: object,
+//         source: 'usda'|'open_food_facts'|'recipe'|'recipe_deleted'|'custom' }
 
 import { supaAdmin, nutritionUserId } from '@/lib/nutrition'
 
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
     fdc_id?: string | null
     name?: string
     nutrients_per_100g?: Record<string, unknown>
-    source?: 'usda' | 'open_food_facts' | 'custom'
+    source?: 'usda' | 'open_food_facts' | 'recipe' | 'recipe_deleted' | 'custom'
   }
   try {
     body = await req.json()
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
   const nutrients = body.nutrients_per_100g ?? {}
 
   if (!name) return Response.json({ error: 'name is required' }, { status: 400 })
-  if (!['usda', 'open_food_facts', 'custom'].includes(source)) {
+  if (!['usda', 'open_food_facts', 'recipe', 'recipe_deleted', 'custom'].includes(source)) {
     return Response.json({ error: 'invalid source' }, { status: 400 })
   }
 
