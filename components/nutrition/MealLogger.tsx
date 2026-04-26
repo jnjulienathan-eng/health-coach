@@ -502,24 +502,24 @@ function ScreenMenu({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
         <button
           type="button" onClick={onAddIngredients} className="btn-primary"
-          style={{ padding: '14px 16px', textAlign: 'left' }}
+          style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6 }}
         >
-          Add ingredients
-          <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.85, marginTop: 4 }}>
+          <span>Add ingredients</span>
+          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.85, lineHeight: 1.3 }}>
             Search by name or scan a barcode
-          </div>
+          </span>
         </button>
         <button
           type="button"
           onClick={onUseTemplate}
           disabled={!onUseTemplate}
           className="btn-secondary"
-          style={{ padding: '14px 16px', textAlign: 'left', opacity: onUseTemplate ? 1 : 0.5 }}
+          style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6, opacity: onUseTemplate ? 1 : 0.5 }}
         >
-          Use a template
-          <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.85, marginTop: 4 }}>
+          <span>Use a template</span>
+          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.85, lineHeight: 1.3 }}>
             {onUseTemplate ? 'Pick from your saved meals' : 'Coming soon'}
-          </div>
+          </span>
         </button>
       </div>
     </motion.div>
