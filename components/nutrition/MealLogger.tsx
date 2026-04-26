@@ -91,7 +91,7 @@ interface RecipeRow {
   is_raw: boolean
   food_item_id: string | null
   updated_at: string
-  recipe_ingredients: RecipeIngredientRow[]
+  ingredients: RecipeIngredientRow[]
   food_items: FoodItem | FoodItem[] | null
 }
 
@@ -439,7 +439,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
   }
 
   const startEditRecipe = (recipe: RecipeRow) => {
-    const built: BuildingItem[] = (recipe.recipe_ingredients ?? [])
+    const built: BuildingItem[] = (recipe.ingredients ?? [])
       .map(ri => {
         const fi = Array.isArray(ri.food_items) ? ri.food_items[0] ?? null : ri.food_items
         return fi ? { food_item: fi, weight_grams: ri.weight_grams } : null
