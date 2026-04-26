@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: April 18, 2026_
+_Last updated: April 26, 2026_
 
 ---
 
@@ -82,7 +82,31 @@ Six new tables are live. Do not run migrations for these — they already exist.
 - `meal_templates` — named meal presets
 - `meal_template_items` — ingredients and default weights inside a template
 
-RLS is enabled on all six tables.
+RLS is enabled on all six tables (policy: `auth.uid() = user_id`). The new
+nutrition API routes use the Supabase **service-role key** server-side, which
+bypasses RLS — the policies stay in place for any future browser-direct access
+but don't block our server writes.
+
+**FK migration applied April 26, 2026.** The four `user_id` foreign keys to
+`auth.users(id)` were dropped — Julie's `NUTRITION_USER_ID` UUID isn't an
+auth.users row (this app doesn't use Supabase Auth), and the FKs were the
+cause of every food_items insert failing. Internal FKs
+(`meal_log_items → meal_logs`, etc.) are intact.
+
+```sql
+alter table food_items              drop constraint if exists food_items_user_id_fkey;
+alter table meal_logs               drop constraint if exists meal_logs_user_id_fkey;
+alter table meal_templates          drop constraint if exists meal_templates_user_id_fkey;
+alter table daily_nutrition_summary drop constraint if exists daily_nutrition_summary_user_id_fkey;
+```
+
+### Required Vercel environment variables
+
+- `USDA_API_KEY` — USDA FoodData Central. Server-side only.
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role secret. Server-side only.
+- `NUTRITION_USER_ID` — UUID used as `user_id` on every nutrition row. Read by
+  `lib/nutrition.ts → nutritionUserId()`. Set per-environment (Production +
+  Preview both required).
 
 ---
 
@@ -153,20 +177,41 @@ After every meal_log save, edit, or delete:
 
 ---
 
-### Build sequence
+### Build status (April 26, 2026)
 
-Follow this order strictly. DB is already done (step 1 complete).
+All steps below are built and pushed on `claude/quizzical-lalande-dce194`.
 
-1. ~~DB migration~~ — done, tables already live in Supabase
-2. API routes — USDA search, food item caching, meal save with summary upsert, meal edit, meal delete, template CRUD
-3. Nutrition day view — macro summary bar, meal cards, log a meal entry point
-4. Ingredient search screen — search field with autocomplete, USDA results, local library results
-5. Weight entry screen — live macro preview with framer-motion
-6. Building meal screen — running list, meal total bar, animations
-7. Save confirmation screen — peak glucose field, notes, save as template option
-8. Template list screen — sorted by use_count, use/edit/delete per card
-9. Template edit view — edit mode distinct from logging mode
-10. Barcode scanning — html5-qrcode integration, Open Food Facts lookup, drops into weight entry
+1. ~~DB migration~~ — tables already live in Supabase
+2. ~~API routes~~ — `app/api/nutrition/{search,food-item,meal,day,templates,barcode}/route.ts`
+   plus shared helpers in `lib/nutrition.ts` (service-role client, 05:00
+   Berlin day-key, `recomputeDailySummary`) and `lib/usda.ts` (nutrient parser)
+3. ~~Nutrition day view~~ — `components/sections/NutritionSection.tsx`
+   self-fetches `/api/nutrition/day`, sticky 5-macro bar, animated meal cards,
+   per-meal CGM chip, expandable ingredient breakdown with delete-with-confirm
+4. ~~Five-screen logging flow~~ — `components/nutrition/MealLogger.tsx`
+   (menu / search / weight / building / confirm), inline ghost-text autocomplete
+   on local results, debounced USDA search, live macro preview, pulse on add
+5. ~~Template list + edit view~~ — same MealLogger, screen `templates` plus
+   reuse of `building` in template-edit mode (driven by `editingTemplate`
+   state); apply staggers items into the meal at 70 ms intervals using their
+   existing enter animation
+6. ~~Barcode scanning~~ — `ScreenScan` inside MealLogger, `html5-qrcode`
+   dynamic-imported on entry, Open Food Facts via `/api/nutrition/barcode`,
+   serving-size shortcut surfaced on Screen 3 if OFF returned one
+
+### Known follow-ups (not done in this build)
+
+- **Coach still reads `daily_entries.nutrition`** in `app/api/coach/route.ts`
+  via `entry.nutrition.*`. Per the locked architecture decision the coach
+  should read from `daily_nutrition_summary` instead. Switch when convenient
+  — until then the coach sees no data for meals logged through the new flow.
+- The legacy four-meal-slot UI inside `lib/db.ts → rowToEntry` and
+  `lib/types.ts → NutritionData` still reads/writes the old `daily_entries.*`
+  columns. The new section ignores them entirely; saves still go through but
+  the values are blank. Cleanup is safe once the coach switch above lands.
+- camera access requires HTTPS — works on Vercel preview/prod, not on
+  `npm run dev` over plain http://localhost. Use `next dev --experimental-https`
+  or Safari (which whitelists localhost) when testing the scan flow locally.
 
 
 **Hydration section**
@@ -289,13 +334,14 @@ Follow this order strictly. DB is already done (step 1 complete).
 1. **Coach "this afternoon" language** — earlyevening mode still says "this afternoon" in CoachTab.tsx header/description text.
 
 ### Features — near term (priority order)
-1. **Dashboard scores above data inputs** — move Behavior + Outcome scores to top of Today tab so progress is visible while logging.
-2. **Dashboard 30-day window** — extend from 7 to 30 days to match Coach context.
-3. **Coach refresh button** — manual refresh when new training logged mid-day, without full page reload.
-4. **Behavior/Outcome score review + CGM scoring** — full audit of scoring model. Confirm empty fields treated as N/A not zero. Implement CGM sub-score logic (see scoring model above).
-5. **CGM rolling average in Coach context** — compute 30-day rolling average glucose from history and inject into Coach context block.
-6. **Food quality coaching** — one actionable nudge per day on ingredients to add/reduce (cholesterol, inflammation, micronutrients). Design TBD: daily tip vs weekly pattern view.
-7. **Commit BODYCIPHER.md to the GitHub repo** — so Claude Code reads it at the start of every session.
+1. **Switch Coach to read `daily_nutrition_summary`** — `app/api/coach/route.ts` still pulls `entry.nutrition.*` from the legacy `daily_entries.nutrition` JSONB. Until this is changed the coach sees no data for meals logged through the new ingredient flow. Pass `logged_via_summary` through too so the coach can calibrate confidence.
+2. **Dashboard scores above data inputs** — move Behavior + Outcome scores to top of Today tab so progress is visible while logging.
+3. **Dashboard 30-day window** — extend from 7 to 30 days to match Coach context.
+4. **Coach refresh button** — manual refresh when new training logged mid-day, without full page reload.
+5. **Behavior/Outcome score review + CGM scoring** — full audit of scoring model. Confirm empty fields treated as N/A not zero. Implement CGM sub-score logic (see scoring model above).
+6. **CGM rolling average in Coach context** — compute 30-day rolling average glucose from history and inject into Coach context block.
+7. **Food quality coaching** — one actionable nudge per day on ingredients to add/reduce (cholesterol, inflammation, micronutrients). Design TBD: daily tip vs weekly pattern view.
+8. **Commit BODYCIPHER.md to the GitHub repo** — so Claude Code reads it at the start of every session.
 
 ### Features — later
 1. **Responsive design / mobile layout** — proper mobile vs web layout differentiation.
