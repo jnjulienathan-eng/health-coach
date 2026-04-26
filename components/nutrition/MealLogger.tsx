@@ -1897,7 +1897,7 @@ function ScreenLibrary({
                               background: 'rgba(245,158,11,0.15)', color: '#d97706',
                               fontWeight: 500, letterSpacing: '0.04em',
                             }}>
-                              Incomplete — add cooked weight
+                              Incomplete — add cooked weight or mark as raw
                             </span>
                           ) : displayMacros ? (
                             <div style={{ marginTop: 4 }}>
