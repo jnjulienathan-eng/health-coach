@@ -30,7 +30,7 @@ interface FoodItem {
   id: string
   name: string
   fdc_id: string | null
-  source: 'usda' | 'open_food_facts' | 'custom'
+  source: 'usda' | 'open_food_facts' | 'custom' | 'recipe' | 'recipe_deleted'
   nutrients_per_100g: NutrientsPer100g
 }
 
@@ -58,11 +58,12 @@ interface BuildingItem {
   weight_grams: number
 }
 
-type Screen = 'menu' | 'search' | 'weight' | 'building' | 'confirm' | 'templates' | 'scan'
+type Screen = 'menu' | 'search' | 'weight' | 'building' | 'confirm' | 'templates' | 'scan' | 'library' | 'recipeBuilder' | 'photoEstimate'
 
 interface Props {
   onClose: () => void
   onSaved: () => void
+  initialScreen?: Screen
 }
 
 // When editingTemplate is non-null the building screen behaves as the
@@ -71,6 +72,19 @@ interface Props {
 interface EditingTemplate {
   id: string | null   // null = new template, string = editing existing
   name: string
+}
+
+// Shape returned by GET /api/nutrition/recipe
+interface RecipeRow {
+  id: string
+  name: string
+  status: 'draft' | 'active'
+  total_servings: number
+  total_cooked_grams: number | null
+  default_serving_grams: number | null
+  food_item_id: string | null
+  updated_at: string
+  food_items: FoodItem | FoodItem[] | null
 }
 
 // Shape returned by GET /api/nutrition/templates
@@ -172,8 +186,8 @@ function MacroLine({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────
-export default function MealLogger({ onClose, onSaved }: Props) {
-  const [screen, setScreen] = useState<Screen>('menu')
+export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
+  const [screen, setScreen] = useState<Screen>(initialScreen ?? 'menu')
   const [mealName, setMealName] = useState('')
   const [items, setItems] = useState<BuildingItem[]>([])
   const [pending, setPending] = useState<PendingItem | null>(null)
@@ -329,10 +343,10 @@ export default function MealLogger({ onClose, onSaved }: Props) {
       })
       const j = await res.json()
       if (!res.ok || j.error) { setSaveError(j.error ?? 'Save failed'); return }
-      // Reset and return to template list
+      // Reset and return to library
       setItems([])
       setEditingTemplate(null)
-      setScreen('templates')
+      setScreen('library')
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed')
     } finally {
@@ -375,7 +389,9 @@ export default function MealLogger({ onClose, onSaved }: Props) {
                     mealName={mealName}
                     setMealName={setMealName}
                     onAddIngredients={goToSearch}
-                    onUseTemplate={() => setScreen('templates')}
+                    onBrowseLibrary={() => setScreen('library')}
+                    onCreateRecipe={() => setScreen('recipeBuilder')}
+                    onPhotoEstimate={() => setScreen('photoEstimate')}
                     onClose={onClose}
                   />
                 )
@@ -386,7 +402,7 @@ export default function MealLogger({ onClose, onSaved }: Props) {
                     hasItems={items.length > 0}
                     onPick={(food_item) => onItemPicked(food_item)}
                     onScan={() => setScreen('scan')}
-                    onBack={() => setScreen(items.length > 0 ? 'building' : (editingTemplate ? 'templates' : 'menu'))}
+                    onBack={() => setScreen(items.length > 0 ? 'building' : (editingTemplate ? 'library' : 'menu'))}
                   />
                 )
               case 'scan':
@@ -429,7 +445,7 @@ export default function MealLogger({ onClose, onSaved }: Props) {
                       if (editingTemplate) {
                         setEditingTemplate(null)
                         setItems([])
-                        setScreen('templates')
+                        setScreen('library')
                       } else {
                         setScreen('menu')
                       }
@@ -467,6 +483,40 @@ export default function MealLogger({ onClose, onSaved }: Props) {
                     onBack={() => setScreen('building')}
                   />
                 )
+              case 'library':
+                return (
+                  <ScreenLibrary
+                    key="library"
+                    onBack={() => initialScreen === 'library' ? onClose() : setScreen('menu')}
+                    onUseTemplate={applyTemplate}
+                    onEditTemplate={startEditTemplate}
+                    onNewTemplate={startNewTemplate}
+                    onNewRecipe={() => setScreen('recipeBuilder')}
+                    onEditRecipe={() => setScreen('recipeBuilder')}
+                    onUseRecipe={(foodItem, servingGrams) => {
+                      onItemPicked(foodItem, {
+                        serving_grams: servingGrams,
+                        weight_grams: servingGrams ?? 100,
+                      })
+                    }}
+                  />
+                )
+              case 'recipeBuilder':
+                return (
+                  <ScreenRecipeBuilder
+                    key="recipeBuilder"
+                    onBack={() => setScreen('library')}
+                    onSaved={() => setScreen('library')}
+                  />
+                )
+              case 'photoEstimate':
+                return (
+                  <ScreenPhotoEstimate
+                    key="photoEstimate"
+                    onBack={() => setScreen('menu')}
+                    onEstimated={() => setScreen('confirm')}
+                  />
+                )
             }
           })()}
         </AnimatePresence>
@@ -477,12 +527,14 @@ export default function MealLogger({ onClose, onSaved }: Props) {
 
 // ─── Screen 1: Menu ───────────────────────────────────────────────────────
 function ScreenMenu({
-  mealName, setMealName, onAddIngredients, onUseTemplate, onClose,
+  mealName, setMealName, onAddIngredients, onBrowseLibrary, onCreateRecipe, onPhotoEstimate, onClose,
 }: {
   mealName: string
   setMealName: (s: string) => void
   onAddIngredients: () => void
-  onUseTemplate?: () => void
+  onBrowseLibrary: () => void
+  onCreateRecipe: () => void
+  onPhotoEstimate: () => void
   onClose: () => void
 }) {
   return (
@@ -499,7 +551,7 @@ function ScreenMenu({
         type="text"
         value={mealName}
         onChange={(e) => setMealName(e.target.value)}
-        placeholder="e.g. post-run, desk lunch (optional)"
+        placeholder="Meal name (optional — auto-filled from time of day)"
         style={{
           padding: '10px 12px', fontSize: 14,
           color: 'var(--color-text-primary)',
@@ -509,7 +561,7 @@ function ScreenMenu({
         }}
       />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <button
           type="button" onClick={onAddIngredients} className="btn-primary"
           style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6 }}
@@ -520,15 +572,30 @@ function ScreenMenu({
           </span>
         </button>
         <button
-          type="button"
-          onClick={onUseTemplate}
-          disabled={!onUseTemplate}
-          className="btn-secondary"
-          style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6, opacity: onUseTemplate ? 1 : 0.5 }}
+          type="button" onClick={onBrowseLibrary} className="btn-secondary"
+          style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6 }}
         >
-          <span>Use a template</span>
+          <span>Browse Library</span>
           <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.85, lineHeight: 1.3 }}>
-            {onUseTemplate ? 'Pick from your saved meals' : 'Coming soon'}
+            Your saved recipes and templates
+          </span>
+        </button>
+        <button
+          type="button" onClick={onCreateRecipe} className="btn-secondary"
+          style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6 }}
+        >
+          <span>Create a recipe</span>
+          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.85, lineHeight: 1.3 }}>
+            Build a batch recipe by weight
+          </span>
+        </button>
+        <button
+          type="button" onClick={onPhotoEstimate} className="btn-secondary"
+          style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6 }}
+        >
+          <span>Estimate from photo or description</span>
+          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.85, lineHeight: 1.3 }}>
+            Claude will estimate the macros
           </span>
         </button>
       </div>
@@ -1450,6 +1517,343 @@ function ScreenTemplates({
             )
           })}
         </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── My Library: recipes + templates unified screen ──────────────────────
+function ScreenLibrary({
+  onBack, onUseTemplate, onEditTemplate, onNewTemplate,
+  onNewRecipe, onEditRecipe, onUseRecipe,
+}: {
+  onBack: () => void
+  onUseTemplate: (t: TemplateRow) => void
+  onEditTemplate: (t: TemplateRow) => void
+  onNewTemplate: () => void
+  onNewRecipe: () => void
+  onEditRecipe: (recipeId: string) => void
+  onUseRecipe: (foodItem: FoodItem, servingGrams: number | null) => void
+}) {
+  const [recipes, setRecipes] = useState<RecipeRow[]>([])
+  const [templates, setTemplates] = useState<TemplateRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<{ type: 'recipe' | 'template'; id: string } | null>(null)
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [recipeRes, templateRes] = await Promise.all([
+        fetch('/api/nutrition/recipe'),
+        fetch('/api/nutrition/templates'),
+      ])
+      const recipeJ = await recipeRes.json() as { recipes?: RecipeRow[]; error?: string }
+      const templateJ = await templateRes.json() as { templates?: TemplateRow[]; error?: string }
+      if (recipeJ.error) setError(recipeJ.error)
+      else setRecipes(recipeJ.recipes ?? [])
+      if (templateJ.error) setError(prev => prev ? `${prev} | ${templateJ.error}` : templateJ.error ?? null)
+      else setTemplates(templateJ.templates ?? [])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  const handleDeleteRecipe = async (id: string) => {
+    try {
+      const res = await fetch(`/api/nutrition/recipe?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const j = await res.json().catch(() => ({})) as { error?: string }
+      if (!res.ok || j.error) { setError(j.error ?? 'Delete failed'); return }
+      setConfirmDeleteId(null)
+      await fetchAll()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+    }
+  }
+
+  const handleDeleteTemplate = async (id: string) => {
+    try {
+      const res = await fetch(`/api/nutrition/templates?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const j = await res.json().catch(() => ({})) as { error?: string }
+      if (!res.ok || j.error) { setError(j.error ?? 'Delete failed'); return }
+      setConfirmDeleteId(null)
+      await fetchAll()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+    }
+  }
+
+  const pickRecipeFoodItem = (recipe: RecipeRow): FoodItem | null => {
+    if (!recipe.food_items) return null
+    return Array.isArray(recipe.food_items) ? recipe.food_items[0] ?? null : recipe.food_items
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
+      transition={{ duration: 0.18 }}
+      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+    >
+      <Header title="My Library" onBack={onBack} backLabel="Back" />
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 24px' }}>
+        {error && (
+          <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 8 }}>{error}</div>
+        )}
+        {loading && (
+          <div style={{ fontSize: 12, color: 'var(--color-text-dim)', textAlign: 'center', padding: 16 }}>Loading…</div>
+        )}
+
+        {!loading && (
+          <>
+            {/* ── Recipes ──────────────────────────────────────────── */}
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingTop: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-text-secondary)' }}>
+                  Recipes
+                </span>
+                <button
+                  type="button" onClick={onNewRecipe} className="btn-secondary"
+                  style={{ fontSize: 12, padding: '5px 10px' }}
+                >
+                  + New recipe
+                </button>
+              </div>
+
+              {recipes.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--color-text-dim)', textAlign: 'center', padding: 16 }}>
+                  No recipes yet.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {recipes.map(recipe => {
+                    const isDraft = recipe.status === 'draft'
+                    const foodItem = pickRecipeFoodItem(recipe)
+                    const isConfirming = confirmDeleteId?.id === recipe.id && confirmDeleteId?.type === 'recipe'
+                    const macros = foodItem?.nutrients_per_100g
+                    const hasServing = (recipe.default_serving_grams ?? 0) > 0
+                    const displayMacros = (hasServing && macros && recipe.default_serving_grams)
+                      ? {
+                          calories: ((macros.calories ?? 0) * recipe.default_serving_grams) / 100,
+                          protein:  ((macros.protein  ?? 0) * recipe.default_serving_grams) / 100,
+                          carbs:    ((macros.carbs    ?? 0) * recipe.default_serving_grams) / 100,
+                          fat:      ((macros.fat      ?? 0) * recipe.default_serving_grams) / 100,
+                          fiber:    ((macros.fiber    ?? 0) * recipe.default_serving_grams) / 100,
+                        }
+                      : macros
+                        ? { calories: macros.calories ?? 0, protein: macros.protein ?? 0, carbs: macros.carbs ?? 0, fat: macros.fat ?? 0, fiber: macros.fiber ?? 0 }
+                        : null
+
+                    return (
+                      <div
+                        key={recipe.id}
+                        style={{
+                          background: 'var(--color-surface)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 10, padding: '10px 12px',
+                          display: 'flex', flexDirection: 'column', gap: 8,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => !isDraft && foodItem && onUseRecipe(foodItem, recipe.default_serving_grams ?? null)}
+                          disabled={isDraft || !foodItem}
+                          style={{
+                            background: 'none', border: 'none', padding: 0, textAlign: 'left',
+                            cursor: isDraft || !foodItem ? 'default' : 'pointer', width: '100%',
+                          }}
+                        >
+                          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {recipe.name}
+                          </div>
+                          {isDraft ? (
+                            <span style={{
+                              display: 'inline-block', marginTop: 4,
+                              fontSize: 10, padding: '2px 7px', borderRadius: 4,
+                              background: 'rgba(245,158,11,0.15)', color: '#d97706',
+                              fontWeight: 500, letterSpacing: '0.04em',
+                            }}>
+                              Incomplete — add cooked weight
+                            </span>
+                          ) : displayMacros ? (
+                            <div style={{ marginTop: 4 }}>
+                              <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginBottom: 2 }}>
+                                {hasServing ? `per serving (${recipe.default_serving_grams}g)` : 'per 100g'}
+                              </div>
+                              <MacroLine totals={displayMacros} dim />
+                            </div>
+                          ) : null}
+                        </button>
+
+                        {isConfirming ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>Delete &ldquo;{recipe.name}&rdquo;?</span>
+                            <button
+                              type="button" onClick={() => setConfirmDeleteId(null)}
+                              style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' }}
+                            >Cancel</button>
+                            <button
+                              type="button" onClick={() => handleDeleteRecipe(recipe.id)}
+                              style={{ background: 'var(--color-danger)', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#fff' }}
+                            >Yes, delete</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            <button
+                              type="button" onClick={() => onEditRecipe(recipe.id)}
+                              style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' }}
+                            >Edit</button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId({ type: 'recipe', id: recipe.id })}
+                              aria-label="Delete recipe"
+                              style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', color: 'var(--color-text-dim)' }}
+                            ><TrashIcon /></button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ── Templates ────────────────────────────────────────── */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-text-secondary)' }}>
+                  Templates
+                </span>
+                <button
+                  type="button" onClick={onNewTemplate} className="btn-secondary"
+                  style={{ fontSize: 12, padding: '5px 10px' }}
+                >
+                  + New template
+                </button>
+              </div>
+
+              {templates.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--color-text-dim)', textAlign: 'center', padding: 16 }}>
+                  No templates yet — save one from a meal, or create one from scratch.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {templates.map(t => {
+                    const built = t.items
+                      .map(it => {
+                        const fi = pickFoodItemFromTemplate(it)
+                        return fi ? { food_item: fi, weight_grams: it.default_weight_grams } : null
+                      })
+                      .filter((x): x is BuildingItem => x !== null)
+                    const tTotals = totalsFor(built)
+                    const isConfirming = confirmDeleteId?.id === t.id && confirmDeleteId?.type === 'template'
+
+                    return (
+                      <div
+                        key={t.id}
+                        style={{
+                          background: 'var(--color-surface)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 10, padding: '10px 12px',
+                          display: 'flex', flexDirection: 'column', gap: 8,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {t.name}
+                          </span>
+                          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', flexShrink: 0 }}>
+                            {built.length} item{built.length === 1 ? '' : 's'} · used {t.use_count}×
+                          </span>
+                        </div>
+                        <MacroLine totals={tTotals} dim />
+
+                        {isConfirming ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>Delete &ldquo;{t.name}&rdquo;?</span>
+                            <button
+                              type="button" onClick={() => setConfirmDeleteId(null)}
+                              style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' }}
+                            >Cancel</button>
+                            <button
+                              type="button" onClick={() => handleDeleteTemplate(t.id)}
+                              style={{ background: 'var(--color-danger)', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#fff' }}
+                            >Yes, delete</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            <button
+                              type="button" onClick={() => onEditTemplate(t)}
+                              style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' }}
+                            >Edit</button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId({ type: 'template', id: t.id })}
+                              aria-label="Delete template"
+                              style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', color: 'var(--color-text-dim)' }}
+                            ><TrashIcon /></button>
+                            <button
+                              type="button" onClick={() => onUseTemplate(t)}
+                              className="btn-primary"
+                              style={{ fontSize: 12, padding: '4px 14px' }}
+                            >Use</button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Recipe builder screen (stub — filled in Task 4) ─────────────────────
+function ScreenRecipeBuilder({
+  onBack,
+}: {
+  onBack: () => void
+  onSaved: () => void
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
+      transition={{ duration: 0.18 }}
+      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+    >
+      <Header title="New recipe" onBack={onBack} backLabel="Cancel" />
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>Recipe builder — coming in task 4</span>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Photo estimation screen (stub — filled in Task 5) ────────────────────
+function ScreenPhotoEstimate({
+  onBack,
+}: {
+  onBack: () => void
+  onEstimated: () => void
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
+      transition={{ duration: 0.18 }}
+      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+    >
+      <Header title="Estimate from photo" onBack={onBack} backLabel="Cancel" />
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>Photo estimation — coming in task 5</span>
       </div>
     </motion.div>
   )

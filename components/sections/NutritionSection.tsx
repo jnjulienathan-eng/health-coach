@@ -24,7 +24,7 @@ interface NutrientsPer100g {
 interface FoodItemLite {
   id: string
   name: string
-  source: 'usda' | 'open_food_facts' | 'custom'
+  source: 'usda' | 'open_food_facts' | 'custom' | 'recipe' | 'recipe_deleted'
   fdc_id: string | null
   nutrients_per_100g: NutrientsPer100g
 }
@@ -302,6 +302,7 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showLogger, setShowLogger] = useState(false)
+  const [loggerInitialScreen, setLoggerInitialScreen] = useState<'menu' | 'library'>('menu')
 
   const calorieTarget = getDailyCalorieTarget(sessions)
 
@@ -433,23 +434,52 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
           )}
         </div>
 
-        {/* Log a meal button */}
-        <button
-          type="button"
-          onClick={() => setShowLogger(true)}
-          className="btn-primary"
-          style={{ marginTop: 4 }}
-        >
-          + Log a meal
-        </button>
+        {/* Bottom action bar */}
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <button
+            type="button"
+            onClick={() => { setLoggerInitialScreen('menu'); setShowLogger(true) }}
+            className="btn-primary"
+            style={{ flex: 1 }}
+          >
+            + Log a meal
+          </button>
+          <button
+            type="button"
+            onClick={() => { setLoggerInitialScreen('library'); setShowLogger(true) }}
+            aria-label="My Library"
+            style={{
+              width: 44,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8, cursor: 'pointer',
+              color: 'var(--color-text-secondary)',
+              flexShrink: 0,
+            }}
+          >
+            <LibraryIcon />
+          </button>
+        </div>
 
         {showLogger && (
           <MealLogger
             onClose={() => setShowLogger(false)}
             onSaved={() => { setShowLogger(false); fetchDay() }}
+            initialScreen={loggerInitialScreen}
           />
         )}
       </div>
     </Section>
+  )
+}
+
+function LibraryIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+      <rect x="3" y="4" width="3" height="12" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="8" y="4" width="3" height="12" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M13 4l3 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
   )
 }
