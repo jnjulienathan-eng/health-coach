@@ -432,9 +432,18 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
   }
 
   // ─── Recipe builder handlers ───────────────────────────────────────────
-  const startNewRecipe = () => {
-    setEditingRecipe({ id: null, name: '', servings: '1', servingGrams: '', cookedGrams: '', isRaw: false })
+  // Wipes every piece of state the recipe builder reads so a fresh session
+  // never inherits anything from a previous one (form fields, ingredients,
+  // any lingering save error).
+  const resetRecipeBuilderState = () => {
+    setEditingRecipe(null)
     setItems([])
+    setSaveError(null)
+  }
+
+  const startNewRecipe = () => {
+    resetRecipeBuilderState()
+    setEditingRecipe({ id: null, name: '', servings: '1', servingGrams: '', cookedGrams: '', isRaw: false })
     setScreen('recipeBuilder')
   }
 
@@ -445,6 +454,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
         return fi ? { food_item: fi, weight_grams: ri.weight_grams } : null
       })
       .filter((x): x is BuildingItem => x !== null)
+    resetRecipeBuilderState()
     setEditingRecipe({
       id: recipe.id,
       name: recipe.name,
@@ -488,8 +498,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
       })
       const j = await res.json()
       if (!res.ok || j.error) { setSaveError(j.error ?? 'Save failed'); return }
-      setEditingRecipe(null)
-      setItems([])
+      resetRecipeBuilderState()
       setScreen('library')
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed')
@@ -684,8 +693,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                     onAddIngredient={() => setScreen('search')}
                     onSave={saveRecipe}
                     onBack={() => {
-                      setEditingRecipe(null)
-                      setItems([])
+                      resetRecipeBuilderState()
                       setScreen('library')
                     }}
                   />
