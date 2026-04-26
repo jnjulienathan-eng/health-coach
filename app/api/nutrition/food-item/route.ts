@@ -11,14 +11,35 @@ import { supaAdmin, nutritionUserId } from '@/lib/nutrition'
 
 const TAG = '[api/nutrition/food-item]'
 
+// Supabase / Postgres errors come as plain objects (PostgrestError shape:
+// { message, details, hint, code }) — not Error instances — so a naive
+// `String(e)` collapses them to "[object Object]". Walk all the common
+// fields and JSON-encode anything left over.
+function describe(e: unknown): { message: string; full: unknown } {
+  if (e instanceof Error) {
+    return { message: e.message, full: { name: e.name, message: e.message, stack: e.stack } }
+  }
+  if (e && typeof e === 'object') {
+    const obj = e as Record<string, unknown>
+    const parts = [
+      typeof obj.message === 'string' ? obj.message : null,
+      typeof obj.code === 'string' ? `code=${obj.code}` : null,
+      typeof obj.details === 'string' ? `details=${obj.details}` : null,
+      typeof obj.hint === 'string' ? `hint=${obj.hint}` : null,
+    ].filter(Boolean) as string[]
+    const message = parts.length > 0 ? parts.join(' | ') : JSON.stringify(e)
+    return { message, full: e }
+  }
+  return { message: String(e), full: e }
+}
+
 // Single-user app — surface the actual error to the client so failures
 // in preview are diagnosable from the browser console.
 function fail(stage: string, e: unknown, status = 500) {
-  const msg = e instanceof Error ? e.message : String(e)
-  const stack = e instanceof Error ? e.stack : undefined
-  console.error(`${TAG} ${stage} failed:`, msg)
-  if (stack) console.error(stack)
-  return Response.json({ error: `${stage}: ${msg}`, stage }, { status })
+  const { message, full } = describe(e)
+  console.error(`${TAG} ${stage} failed:`, message)
+  console.error(`${TAG} ${stage} full error:`, full)
+  return Response.json({ error: `${stage}: ${message}`, stage, detail: full }, { status })
 }
 
 export async function POST(req: Request) {
