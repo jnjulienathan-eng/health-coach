@@ -43,6 +43,12 @@ interface MealLog {
   logged_via: string
   peak_glucose_mmol: number | null
   notes: string | null
+  // Top-level fields for photo_estimate meals (null for item-based)
+  calories?: number | null
+  protein_g?: number | null
+  carbs_g?: number | null
+  fat_g?: number | null
+  fiber_g?: number | null
   items: MealItem[]
 }
 
@@ -91,6 +97,15 @@ function macrosForItem(it: MealItem): { calories: number; protein: number; carbs
 }
 
 function macrosForMeal(m: MealLog) {
+  if (m.logged_via === 'photo_estimate') {
+    return {
+      calories: m.calories ?? 0,
+      protein:  m.protein_g ?? 0,
+      carbs:    m.carbs_g   ?? 0,
+      fat:      m.fat_g     ?? 0,
+      fiber:    m.fiber_g   ?? 0,
+    }
+  }
   const t = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
   for (const it of m.items) {
     const x = macrosForItem(it)
@@ -192,20 +207,34 @@ function MealCard({
               {formatTime(meal.logged_at)}
             </span>
           </div>
-          {meal.peak_glucose_mmol != null && (
-            <span
-              title="Peak glucose"
-              style={{
-                flexShrink: 0,
-                fontSize: 11, fontFamily: 'var(--font-mono)',
-                background: 'var(--color-primary-light)',
-                color: 'var(--color-primary-dark)',
-                padding: '3px 8px', borderRadius: 999, fontWeight: 500,
-              }}
-            >
-              {meal.peak_glucose_mmol} mmol
-            </span>
-          )}
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+            {meal.logged_via === 'photo_estimate' && (
+              <span
+                title="Estimated by Claude"
+                style={{
+                  fontSize: 10, fontWeight: 500,
+                  background: 'var(--color-amber-light, rgba(255,180,0,0.12))',
+                  color: 'var(--color-amber)',
+                  padding: '3px 7px', borderRadius: 999,
+                }}
+              >
+                Claude estimate
+              </span>
+            )}
+            {meal.peak_glucose_mmol != null && (
+              <span
+                title="Peak glucose"
+                style={{
+                  fontSize: 11, fontFamily: 'var(--font-mono)',
+                  background: 'var(--color-primary-light)',
+                  color: 'var(--color-primary-dark)',
+                  padding: '3px 8px', borderRadius: 999, fontWeight: 500,
+                }}
+              >
+                {meal.peak_glucose_mmol} mmol
+              </span>
+            )}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>
           <span>{r(totals.calories)} kcal</span>
@@ -226,28 +255,45 @@ function MealCard({
             style={{ overflow: 'hidden', borderTop: '1px solid var(--color-border)' }}
           >
             <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {meal.items.length === 0 && (
-                <div style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>No ingredients logged.</div>
-              )}
-              {meal.items.map(it => {
-                const fi = pickFoodItem(it)
-                const m = macrosForItem(it)
-                return (
-                  <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {fi?.name ?? '—'}
-                      </div>
-                      <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', fontSize: 11, marginTop: 1 }}>
-                        {r(it.weight_grams)}g
-                      </div>
-                    </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {r(m.calories)} kcal · {r(m.protein)}P · {r(m.carbs)}C · {r(m.fat)}F · {r(m.fiber)}Fi
-                    </div>
+              {meal.logged_via === 'photo_estimate' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginBottom: 2 }}>
+                    Claude estimate · macros only
                   </div>
-                )
-              })}
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>
+                    <span>{r(totals.calories)} kcal</span>
+                    <span>{r(totals.protein)}g P</span>
+                    <span>{r(totals.carbs)}g C</span>
+                    <span>{r(totals.fat)}g F</span>
+                    <span>{r(totals.fiber)}g Fi</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {meal.items.length === 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>No ingredients logged.</div>
+                  )}
+                  {meal.items.map(it => {
+                    const fi = pickFoodItem(it)
+                    const m = macrosForItem(it)
+                    return (
+                      <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {fi?.name ?? '—'}
+                          </div>
+                          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', fontSize: 11, marginTop: 1 }}>
+                            {r(it.weight_grams)}g
+                          </div>
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {r(m.calories)} kcal · {r(m.protein)}P · {r(m.carbs)}C · {r(m.fat)}F · {r(m.fiber)}Fi
+                        </div>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
 
               {meal.notes && (
                 <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', borderTop: '1px solid var(--color-border)', paddingTop: 8, marginTop: 4 }}>

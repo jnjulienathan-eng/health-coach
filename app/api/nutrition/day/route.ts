@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const [logsRes, summaryRes] = await Promise.all([
     supabase
       .from('meal_logs')
-      .select('id, logged_at, name, logged_via, peak_glucose_mmol, notes')
+      .select('id, logged_at, name, logged_via, peak_glucose_mmol, notes, calories, protein_g, carbs_g, fat_g, fiber_g')
       .eq('user_id', userId)
       .gte('logged_at', startUtc.toISOString())
       .lt('logged_at', endUtc.toISOString())

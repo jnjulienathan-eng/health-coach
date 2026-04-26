@@ -20,6 +20,12 @@ interface CreateBody {
   logged_via?: LoggedVia
   peak_glucose_mmol?: number | null
   notes?: string | null
+  // Top-level macro fields — populated for logged_via='photo_estimate', null otherwise
+  calories?: number | null
+  protein_g?: number | null
+  carbs_g?: number | null
+  fat_g?: number | null
+  fiber_g?: number | null
   items: ItemInput[]
   save_as_template?: boolean
   template_name?: string | null
@@ -41,8 +47,12 @@ export async function POST(req: Request) {
   let body: CreateBody
   try { body = await req.json() as CreateBody } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  if (!validItems(body.items) || body.items.length === 0) {
+  const isPhotoEstimate = body.logged_via === 'photo_estimate'
+  if (!isPhotoEstimate && (!validItems(body.items) || body.items.length === 0)) {
     return Response.json({ error: 'items must be a non-empty array of {food_item_id, weight_grams}' }, { status: 400 })
+  }
+  if (isPhotoEstimate && body.items !== undefined && !validItems(body.items)) {
+    return Response.json({ error: 'items must be an array of {food_item_id, weight_grams}' }, { status: 400 })
   }
 
   const supabase = supaAdmin()
@@ -62,23 +72,31 @@ export async function POST(req: Request) {
       logged_via: loggedVia,
       peak_glucose_mmol: body.peak_glucose_mmol ?? null,
       notes: body.notes ?? null,
+      // Top-level macro fields for photo_estimate; null for item-based meals
+      calories: isPhotoEstimate ? (body.calories ?? null) : null,
+      protein_g: isPhotoEstimate ? (body.protein_g ?? null) : null,
+      carbs_g: isPhotoEstimate ? (body.carbs_g ?? null) : null,
+      fat_g: isPhotoEstimate ? (body.fat_g ?? null) : null,
+      fiber_g: isPhotoEstimate ? (body.fiber_g ?? null) : null,
     })
     .select('*')
     .single()
 
   if (logErr) return Response.json({ error: logErr.message }, { status: 500 })
 
-  // ── Insert meal_log_items ──────────────────────────────────────────────
-  const itemsRows = body.items.map(i => ({
-    meal_log_id: log.id as string,
-    food_item_id: i.food_item_id,
-    weight_grams: i.weight_grams,
-  }))
-  const { error: itemsErr } = await supabase.from('meal_log_items').insert(itemsRows)
-  if (itemsErr) return Response.json({ error: itemsErr.message }, { status: 500 })
+  // ── Insert meal_log_items (skipped for photo_estimate) ─────────────────
+  if (!isPhotoEstimate) {
+    const itemsRows = body.items.map(i => ({
+      meal_log_id: log.id as string,
+      food_item_id: i.food_item_id,
+      weight_grams: i.weight_grams,
+    }))
+    const { error: itemsErr } = await supabase.from('meal_log_items').insert(itemsRows)
+    if (itemsErr) return Response.json({ error: itemsErr.message }, { status: 500 })
+  }
 
   // ── Increment use_count on each food_items row used ────────────────────
-  await bumpUseCounts(body.items.map(i => i.food_item_id))
+  if (!isPhotoEstimate) await bumpUseCounts(body.items.map(i => i.food_item_id))
 
   // ── Optional: save as template ─────────────────────────────────────────
   let templateId: string | null = null

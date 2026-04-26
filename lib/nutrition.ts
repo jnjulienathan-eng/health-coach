@@ -115,7 +115,7 @@ export async function recomputeDailySummary(date: string): Promise<void> {
 
   const { data: logs, error: logsErr } = await supabase
     .from('meal_logs')
-    .select('id, logged_at, logged_via')
+    .select('id, logged_at, logged_via, calories, protein_g, carbs_g, fat_g, fiber_g')
     .eq('user_id', userId)
     .gte('logged_at', startUtc.toISOString())
     .lt('logged_at', endUtc.toISOString())
@@ -150,6 +150,17 @@ export async function recomputeDailySummary(date: string): Promise<void> {
     const n = fi?.nutrients_per_100g ?? null
     const m = macrosFor(n, w)
     for (const k of MACRO_KEYS) totals[k] += m[k]
+  }
+
+  // Add top-level macro fields from photo_estimate meals (no items rows).
+  type LogRow = { id: string; logged_at: string; logged_via: string | null; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null }
+  for (const log of dayLogs as unknown as LogRow[]) {
+    if (log.logged_via !== 'photo_estimate') continue
+    totals.calories += Number(log.calories) || 0
+    totals.protein  += Number(log.protein_g) || 0
+    totals.carbs    += Number(log.carbs_g)   || 0
+    totals.fat      += Number(log.fat_g)     || 0
+    totals.fiber    += Number(log.fiber_g)   || 0
   }
 
   const loggedViaSummary: Record<string, number> = {}

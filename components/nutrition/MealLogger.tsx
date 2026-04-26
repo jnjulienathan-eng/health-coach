@@ -94,6 +94,17 @@ interface RecipeRow {
   food_items: FoodItem | FoodItem[] | null
 }
 
+// Shape returned by POST /api/nutrition/estimate
+interface EstimateResult {
+  meal_name: string
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  fiber_g: number
+  confidence: 'high' | 'medium' | 'low'
+}
+
 // State for the recipe builder form
 interface RecipeBuilderState {
   id: string | null
@@ -224,6 +235,9 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  // Photo estimation result (non-null when coming from ScreenPhotoEstimate)
+  const [estimateResult, setEstimateResult] = useState<EstimateResult | null>(null)
+
   // Lock body scroll while logger is open
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -265,16 +279,31 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
     setSaving(true)
     setSaveError(null)
     try {
-      const body = {
-        name: mealName,
-        logged_at: new Date().toISOString(),
-        logged_via: 'ingredients',
-        peak_glucose_mmol: peakGlucose === '' ? null : Number(peakGlucose),
-        notes: notes.trim() || null,
-        items: items.map(it => ({ food_item_id: it.food_item.id, weight_grams: it.weight_grams })),
-        save_as_template: saveAsTemplate,
-        template_name: saveAsTemplate ? (templateName.trim() || mealName.trim() || null) : null,
-      }
+      const isEstimate = estimateResult !== null
+      const body = isEstimate
+        ? {
+            name: mealName,
+            logged_at: new Date().toISOString(),
+            logged_via: 'photo_estimate' as const,
+            peak_glucose_mmol: peakGlucose === '' ? null : Number(peakGlucose),
+            notes: notes.trim() || null,
+            calories: estimateResult.calories,
+            protein_g: estimateResult.protein_g,
+            carbs_g: estimateResult.carbs_g,
+            fat_g: estimateResult.fat_g,
+            fiber_g: estimateResult.fiber_g,
+            items: [],
+          }
+        : {
+            name: mealName,
+            logged_at: new Date().toISOString(),
+            logged_via: 'ingredients' as const,
+            peak_glucose_mmol: peakGlucose === '' ? null : Number(peakGlucose),
+            notes: notes.trim() || null,
+            items: items.map(it => ({ food_item_id: it.food_item.id, weight_grams: it.weight_grams })),
+            save_as_template: saveAsTemplate,
+            template_name: saveAsTemplate ? (templateName.trim() || mealName.trim() || null) : null,
+          }
       const res = await fetch('/api/nutrition/meal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -564,6 +593,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                     mealName={mealName}
                     setMealName={setMealName}
                     items={items}
+                    estimate={estimateResult ?? undefined}
                     peakGlucose={peakGlucose}
                     setPeakGlucose={setPeakGlucose}
                     notes={notes}
@@ -575,7 +605,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                     saving={saving}
                     error={saveError}
                     onConfirm={handleConfirm}
-                    onBack={() => setScreen('building')}
+                    onBack={() => estimateResult ? setScreen('photoEstimate') : setScreen('building')}
                   />
                 )
               case 'library':
@@ -624,7 +654,11 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                   <ScreenPhotoEstimate
                     key="photoEstimate"
                     onBack={() => setScreen('menu')}
-                    onEstimated={() => setScreen('confirm')}
+                    onEstimated={(result) => {
+                      setEstimateResult(result)
+                      setMealName(result.meal_name)
+                      setScreen('confirm')
+                    }}
                   />
                 )
             }
@@ -2172,13 +2206,65 @@ function ScreenRecipeBuilder({
   )
 }
 
-// ─── Photo estimation screen (stub — filled in Task 5) ────────────────────
+// ─── Photo estimation screen ──────────────────────────────────────────────
 function ScreenPhotoEstimate({
   onBack,
+  onEstimated,
 }: {
   onBack: () => void
-  onEstimated: () => void
+  onEstimated: (result: EstimateResult) => void
 }) {
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [description, setDescription] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const canEstimate = !loading && (imageFile != null || description.trim().length > 0)
+
+  const handleEstimate = async () => {
+    if (!canEstimate) return
+    setLoading(true)
+    setError(null)
+    try {
+      let imageBase64 = ''
+      let imageMimeType = ''
+      if (imageFile) {
+        imageMimeType = imageFile.type || 'image/jpeg'
+        imageBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const result = reader.result as string
+            // Strip the data URI prefix (data:<mime>;base64,)
+            const comma = result.indexOf(',')
+            resolve(comma >= 0 ? result.slice(comma + 1) : result)
+          }
+          reader.onerror = () => reject(new Error('Failed to read file'))
+          reader.readAsDataURL(imageFile)
+        })
+      }
+
+      const res = await fetch('/api/nutrition/estimate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: imageBase64 || undefined,
+          image_media_type: imageMimeType || undefined,
+          description: description.trim() || undefined,
+        }),
+      })
+      const j = await res.json() as EstimateResult & { error?: string }
+      if (!res.ok || j.error) {
+        setError(j.error ?? 'Estimation failed. Please try again.')
+        return
+      }
+      onEstimated(j)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Estimation failed. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
@@ -2186,22 +2272,106 @@ function ScreenPhotoEstimate({
       style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
     >
       <Header title="Estimate from photo" onBack={onBack} backLabel="Cancel" />
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>Photo estimation — coming in task 5</span>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        <div>
+          <FieldLabel>Photo <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></FieldLabel>
+          <label
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8, cursor: 'pointer',
+              fontSize: 13, color: imageFile ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+            }}
+          >
+            <CameraIcon />
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {imageFile ? imageFile.name : 'Take or choose a photo'}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={e => setImageFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {imageFile && (
+            <button
+              type="button"
+              onClick={() => setImageFile(null)}
+              style={{ marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--color-text-dim)', padding: 0 }}
+            >
+              Remove photo
+            </button>
+          )}
+        </div>
+
+        <div>
+          <FieldLabel>Description <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></FieldLabel>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            rows={3}
+            placeholder="e.g. grilled salmon fillet approx 150g, roasted vegetables, small amount of rice"
+            style={{
+              width: '100%', padding: '10px 12px', fontSize: 13,
+              color: 'var(--color-text-primary)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8, outline: 'none', resize: 'none',
+              fontFamily: 'var(--font-sans)',
+            }}
+          />
+        </div>
+
+        {error && (
+          <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{error}</div>
+        )}
+
+        <div style={{ fontSize: 11, color: 'var(--color-text-dim)', lineHeight: 1.5 }}>
+          Claude will estimate macros from your photo and/or description. You can review and save on the next screen.
+        </div>
       </div>
+
+      <Footer>
+        <button
+          type="button"
+          onClick={handleEstimate}
+          disabled={!canEstimate}
+          className="btn-primary"
+          style={{ width: '100%', opacity: canEstimate ? 1 : 0.5 }}
+        >
+          {loading ? 'Estimating…' : 'Estimate macros'}
+        </button>
+      </Footer>
     </motion.div>
+  )
+}
+
+function CameraIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path d="M2 7a2 2 0 012-2h1.5l1-2h7l1 2H18a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V7z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <circle cx="10" cy="11" r="3" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
   )
 }
 
 // ─── Screen 5: Confirm ────────────────────────────────────────────────────
 function ScreenConfirm({
-  mealName, setMealName, items, peakGlucose, setPeakGlucose, notes, setNotes,
+  mealName, setMealName, items, estimate,
+  peakGlucose, setPeakGlucose, notes, setNotes,
   saveAsTemplate, setSaveAsTemplate, templateName, setTemplateName,
   saving, error, onConfirm, onBack,
 }: {
   mealName: string
   setMealName: (s: string) => void
   items: BuildingItem[]
+  estimate?: EstimateResult
   peakGlucose: string
   setPeakGlucose: (s: string) => void
   notes: string
@@ -2215,8 +2385,14 @@ function ScreenConfirm({
   onConfirm: () => void
   onBack: () => void
 }) {
-  const totals = useMemo(() => totalsFor(items), [items])
+  const isEstimate = estimate != null
+  const itemTotals = useMemo(() => totalsFor(items), [items])
+  const estimateTotals = estimate
+    ? { calories: estimate.calories, protein: estimate.protein_g, carbs: estimate.carbs_g, fat: estimate.fat_g, fiber: estimate.fiber_g }
+    : null
+  const totals = estimateTotals ?? itemTotals
   const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })
+  const canSave = !saving && (isEstimate || items.length > 0)
 
   return (
     <motion.div
@@ -2254,9 +2430,28 @@ function ScreenConfirm({
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--color-text-secondary)' }}>
             <span>Logged at</span><span style={{ fontFamily: 'var(--font-mono)' }}>{time}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--color-text-secondary)' }}>
-            <span>Ingredients</span><span style={{ fontFamily: 'var(--font-mono)' }}>{items.length}</span>
-          </div>
+          {isEstimate ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--color-text-secondary)' }}>
+              <span>Source</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 500,
+                  background: 'var(--color-amber-light, rgba(255,180,0,0.12))',
+                  color: 'var(--color-amber)',
+                  padding: '2px 6px', borderRadius: 999,
+                }}>
+                  Claude estimate
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)' }}>
+                  {estimate!.confidence}
+                </span>
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--color-text-secondary)' }}>
+              <span>Ingredients</span><span style={{ fontFamily: 'var(--font-mono)' }}>{items.length}</span>
+            </div>
+          )}
           <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 8, marginTop: 4 }}>
             <MacroLine totals={totals} />
           </div>
@@ -2304,33 +2499,35 @@ function ScreenConfirm({
           />
         </div>
 
-        <div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={saveAsTemplate}
-              onChange={(e) => setSaveAsTemplate(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: 'var(--color-primary)' }}
-            />
-            <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>Save as template</span>
-          </label>
-          {saveAsTemplate && (
-            <input
-              type="text"
-              value={templateName}
-              onChange={(e) => setTemplateName(e.target.value)}
-              placeholder={mealName.trim() || 'Template name'}
-              style={{
-                width: '100%', marginTop: 8,
-                padding: '10px 12px', fontSize: 14,
-                color: 'var(--color-text-primary)',
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 8, outline: 'none',
-              }}
-            />
-          )}
-        </div>
+        {!isEstimate && (
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={saveAsTemplate}
+                onChange={(e) => setSaveAsTemplate(e.target.checked)}
+                style={{ width: 18, height: 18, accentColor: 'var(--color-primary)' }}
+              />
+              <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>Save as template</span>
+            </label>
+            {saveAsTemplate && (
+              <input
+                type="text"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder={mealName.trim() || 'Template name'}
+                style={{
+                  width: '100%', marginTop: 8,
+                  padding: '10px 12px', fontSize: 14,
+                  color: 'var(--color-text-primary)',
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 8, outline: 'none',
+                }}
+              />
+            )}
+          </div>
+        )}
 
         {error && (
           <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{error}</div>
@@ -2341,9 +2538,9 @@ function ScreenConfirm({
         <button
           type="button"
           onClick={onConfirm}
-          disabled={saving || items.length === 0}
+          disabled={!canSave}
           className="btn-primary"
-          style={{ width: '100%', opacity: saving || items.length === 0 ? 0.6 : 1 }}
+          style={{ width: '100%', opacity: canSave ? 1 : 0.6 }}
         >
           {saving ? 'Saving…' : 'Confirm and save'}
         </button>
