@@ -2075,9 +2075,9 @@ function ScreenRecipeBuilder({
     >
       <Header title={headerTitle} onBack={onBack} backLabel="Cancel" />
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 16px' }}>
 
-        <div>
+        <div style={{ marginBottom: 16 }}>
           <FieldLabel>Recipe name</FieldLabel>
           <input
             type="text"
@@ -2095,7 +2095,7 @@ function ScreenRecipeBuilder({
           />
         </div>
 
-        <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
           <div>
             <FieldLabel>Total servings</FieldLabel>
             <input
@@ -2136,7 +2136,7 @@ function ScreenRecipeBuilder({
           </div>
         </div>
 
-        <div>
+        <div style={{ marginBottom: 16 }}>
           <FieldLabel>Ingredients</FieldLabel>
           {items.length > 0 && (
             <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2199,7 +2199,7 @@ function ScreenRecipeBuilder({
           </button>
         </div>
 
-        <div>
+        <div style={{ marginBottom: 16 }}>
           <FieldLabel>
             Total cooked weight — g{' '}
             <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
