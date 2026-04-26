@@ -1,17 +1,19 @@
 'use client'
 
-// Five-screen logging flow:
-//   menu     → choose "add ingredients" or "use a template"
-//   search   → ingredient autocomplete + USDA search
-//   weight   → weight entry with live macro preview
-//   building → running ingredient list + meal totals
-//   confirm  → optional peak glucose + notes + save-as-template
+// Meal logging flow + template management, all hosted in one modal:
+//   menu       → "add ingredients" or "use a template" (bottom sheet)
+//   search     → ingredient autocomplete + USDA search
+//   weight     → weight entry with live macro preview
+//   building   → running ingredient list + totals (also reused as the
+//                template edit view when editingTemplate is non-null)
+//   confirm    → optional peak glucose + notes + save-as-template
+//   templates  → list of saved templates: use / edit / delete / new
 //
-// Mounted as the modal body inside NutritionSection. Screen 1 is a short
-// bottom sheet; subsequent screens fill the sheet to near full height.
+// Mounted as the modal body inside NutritionSection. The menu screen is
+// a short bottom sheet; the rest fill the sheet to near full height.
 
 import { animate, AnimatePresence, motion, useAnimationControls } from 'framer-motion'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // ─── Types (mirrors API responses) ────────────────────────────────────────
 interface NutrientsPer100g {
@@ -55,12 +57,40 @@ interface BuildingItem {
   weight_grams: number
 }
 
-type Screen = 'menu' | 'search' | 'weight' | 'building' | 'confirm'
+type Screen = 'menu' | 'search' | 'weight' | 'building' | 'confirm' | 'templates'
 
 interface Props {
   onClose: () => void
   onSaved: () => void
-  onOpenTemplates?: () => void
+}
+
+// When editingTemplate is non-null the building screen behaves as the
+// "Editing template" view from the spec: name input on top, save writes
+// to meal_templates/meal_template_items, and the confirm screen is skipped.
+interface EditingTemplate {
+  id: string | null   // null = new template, string = editing existing
+  name: string
+}
+
+// Shape returned by GET /api/nutrition/templates
+interface TemplateItemRow {
+  id: string
+  template_id: string
+  default_weight_grams: number
+  food_items: FoodItem | FoodItem[] | null
+}
+interface TemplateRow {
+  id: string
+  name: string
+  notes: string | null
+  use_count: number
+  created_at: string
+  items: TemplateItemRow[]
+}
+
+function pickFoodItemFromTemplate(it: TemplateItemRow): FoodItem | null {
+  if (!it.food_items) return null
+  return Array.isArray(it.food_items) ? it.food_items[0] ?? null : it.food_items
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -141,11 +171,14 @@ function MacroLine({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────
-export default function MealLogger({ onClose, onSaved, onOpenTemplates }: Props) {
+export default function MealLogger({ onClose, onSaved }: Props) {
   const [screen, setScreen] = useState<Screen>('menu')
   const [mealName, setMealName] = useState('')
   const [items, setItems] = useState<BuildingItem[]>([])
   const [pending, setPending] = useState<PendingItem | null>(null)
+
+  // Template-edit mode (null = logging a meal)
+  const [editingTemplate, setEditingTemplate] = useState<EditingTemplate | null>(null)
 
   // Confirm-screen fields
   const [peakGlucose, setPeakGlucose] = useState<string>('')
@@ -226,6 +259,86 @@ export default function MealLogger({ onClose, onSaved, onOpenTemplates }: Props)
     }
   }
 
+  // ─── Template handlers ─────────────────────────────────────────────────
+  // Stagger setItems with setTimeout so each row mounts at a different
+  // tick — its initial enter animation fires individually and you get the
+  // "assembling" feel the spec calls for, without bespoke animation code.
+  const applyTemplate = (t: TemplateRow) => {
+    const built: BuildingItem[] = t.items
+      .map(it => {
+        const fi = pickFoodItemFromTemplate(it)
+        return fi ? { food_item: fi, weight_grams: it.default_weight_grams } : null
+      })
+      .filter((x): x is BuildingItem => x !== null)
+
+    setMealName(t.name)
+    setItems([])
+    setEditingTemplate(null)
+    setScreen('building')
+
+    // Fire-and-forget use_count bump.
+    fetch('/api/nutrition/templates', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: t.id, bump_use_count: true }),
+    }).catch(() => {})
+
+    built.forEach((bi, i) => {
+      setTimeout(() => setItems(prev => [...prev, bi]), 80 + i * 70)
+    })
+  }
+
+  const startNewTemplate = () => {
+    setEditingTemplate({ id: null, name: '' })
+    setItems([])
+    setMealName('')
+    setScreen('building')
+  }
+
+  const startEditTemplate = (t: TemplateRow) => {
+    const built: BuildingItem[] = t.items
+      .map(it => {
+        const fi = pickFoodItemFromTemplate(it)
+        return fi ? { food_item: fi, weight_grams: it.default_weight_grams } : null
+      })
+      .filter((x): x is BuildingItem => x !== null)
+    setEditingTemplate({ id: t.id, name: t.name })
+    setItems(built)
+    setScreen('building')
+  }
+
+  const saveTemplate = async () => {
+    if (!editingTemplate) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const name = editingTemplate.name.trim()
+      if (!name) { setSaveError('Template name is required'); return }
+      const itemsBody = items.map(it => ({
+        food_item_id: it.food_item.id,
+        default_weight_grams: it.weight_grams,
+      }))
+      const isNew = editingTemplate.id == null
+      const res = await fetch('/api/nutrition/templates', {
+        method: isNew ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isNew
+          ? { name, items: itemsBody }
+          : { id: editingTemplate.id, name, items: itemsBody }),
+      })
+      const j = await res.json()
+      if (!res.ok || j.error) { setSaveError(j.error ?? 'Save failed'); return }
+      // Reset and return to template list
+      setItems([])
+      setEditingTemplate(null)
+      setScreen('templates')
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div
       onClick={onClose}
@@ -261,7 +374,7 @@ export default function MealLogger({ onClose, onSaved, onOpenTemplates }: Props)
                     mealName={mealName}
                     setMealName={setMealName}
                     onAddIngredients={goToSearch}
-                    onUseTemplate={onOpenTemplates}
+                    onUseTemplate={() => setScreen('templates')}
                     onClose={onClose}
                   />
                 )
@@ -271,7 +384,7 @@ export default function MealLogger({ onClose, onSaved, onOpenTemplates }: Props)
                     key="search"
                     hasItems={items.length > 0}
                     onPick={(food_item) => onItemPicked(food_item)}
-                    onBack={() => setScreen(items.length > 0 ? 'building' : 'menu')}
+                    onBack={() => setScreen(items.length > 0 ? 'building' : (editingTemplate ? 'templates' : 'menu'))}
                   />
                 )
               case 'weight':
@@ -290,6 +403,10 @@ export default function MealLogger({ onClose, onSaved, onOpenTemplates }: Props)
                     key="building"
                     mealName={mealName}
                     items={items}
+                    template={editingTemplate}
+                    setTemplateName={(name) => setEditingTemplate(prev => prev ? { ...prev, name } : prev)}
+                    saving={saving}
+                    saveError={saveError}
                     onEdit={(idx) => onItemPicked(items[idx].food_item, {
                       weight_grams: items[idx].weight_grams,
                       editIndex: idx,
@@ -297,6 +414,25 @@ export default function MealLogger({ onClose, onSaved, onOpenTemplates }: Props)
                     onRemove={removeItem}
                     onAddAnother={goToSearch}
                     onSave={() => setScreen('confirm')}
+                    onSaveTemplate={saveTemplate}
+                    onBack={() => {
+                      if (editingTemplate) {
+                        setEditingTemplate(null)
+                        setItems([])
+                        setScreen('templates')
+                      } else {
+                        setScreen('menu')
+                      }
+                    }}
+                  />
+                )
+              case 'templates':
+                return (
+                  <ScreenTemplates
+                    key="templates"
+                    onApply={applyTemplate}
+                    onEdit={startEditTemplate}
+                    onNew={startNewTemplate}
                     onBack={() => setScreen('menu')}
                   />
                 )
@@ -726,18 +862,35 @@ function ScreenWeight({
   )
 }
 
-// ─── Screen 4: Building meal ──────────────────────────────────────────────
+// ─── Screen 4: Building meal (also reused for editing templates) ──────────
 function ScreenBuilding({
-  mealName, items, onEdit, onRemove, onAddAnother, onSave, onBack,
+  mealName, items, template, setTemplateName,
+  saving, saveError,
+  onEdit, onRemove, onAddAnother, onSave, onSaveTemplate, onBack,
 }: {
   mealName: string
   items: BuildingItem[]
+  template: EditingTemplate | null
+  setTemplateName: (name: string) => void
+  saving: boolean
+  saveError: string | null
   onEdit: (idx: number) => void
   onRemove: (idx: number) => void
   onAddAnother: () => void
   onSave: () => void
+  onSaveTemplate: () => void
   onBack: () => void
 }) {
+  const isTemplate = template != null
+  const headerTitle = isTemplate
+    ? (template.id == null ? 'New template' : 'Editing template')
+    : (mealName.trim() ? `Building: ${mealName.trim()}` : 'Building meal')
+  const totalsLabel = isTemplate ? 'Template total' : 'Meal total'
+  const saveLabel   = isTemplate
+    ? (saving ? 'Saving…' : (template.id == null ? 'Create template' : 'Save template'))
+    : 'Save meal'
+  const handleSave  = isTemplate ? onSaveTemplate : onSave
+  const saveDisabled = items.length === 0 || (isTemplate && (saving || !template.name.trim()))
   const totals = useMemo(() => totalsFor(items), [items])
   const pulseControls = useAnimationControls()
   const prevCount = useRef(items.length)
@@ -756,10 +909,29 @@ function ScreenBuilding({
       style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
     >
       <Header
-        title={mealName.trim() ? `Building: ${mealName.trim()}` : 'Building meal'}
+        title={headerTitle}
         onBack={onBack}
         backLabel="Cancel"
       />
+
+      {isTemplate && (
+        <div style={{ padding: '12px 16px 4px' }}>
+          <FieldLabel>Template name</FieldLabel>
+          <input
+            type="text"
+            value={template.name}
+            onChange={(e) => setTemplateName(e.target.value)}
+            placeholder="e.g. Post-run breakfast"
+            style={{
+              width: '100%', padding: '10px 12px', fontSize: 14,
+              color: 'var(--color-text-primary)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8, outline: 'none',
+            }}
+          />
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 16px' }}>
         {items.length === 0 ? (
@@ -846,10 +1018,14 @@ function ScreenBuilding({
           }}
         >
           <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-primary-dark)' }}>
-            Meal total
+            {totalsLabel}
           </span>
           <MacroLine totals={totals} animated />
         </motion.div>
+
+        {isTemplate && saveError && (
+          <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 8 }}>{saveError}</div>
+        )}
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -862,15 +1038,192 @@ function ScreenBuilding({
           </button>
           <button
             type="button"
-            onClick={onSave}
-            disabled={items.length === 0}
+            onClick={handleSave}
+            disabled={saveDisabled}
             className="btn-primary"
-            style={{ flex: 1, opacity: items.length === 0 ? 0.5 : 1 }}
+            style={{ flex: 1, opacity: saveDisabled ? 0.5 : 1 }}
           >
-            Save meal
+            {saveLabel}
           </button>
         </div>
       </Footer>
+    </motion.div>
+  )
+}
+
+// ─── Templates: list view (use / edit / delete + new template) ───────────
+function ScreenTemplates({
+  onApply, onEdit, onNew, onBack,
+}: {
+  onApply: (t: TemplateRow) => void
+  onEdit: (t: TemplateRow) => void
+  onNew: () => void
+  onBack: () => void
+}) {
+  const [templates, setTemplates] = useState<TemplateRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const fetchTemplates = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/nutrition/templates')
+      const j = await res.json() as { templates?: TemplateRow[]; error?: string }
+      if (j.error) setError(j.error)
+      else setTemplates(j.templates ?? [])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load templates')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchTemplates() }, [fetchTemplates])
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await fetch(`/api/nutrition/templates?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok || (j as { error?: string }).error) {
+        setError((j as { error?: string }).error ?? 'Delete failed')
+        return
+      }
+      setConfirmDeleteId(null)
+      await fetchTemplates()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
+      transition={{ duration: 0.18 }}
+      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+    >
+      <Header title="Templates" onBack={onBack} backLabel="Back" />
+
+      <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          onClick={onNew}
+          className="btn-secondary"
+          style={{ fontSize: 13, padding: '6px 12px' }}
+        >
+          + New template
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 16px' }}>
+        {error && (
+          <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 8 }}>{error}</div>
+        )}
+        {loading && templates.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--color-text-dim)', textAlign: 'center', padding: 16 }}>
+            Loading templates…
+          </div>
+        )}
+        {!loading && templates.length === 0 && (
+          <div style={{ fontSize: 13, color: 'var(--color-text-dim)', textAlign: 'center', padding: 32 }}>
+            No templates yet — save one from a meal, or create one from scratch.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {templates.map(t => {
+            const built = t.items
+              .map(it => {
+                const fi = pickFoodItemFromTemplate(it)
+                return fi ? { food_item: fi, weight_grams: it.default_weight_grams } : null
+              })
+              .filter((x): x is BuildingItem => x !== null)
+            const totals = totalsFor(built)
+            const isConfirming = confirmDeleteId === t.id
+
+            return (
+              <div
+                key={t.id}
+                style={{
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {t.name}
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', flexShrink: 0 }}>
+                    {built.length} item{built.length === 1 ? '' : 's'} · used {t.use_count}×
+                  </span>
+                </div>
+
+                <MacroLine totals={totals} dim />
+
+                {isConfirming ? (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>Delete &ldquo;{t.name}&rdquo;?</span>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(null)}
+                      style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(t.id)}
+                      style={{ background: 'var(--color-danger)', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#fff' }}
+                    >
+                      Yes, delete
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => onEdit(t)}
+                      style={{
+                        background: 'none', border: '1px solid var(--color-border)',
+                        borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer',
+                        color: 'var(--color-text-secondary)',
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(t.id)}
+                      aria-label="Delete"
+                      style={{
+                        width: 28, height: 28,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'none', border: '1px solid var(--color-border)',
+                        borderRadius: 6, cursor: 'pointer',
+                        color: 'var(--color-text-dim)',
+                      }}
+                    >
+                      <TrashIcon />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onApply(t)}
+                      className="btn-primary"
+                      style={{ fontSize: 12, padding: '4px 14px' }}
+                    >
+                      Use
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </motion.div>
   )
 }
