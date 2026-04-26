@@ -2,7 +2,8 @@
 
 // Meal logging flow + template management, all hosted in one modal:
 //   menu       → "add ingredients" or "use a template" (bottom sheet)
-//   search     → ingredient autocomplete + USDA search
+//   search     → ingredient autocomplete + USDA search (scan icon → scan)
+//   scan       → live camera preview, html5-qrcode → Open Food Facts
 //   weight     → weight entry with live macro preview
 //   building   → running ingredient list + totals (also reused as the
 //                template edit view when editingTemplate is non-null)
@@ -57,7 +58,7 @@ interface BuildingItem {
   weight_grams: number
 }
 
-type Screen = 'menu' | 'search' | 'weight' | 'building' | 'confirm' | 'templates'
+type Screen = 'menu' | 'search' | 'weight' | 'building' | 'confirm' | 'templates' | 'scan'
 
 interface Props {
   onClose: () => void
@@ -384,7 +385,16 @@ export default function MealLogger({ onClose, onSaved }: Props) {
                     key="search"
                     hasItems={items.length > 0}
                     onPick={(food_item) => onItemPicked(food_item)}
+                    onScan={() => setScreen('scan')}
                     onBack={() => setScreen(items.length > 0 ? 'building' : (editingTemplate ? 'templates' : 'menu'))}
+                  />
+                )
+              case 'scan':
+                return (
+                  <ScreenScan
+                    key="scan"
+                    onPick={(food_item, defaults) => onItemPicked(food_item, defaults)}
+                    onBack={() => setScreen('search')}
                   />
                 )
               case 'weight':
@@ -528,10 +538,11 @@ function ScreenMenu({
 
 // ─── Screen 2: Search ─────────────────────────────────────────────────────
 function ScreenSearch({
-  hasItems, onPick, onBack,
+  hasItems, onPick, onScan, onBack,
 }: {
   hasItems: boolean
   onPick: (food_item: FoodItem) => void
+  onScan: () => void
   onBack: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -648,39 +659,58 @@ function ScreenSearch({
       />
 
       <div style={{ padding: '8px 16px 12px' }}>
-        <div style={{ position: 'relative' }}>
-          {/* Ghost text rendered behind the real input */}
-          <div
-            aria-hidden
+        <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+            {/* Ghost text rendered behind the real input */}
+            <div
+              aria-hidden
+              style={{
+                position: 'absolute', inset: 0, padding: '12px 14px',
+                fontSize: 16, color: 'transparent',
+                fontFamily: 'var(--font-sans)', whiteSpace: 'pre',
+                pointerEvents: 'none', overflow: 'hidden',
+              }}
+            >
+              <span>{query}</span>
+              <span style={{ color: 'var(--color-text-dim)' }}>{ghost}</span>
+            </div>
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKey}
+              placeholder="Search ingredients…"
+              autoComplete="off"
+              spellCheck={false}
+              style={{
+                width: '100%', padding: '12px 14px',
+                fontSize: 16,
+                color: 'var(--color-text-primary)',
+                background: 'transparent',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8, outline: 'none',
+                position: 'relative', zIndex: 1,
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={onScan}
+            aria-label="Scan barcode"
             style={{
-              position: 'absolute', inset: 0, padding: '12px 14px',
-              fontSize: 16, color: 'transparent',
-              fontFamily: 'var(--font-sans)', whiteSpace: 'pre',
-              pointerEvents: 'none', overflow: 'hidden',
+              flexShrink: 0,
+              width: 44,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8,
+              cursor: 'pointer',
+              color: 'var(--color-text-secondary)',
             }}
           >
-            <span>{query}</span>
-            <span style={{ color: 'var(--color-text-dim)' }}>{ghost}</span>
-          </div>
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="Search ingredients…"
-            autoComplete="off"
-            spellCheck={false}
-            style={{
-              width: '100%', padding: '12px 14px',
-              fontSize: 16,
-              color: 'var(--color-text-primary)',
-              background: 'transparent',
-              border: '1px solid var(--color-border)',
-              borderRadius: 8, outline: 'none',
-              position: 'relative', zIndex: 1,
-            }}
-          />
+            <BarcodeIcon />
+          </button>
         </div>
         {ghost && (
           <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
@@ -751,6 +781,203 @@ function PerHundredLine({ n }: { n: NutrientsPer100g }) {
     <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)' }}>
       per 100g: {fmt(n.calories, ' kcal')} · {fmt(n.protein, 'g P')} · {fmt(n.carbs, 'g C')} · {fmt(n.fat, 'g F')} · {fmt(n.fiber, 'g Fi')}
     </div>
+  )
+}
+
+// ─── Screen 2b: Barcode scan ──────────────────────────────────────────────
+// html5-qrcode is loaded dynamically so it never runs during SSR.
+const SCANNER_DIV_ID = 'meal-logger-scanner'
+
+interface ScanProduct {
+  barcode: string
+  name: string
+  source: 'open_food_facts'
+  nutrients_per_100g: NutrientsPer100g
+  serving_grams: number | null
+  serving_label: string | null
+}
+
+function ScreenScan({
+  onPick, onBack,
+}: {
+  onPick: (
+    food_item: FoodItem,
+    defaults: { serving_grams?: number | null; serving_label?: string | null; weight_grams?: number },
+  ) => void
+  onBack: () => void
+}) {
+  const [status, setStatus]   = useState<'idle' | 'scanning' | 'looking-up' | 'caching'>('scanning')
+  const [error,  setError]    = useState<string | null>(null)
+  const [hint,   setHint]     = useState<string>('Point the camera at a barcode')
+  // Hold a ref to the scanner so the callback can stop it after a hit.
+  const scannerRef = useRef<{ stop: () => Promise<void>; clear: () => void } | null>(null)
+  // Guard against the library firing the success callback multiple times.
+  const handledRef = useRef(false)
+
+  const handleBarcode = useCallback(async (code: string) => {
+    if (handledRef.current) return
+    handledRef.current = true
+
+    // Stop the camera before doing any network work — keeping it live
+    // while we hit the API drains battery and double-fires the callback.
+    try { await scannerRef.current?.stop() } catch {}
+    setStatus('looking-up')
+    setHint('Looking up barcode…')
+
+    try {
+      const r = await fetch(`/api/nutrition/barcode?code=${encodeURIComponent(code)}`)
+      const j = await r.json() as { product: ScanProduct | null; reason?: string }
+      if (!j.product) {
+        setStatus('idle')
+        setError(j.reason === 'nutrient data incomplete'
+          ? 'Found this product but its nutrient data is too sparse to log. Search by name instead.'
+          : `No product found for barcode ${code}. Try search instead.`)
+        return
+      }
+      // Cache to food_items (idempotent — same barcode always returns the
+      // same row by name+source match).
+      setStatus('caching')
+      setHint('Saving to library…')
+      const cacheRes = await fetch('/api/nutrition/food-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fdc_id: null,
+          name: j.product.name,
+          nutrients_per_100g: j.product.nutrients_per_100g,
+          source: 'open_food_facts',
+        }),
+      })
+      const cacheJ = await cacheRes.json() as { food_item?: FoodItem; error?: string }
+      if (!cacheRes.ok || !cacheJ.food_item) {
+        setStatus('idle')
+        setError(cacheJ.error ?? 'Could not save this barcode')
+        return
+      }
+      onPick(cacheJ.food_item, {
+        serving_grams: j.product.serving_grams,
+        serving_label: j.product.serving_label,
+        weight_grams: j.product.serving_grams ?? 100,
+      })
+    } catch (e) {
+      setStatus('idle')
+      setError(e instanceof Error ? e.message : 'Lookup failed')
+    }
+  }, [onPick])
+
+  // Mount + lifecycle of the camera. Dynamic import so html5-qrcode
+  // (which touches navigator.mediaDevices) never runs server-side.
+  useEffect(() => {
+    let stopped = false
+    let scanner: import('html5-qrcode').Html5Qrcode | null = null
+
+    ;(async () => {
+      try {
+        const mod = await import('html5-qrcode')
+        if (stopped) return
+        scanner = new mod.Html5Qrcode(SCANNER_DIV_ID)
+        scannerRef.current = scanner as unknown as { stop: () => Promise<void>; clear: () => void }
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 260, height: 140 } },
+          (decoded) => { void handleBarcode(decoded) },
+          () => { /* per-frame decode failures are normal — ignore */ },
+        )
+      } catch (e) {
+        if (stopped) return
+        const msg = e instanceof Error ? e.message : String(e)
+        setError(/Permission|NotAllowed/i.test(msg)
+          ? 'Camera access denied. Allow it in your browser settings, then try again.'
+          : `Could not start camera: ${msg}`)
+        setStatus('idle')
+      }
+    })()
+
+    return () => {
+      stopped = true
+      if (scanner) {
+        try { void scanner.stop().then(() => scanner?.clear()) } catch {}
+      }
+    }
+  }, [handleBarcode])
+
+  const retry = () => {
+    handledRef.current = false
+    setError(null)
+    setStatus('scanning')
+    setHint('Point the camera at a barcode')
+    // Re-mount the effect by toggling state — simplest: full unmount via
+    // onBack would also work, but staying on screen feels smoother.
+    // Reusing the same scanner instance via .resume() is unreliable across
+    // browsers; easiest is a full restart.
+    ;(async () => {
+      try {
+        if (scannerRef.current) {
+          await scannerRef.current.stop()
+          scannerRef.current.clear()
+          scannerRef.current = null
+        }
+        const mod = await import('html5-qrcode')
+        const scanner = new mod.Html5Qrcode(SCANNER_DIV_ID)
+        scannerRef.current = scanner as unknown as { stop: () => Promise<void>; clear: () => void }
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 260, height: 140 } },
+          (decoded) => { void handleBarcode(decoded) },
+          () => {},
+        )
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        setError(`Could not restart camera: ${msg}`)
+        setStatus('idle')
+      }
+    })()
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
+      transition={{ duration: 0.18 }}
+      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+    >
+      <Header title="Scan barcode" onBack={onBack} backLabel="Cancel" />
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 16, gap: 14, background: '#000' }}>
+        <div
+          id={SCANNER_DIV_ID}
+          style={{
+            width: '100%', maxWidth: 360,
+            aspectRatio: '1 / 1',
+            background: '#111',
+            borderRadius: 12,
+            overflow: 'hidden',
+            position: 'relative',
+          }}
+        />
+        <div style={{ fontSize: 12, color: '#fff', opacity: 0.85, textAlign: 'center', minHeight: 18 }}>
+          {hint}
+        </div>
+        {status !== 'scanning' && status !== 'idle' && (
+          <div style={{ fontSize: 11, color: '#fff', opacity: 0.7 }}>
+            {status === 'looking-up' ? 'Open Food Facts…' : 'Caching to library…'}
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ padding: '12px 16px', background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)' }}>
+          <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 8 }}>{error}</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={onBack} className="btn-secondary" style={{ flex: 1 }}>
+              Back to search
+            </button>
+            <button type="button" onClick={retry} className="btn-primary" style={{ flex: 1 }}>
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+    </motion.div>
   )
 }
 
@@ -1447,6 +1674,14 @@ function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
       <path d="M3 4h10M6 4V3a1 1 0 011-1h2a1 1 0 011 1v1M5 4l1 8a1 1 0 001 1h2a1 1 0 001-1l1-8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function BarcodeIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path d="M3 4v12M5 4v12M7 4v12M9 4v12M11 4v12M13 4v12M15 4v12M17 4v12" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
     </svg>
   )
 }
