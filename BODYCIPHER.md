@@ -199,6 +199,26 @@ All steps below are built and pushed on `claude/quizzical-lalande-dce194`.
    dynamic-imported on entry, Open Food Facts via `/api/nutrition/barcode`,
    serving-size shortcut surfaced on Screen 3 if OFF returned one
 
+### Recipe builder — `is_raw` column
+
+Recipes can now be marked as **raw / assembled** (no cooking step — e.g.
+salads, overnight oats, snack mixes) via a checkbox in the recipe builder
+labelled "No cooking — assembled from raw ingredients."
+
+- `recipes.is_raw boolean DEFAULT false` (migration applied 2026-04-26).
+- Raw recipes always store `total_cooked_grams = null` and use
+  `sum(ingredient.weight_grams)` as the per-100g divisor instead of the
+  cooked-pot weight. Otherwise the macro pipeline is identical.
+- Raw recipes have no draft state — they activate as soon as one
+  ingredient is added. The save button reads "Save recipe" rather than
+  "Save as draft" while the toggle is on.
+- The amber chip on draft recipes in My Library reads
+  "Incomplete — add cooked weight or mark as raw" to surface both exits
+  from the draft state.
+- API: `POST` and `PUT /api/nutrition/recipe` accept `is_raw: boolean`;
+  `GET` returns it. Toggling `is_raw` on a `PUT` forces a macro
+  recompute (divisor changes) and clears any stale `total_cooked_grams`.
+
 ### Known follow-ups (not done in this build)
 
 - **Coach still reads `daily_entries.nutrition`** in `app/api/coach/route.ts`
