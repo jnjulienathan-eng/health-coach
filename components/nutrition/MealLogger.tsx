@@ -248,69 +248,81 @@ export default function MealLogger({ onClose, onSaved, onOpenTemplates }: Props)
           overflow: 'hidden',
         }}
       >
+        {/* AnimatePresence needs a single keyed child for reliable
+            mode="wait" transitions; multiple sibling conditionals can
+            stall the exit/enter handoff. */}
         <AnimatePresence mode="wait">
-          {screen === 'menu' && (
-            <ScreenMenu
-              key="menu"
-              mealName={mealName}
-              setMealName={setMealName}
-              onAddIngredients={goToSearch}
-              onUseTemplate={onOpenTemplates}
-              onClose={onClose}
-            />
-          )}
-          {screen === 'search' && (
-            <ScreenSearch
-              key="search"
-              hasItems={items.length > 0}
-              onPick={(food_item) => onItemPicked(food_item)}
-              onBack={() => setScreen(items.length > 0 ? 'building' : 'menu')}
-            />
-          )}
-          {screen === 'weight' && pending && (
-            <ScreenWeight
-              key="weight"
-              pending={pending}
-              setPending={setPending}
-              onCommit={commitPending}
-              onBack={() => { setPending(null); setScreen(items.length > 0 ? 'building' : 'search') }}
-            />
-          )}
-          {screen === 'building' && (
-            <ScreenBuilding
-              key="building"
-              mealName={mealName}
-              items={items}
-              onEdit={(idx) => onItemPicked(items[idx].food_item, {
-                weight_grams: items[idx].weight_grams,
-                editIndex: idx,
-              })}
-              onRemove={removeItem}
-              onAddAnother={goToSearch}
-              onSave={() => setScreen('confirm')}
-              onBack={() => setScreen('menu')}
-            />
-          )}
-          {screen === 'confirm' && (
-            <ScreenConfirm
-              key="confirm"
-              mealName={mealName}
-              setMealName={setMealName}
-              items={items}
-              peakGlucose={peakGlucose}
-              setPeakGlucose={setPeakGlucose}
-              notes={notes}
-              setNotes={setNotes}
-              saveAsTemplate={saveAsTemplate}
-              setSaveAsTemplate={setSaveAsTemplate}
-              templateName={templateName}
-              setTemplateName={setTemplateName}
-              saving={saving}
-              error={saveError}
-              onConfirm={handleConfirm}
-              onBack={() => setScreen('building')}
-            />
-          )}
+          {(() => {
+            switch (screen) {
+              case 'menu':
+                return (
+                  <ScreenMenu
+                    key="menu"
+                    mealName={mealName}
+                    setMealName={setMealName}
+                    onAddIngredients={goToSearch}
+                    onUseTemplate={onOpenTemplates}
+                    onClose={onClose}
+                  />
+                )
+              case 'search':
+                return (
+                  <ScreenSearch
+                    key="search"
+                    hasItems={items.length > 0}
+                    onPick={(food_item) => onItemPicked(food_item)}
+                    onBack={() => setScreen(items.length > 0 ? 'building' : 'menu')}
+                  />
+                )
+              case 'weight':
+                return pending ? (
+                  <ScreenWeight
+                    key="weight"
+                    pending={pending}
+                    setPending={setPending}
+                    onCommit={commitPending}
+                    onBack={() => { setPending(null); setScreen(items.length > 0 ? 'building' : 'search') }}
+                  />
+                ) : null
+              case 'building':
+                return (
+                  <ScreenBuilding
+                    key="building"
+                    mealName={mealName}
+                    items={items}
+                    onEdit={(idx) => onItemPicked(items[idx].food_item, {
+                      weight_grams: items[idx].weight_grams,
+                      editIndex: idx,
+                    })}
+                    onRemove={removeItem}
+                    onAddAnother={goToSearch}
+                    onSave={() => setScreen('confirm')}
+                    onBack={() => setScreen('menu')}
+                  />
+                )
+              case 'confirm':
+                return (
+                  <ScreenConfirm
+                    key="confirm"
+                    mealName={mealName}
+                    setMealName={setMealName}
+                    items={items}
+                    peakGlucose={peakGlucose}
+                    setPeakGlucose={setPeakGlucose}
+                    notes={notes}
+                    setNotes={setNotes}
+                    saveAsTemplate={saveAsTemplate}
+                    setSaveAsTemplate={setSaveAsTemplate}
+                    templateName={templateName}
+                    setTemplateName={setTemplateName}
+                    saving={saving}
+                    error={saveError}
+                    onConfirm={handleConfirm}
+                    onBack={() => setScreen('building')}
+                  />
+                )
+            }
+          })()}
         </AnimatePresence>
       </motion.div>
     </div>
