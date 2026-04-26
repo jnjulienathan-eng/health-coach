@@ -169,7 +169,6 @@ export default function MealLogger({ onClose, onSaved, onOpenTemplates }: Props)
   const goToSearch = () => setScreen('search')
 
   const onItemPicked = (food_item: FoodItem, defaults?: { serving_grams?: number | null; serving_label?: string | null; weight_grams?: number; editIndex?: number | null }) => {
-    console.log('[MealLogger] 3 onItemPicked → setPending+setScreen("weight")', { food_item_id: food_item.id, name: food_item.name })
     setPending({
       food_item,
       weight_grams: defaults?.weight_grams ?? defaults?.serving_grams ?? 100,
@@ -271,7 +270,7 @@ export default function MealLogger({ onClose, onSaved, onOpenTemplates }: Props)
                   <ScreenSearch
                     key="search"
                     hasItems={items.length > 0}
-                    onPick={(food_item) => { console.log('[MealLogger] 2 ScreenSearch.onPick prop fired', { id: food_item.id }); onItemPicked(food_item) }}
+                    onPick={(food_item) => onItemPicked(food_item)}
                     onBack={() => setScreen(items.length > 0 ? 'building' : 'menu')}
                   />
                 )
@@ -466,9 +465,8 @@ function ScreenSearch({
   }
 
   const pickResult = async (r: SearchResult) => {
-    console.log('[MealLogger] 1 pickResult called', { source: r.source, name: r.name, food_item_id: r.food_item_id, fdc_id: r.fdc_id })
     if (r.food_item_id) {
-      console.log('[MealLogger] 1a local path — calling onPick synchronously')
+      // Already cached — fabricate a FoodItem shape from the row.
       onPick({
         id: r.food_item_id,
         name: r.name,
@@ -479,7 +477,6 @@ function ScreenSearch({
       return
     }
     // USDA hit — cache via /api/nutrition/food-item, then pick the returned row.
-    console.log('[MealLogger] 1b USDA path — POSTing /api/nutrition/food-item')
     try {
       const res = await fetch('/api/nutrition/food-item', {
         method: 'POST',
@@ -491,16 +488,13 @@ function ScreenSearch({
           source: 'usda',
         }),
       })
-      console.log('[MealLogger] 1c food-item response', { status: res.status, ok: res.ok })
       const j = await res.json() as { food_item?: FoodItem; error?: string }
-      console.log('[MealLogger] 1d food-item body', j)
       if (!res.ok || !j.food_item) {
         setError(j.error ?? 'Could not save ingredient')
         return
       }
       onPick(j.food_item)
     } catch (e) {
-      console.log('[MealLogger] 1e fetch threw', e)
       setError(e instanceof Error ? e.message : 'Could not save ingredient')
     }
   }
@@ -633,8 +627,6 @@ function ScreenWeight({
   onCommit: () => void
   onBack: () => void
 }) {
-  console.log('[MealLogger] 4 ScreenWeight render', { name: pending.food_item.name, weight: pending.weight_grams })
-  useEffect(() => { console.log('[MealLogger] 5 ScreenWeight MOUNTED') }, [])
   const macros = useMemo(
     () => macrosFor(pending.food_item.nutrients_per_100g, pending.weight_grams),
     [pending.food_item.nutrients_per_100g, pending.weight_grams],

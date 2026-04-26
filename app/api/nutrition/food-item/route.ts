@@ -9,16 +9,11 @@
 
 import { supaAdmin, nutritionUserId } from '@/lib/nutrition'
 
-const TAG = '[api/nutrition/food-item]'
-
 // Supabase / Postgres errors come as plain objects (PostgrestError shape:
 // { message, details, hint, code }) — not Error instances — so a naive
-// `String(e)` collapses them to "[object Object]". Walk all the common
-// fields and JSON-encode anything left over.
-function describe(e: unknown): { message: string; full: unknown } {
-  if (e instanceof Error) {
-    return { message: e.message, full: { name: e.name, message: e.message, stack: e.stack } }
-  }
+// String(e) collapses them to "[object Object]". Walk the common fields.
+function describe(e: unknown): string {
+  if (e instanceof Error) return e.message
   if (e && typeof e === 'object') {
     const obj = e as Record<string, unknown>
     const parts = [
@@ -27,23 +22,16 @@ function describe(e: unknown): { message: string; full: unknown } {
       typeof obj.details === 'string' ? `details=${obj.details}` : null,
       typeof obj.hint === 'string' ? `hint=${obj.hint}` : null,
     ].filter(Boolean) as string[]
-    const message = parts.length > 0 ? parts.join(' | ') : JSON.stringify(e)
-    return { message, full: e }
+    return parts.length > 0 ? parts.join(' | ') : JSON.stringify(e)
   }
-  return { message: String(e), full: e }
+  return String(e)
 }
 
-// Single-user app — surface the actual error to the client so failures
-// in preview are diagnosable from the browser console.
 function fail(stage: string, e: unknown, status = 500) {
-  const { message, full } = describe(e)
-  console.error(`${TAG} ${stage} failed:`, message)
-  console.error(`${TAG} ${stage} full error:`, full)
-  return Response.json({ error: `${stage}: ${message}`, stage, detail: full }, { status })
+  return Response.json({ error: `${stage}: ${describe(e)}`, stage }, { status })
 }
 
 export async function POST(req: Request) {
-  // ── Parse body ──────────────────────────────────────────────────────────
   let body: {
     fdc_id?: string | null
     name?: string
@@ -65,16 +53,6 @@ export async function POST(req: Request) {
   if (!['usda', 'open_food_facts', 'custom'].includes(source)) {
     return Response.json({ error: 'invalid source' }, { status: 400 })
   }
-
-  // ── Env / client ────────────────────────────────────────────────────────
-  // Surface the precise env var that's missing — these throws are the
-  // most likely cause of an opaque 500 in a preview deploy.
-  console.log(`${TAG} env check`, {
-    NEXT_PUBLIC_SUPABASE_URL:    !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY:   !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    NUTRITION_USER_ID_present:   !!process.env.NUTRITION_USER_ID,
-    NUTRITION_USER_ID_len:       process.env.NUTRITION_USER_ID?.length ?? 0,
-  })
 
   let supabase, userId
   try {
