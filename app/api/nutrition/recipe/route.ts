@@ -31,6 +31,7 @@ interface CreateBody {
   total_servings?: number
   total_cooked_grams?: number | null
   default_serving_grams?: number | null
+  is_raw?: boolean
   ingredients?: IngredientInput[]
 }
 
@@ -78,7 +79,7 @@ export async function GET() {
 
   const { data: recipes, error: rErr } = await supabase
     .from('recipes')
-    .select('id, name, total_servings, total_cooked_grams, default_serving_grams, food_item_id, status, created_at, updated_at')
+    .select('id, name, total_servings, total_cooked_grams, default_serving_grams, is_raw, food_item_id, status, created_at, updated_at')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
 
@@ -116,7 +117,10 @@ export async function POST(req: Request) {
     return Response.json({ error: 'total_servings must be an integer >= 1' }, { status: 400 })
   }
 
-  const totalCookedGrams = body.total_cooked_grams ?? null
+  const isRaw = body.is_raw === true
+  // Raw / assembled recipes have no cooking step, so cooked weight is
+  // meaningless — store null regardless of what the client sent.
+  const totalCookedGrams = isRaw ? null : (body.total_cooked_grams ?? null)
   if (totalCookedGrams != null && (typeof totalCookedGrams !== 'number' || totalCookedGrams <= 0)) {
     return Response.json({ error: 'total_cooked_grams must be > 0 if provided' }, { status: 400 })
   }
@@ -136,13 +140,17 @@ export async function POST(req: Request) {
     userId = nutritionUserId()
   } catch (e) { return fail('init-client', e) }
 
-  // Activation requires cooked weight AND at least one ingredient — without
-  // either, there's nothing to compute.
-  const willActivate = totalCookedGrams != null && totalCookedGrams > 0 && ingredients.length > 0
+  // Raw recipes activate as soon as there's at least one ingredient (batch
+  // weight = sum of raw ingredient weights). Cooked recipes need the
+  // cooked-pot weight before macros can be computed.
+  const rawBatchGrams = ingredients.reduce((s, i) => s + i.weight_grams, 0)
+  const willActivate = ingredients.length > 0
+    && (isRaw ? rawBatchGrams > 0 : (totalCookedGrams != null && totalCookedGrams > 0))
   let foodItemId: string | null = null
 
   if (willActivate) {
-    const per100g = await computePer100g(supabase, ingredients, totalCookedGrams!)
+    const divisor = isRaw ? rawBatchGrams : totalCookedGrams!
+    const per100g = await computePer100g(supabase, ingredients, divisor)
     if (per100g instanceof Response) return per100g
 
     const { data: fi, error: fiErr } = await supabase
@@ -170,6 +178,7 @@ export async function POST(req: Request) {
       total_servings: totalServings,
       total_cooked_grams: totalCookedGrams,
       default_serving_grams: defaultServingGrams,
+      is_raw: isRaw,
       food_item_id: foodItemId,
       status,
     })
@@ -224,12 +233,24 @@ export async function PUT(req: Request) {
     }
     updates.total_servings = ts
   }
+  if (body.is_raw !== undefined) {
+    if (typeof body.is_raw !== 'boolean') {
+      return Response.json({ error: 'is_raw must be a boolean' }, { status: 400 })
+    }
+    updates.is_raw = body.is_raw
+  }
+  // Effective is_raw — used to validate / null-out cooked weight below.
+  const effIsRaw = (updates.is_raw as boolean | undefined) ?? (existing.is_raw as boolean | undefined) ?? false
   if (body.total_cooked_grams !== undefined) {
     const v = body.total_cooked_grams
     if (v != null && (typeof v !== 'number' || v <= 0)) {
       return Response.json({ error: 'total_cooked_grams must be > 0 if provided' }, { status: 400 })
     }
-    updates.total_cooked_grams = v
+    updates.total_cooked_grams = effIsRaw ? null : v
+  } else if (effIsRaw && existing.total_cooked_grams != null) {
+    // Switched into raw mode — clear any stale cooked weight so the row
+    // can't drift back to mixed state.
+    updates.total_cooked_grams = null
   }
   if (body.default_serving_grams !== undefined) {
     const v = body.default_serving_grams
@@ -264,36 +285,51 @@ export async function PUT(req: Request) {
 
   // Effective values after this PUT.
   const effName     = (updates.name as string | undefined) ?? (existing.name as string)
-  const effCooked   = (body.total_cooked_grams !== undefined
-                        ? body.total_cooked_grams
-                        : (existing.total_cooked_grams as number | null)) ?? null
+  const effCooked   = effIsRaw
+                        ? null
+                        : ((body.total_cooked_grams !== undefined
+                            ? body.total_cooked_grams
+                            : (existing.total_cooked_grams as number | null)) ?? null)
   const wasActive   = (existing.status as string) === 'active'
-  const willBeActive = effCooked != null && effCooked > 0
+  // Whether the recipe has the inputs needed to compute macros. For raw
+  // recipes that's just having ingredients (batch weight = sum). For cooked
+  // recipes we still need a positive cooked weight too — that's checked
+  // after we load the ingredient list below.
+
+  // Pull the current ingredient list up front — needed both to decide
+  // activation for raw recipes and to recompute macros below.
+  const { data: ings, error: ingsErr } = await supabase
+    .from('recipe_ingredients')
+    .select('food_item_id, weight_grams')
+    .eq('recipe_id', body.id)
+  if (ingsErr) return fail('load-ingredients', ingsErr)
+  const ingList = (ings ?? []).map(r => ({
+    food_item_id: r.food_item_id as string,
+    weight_grams: Number(r.weight_grams),
+  }))
+  const rawBatchGrams = ingList.reduce((s, i) => s + i.weight_grams, 0)
+
+  const hasComputeInputs = ingList.length > 0
+    && (effIsRaw ? rawBatchGrams > 0 : (effCooked != null && effCooked > 0))
+  const willBeActive = hasComputeInputs
 
   const willActivate    = !wasActive && willBeActive
+  // Raw mode toggling on/off changes the divisor, so always recompute.
+  const isRawToggled    = body.is_raw !== undefined && body.is_raw !== existing.is_raw
   const macrosNeedRecompute = wasActive && willBeActive
-                              && (body.ingredients !== undefined || body.total_cooked_grams !== undefined)
+                              && (body.ingredients !== undefined
+                                  || body.total_cooked_grams !== undefined
+                                  || isRawToggled)
   const nameNeedsSync   = wasActive && willBeActive && updates.name !== undefined
 
   if (willActivate || macrosNeedRecompute || nameNeedsSync) {
-    // Pull the current ingredient list — which is the just-replaced set if
-    // the caller provided one, or the pre-existing set otherwise.
-    const { data: ings, error: ingsErr } = await supabase
-      .from('recipe_ingredients')
-      .select('food_item_id, weight_grams')
-      .eq('recipe_id', body.id)
-    if (ingsErr) return fail('load-ingredients', ingsErr)
-    const ingList = (ings ?? []).map(r => ({
-      food_item_id: r.food_item_id as string,
-      weight_grams: Number(r.weight_grams),
-    }))
-
     if (willActivate) {
       // Need ingredients to compute macros — without them we can't activate.
       if (ingList.length === 0) {
         return Response.json({ error: 'cannot activate a recipe with no ingredients' }, { status: 400 })
       }
-      const per100g = await computePer100g(supabase, ingList, effCooked!)
+      const divisor = effIsRaw ? rawBatchGrams : effCooked!
+      const per100g = await computePer100g(supabase, ingList, divisor)
       if (per100g instanceof Response) return per100g
 
       const { data: fi, error: fiErr } = await supabase
@@ -320,7 +356,8 @@ export async function PUT(req: Request) {
           // rather than divide by something meaningless.
           fiUpdates.nutrients_per_100g = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
         } else {
-          const per100g = await computePer100g(supabase, ingList, effCooked!)
+          const divisor = effIsRaw ? rawBatchGrams : effCooked!
+          const per100g = await computePer100g(supabase, ingList, divisor)
           if (per100g instanceof Response) return per100g
           fiUpdates.nutrients_per_100g = per100g
         }

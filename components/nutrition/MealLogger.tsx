@@ -88,6 +88,7 @@ interface RecipeRow {
   total_servings: number
   total_cooked_grams: number | null
   default_serving_grams: number | null
+  is_raw: boolean
   food_item_id: string | null
   updated_at: string
   recipe_ingredients: RecipeIngredientRow[]
@@ -112,6 +113,7 @@ interface RecipeBuilderState {
   servings: string
   servingGrams: string
   cookedGrams: string
+  isRaw: boolean
 }
 
 // Shape returned by GET /api/nutrition/templates
@@ -431,7 +433,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
 
   // ─── Recipe builder handlers ───────────────────────────────────────────
   const startNewRecipe = () => {
-    setEditingRecipe({ id: null, name: '', servings: '1', servingGrams: '', cookedGrams: '' })
+    setEditingRecipe({ id: null, name: '', servings: '1', servingGrams: '', cookedGrams: '', isRaw: false })
     setItems([])
     setScreen('recipeBuilder')
   }
@@ -449,6 +451,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
       servings: String(recipe.total_servings),
       servingGrams: recipe.default_serving_grams != null ? String(recipe.default_serving_grams) : '',
       cookedGrams: recipe.total_cooked_grams != null ? String(recipe.total_cooked_grams) : '',
+      isRaw: recipe.is_raw === true,
     })
     setItems(built)
     setScreen('recipeBuilder')
@@ -463,13 +466,18 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
       if (!name) { setSaveError('Recipe name is required'); setSaving(false); return }
       const servings = parseInt(editingRecipe.servings, 10)
       if (!servings || servings < 1) { setSaveError('Total servings must be at least 1'); setSaving(false); return }
-      const cookedGrams = editingRecipe.cookedGrams.trim() ? Number(editingRecipe.cookedGrams) : null
+      // Raw / assembled recipes have no cooking step — cooked weight is
+      // null, divisor on the API side is sum of ingredient weights.
+      const cookedGrams = editingRecipe.isRaw
+        ? null
+        : (editingRecipe.cookedGrams.trim() ? Number(editingRecipe.cookedGrams) : null)
       const servingGrams = editingRecipe.servingGrams.trim() ? Number(editingRecipe.servingGrams) : null
       const payload = {
         name,
         total_servings: servings,
         default_serving_grams: servingGrams,
         total_cooked_grams: cookedGrams,
+        is_raw: editingRecipe.isRaw,
         ingredients: items.map(it => ({ food_item_id: it.food_item.id, weight_grams: it.weight_grams })),
       }
       const isNew = editingRecipe.id == null
@@ -2050,7 +2058,12 @@ function ScreenRecipeBuilder({
   const batchTotals = useMemo(() => totalsFor(items), [items])
   const servings = parseInt(recipeState.servings, 10) || 0
   const cookedGrams = parseFloat(recipeState.cookedGrams) || 0
-  const hasPreview = cookedGrams > 0 && servings > 0 && items.length > 0
+  // Raw recipes don't need a cooked weight — the per-serving preview
+  // simply divides batch totals by servings since the divisor / batch
+  // weight cancels out.
+  const hasPreview = recipeState.isRaw
+    ? servings > 0 && items.length > 0
+    : cookedGrams > 0 && servings > 0 && items.length > 0
 
   const perServing = useMemo(() => {
     if (!hasPreview) return null
@@ -2065,7 +2078,11 @@ function ScreenRecipeBuilder({
   }, [hasPreview, batchTotals, servings])
 
   const headerTitle = recipeState.id ? `Edit: ${recipeState.name || 'Recipe'}` : 'New recipe'
-  const saveDisabled = !recipeState.name.trim() || servings < 1 || saving
+  // Raw recipes save as active so they need at least one ingredient.
+  const saveDisabled = !recipeState.name.trim()
+    || servings < 1
+    || saving
+    || (recipeState.isRaw && items.length === 0)
 
   return (
     <motion.div
@@ -2136,6 +2153,21 @@ function ScreenRecipeBuilder({
           </div>
         </div>
 
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          marginBottom: 16, cursor: 'pointer',
+        }}>
+          <input
+            type="checkbox"
+            checked={recipeState.isRaw}
+            onChange={(e) => setRecipeState({ ...recipeState, isRaw: e.target.checked })}
+            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
+          />
+          <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>
+            No cooking — assembled from raw ingredients.
+          </span>
+        </label>
+
         <div style={{ marginBottom: 16 }}>
           <FieldLabel>Ingredients</FieldLabel>
           {items.length > 0 && (
@@ -2199,31 +2231,33 @@ function ScreenRecipeBuilder({
           </button>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <FieldLabel>
-            Total cooked weight — g{' '}
-            <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
-          </FieldLabel>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="number" inputMode="decimal" min={1}
-              value={recipeState.cookedGrams}
-              onChange={(e) => setRecipeState({ ...recipeState, cookedGrams: e.target.value })}
-              placeholder="—"
-              style={{
-                width: 120, padding: '10px 12px', fontSize: 14, fontFamily: 'var(--font-mono)',
-                color: 'var(--color-text-primary)',
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 8, outline: 'none',
-              }}
-            />
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>g</span>
+        {!recipeState.isRaw && (
+          <div style={{ marginBottom: 16 }}>
+            <FieldLabel>
+              Total cooked weight — g{' '}
+              <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+            </FieldLabel>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="number" inputMode="decimal" min={1}
+                value={recipeState.cookedGrams}
+                onChange={(e) => setRecipeState({ ...recipeState, cookedGrams: e.target.value })}
+                placeholder="—"
+                style={{
+                  width: 120, padding: '10px 12px', fontSize: 14, fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-text-primary)',
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 8, outline: 'none',
+                }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>g</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 4 }}>
+              Weigh the finished pot. Leave blank now, add after cooking.
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 4 }}>
-            Weigh the finished pot. Leave blank now, add after cooking.
-          </div>
-        </div>
+        )}
 
         {saveError && (
           <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{saveError}</div>
@@ -2255,7 +2289,11 @@ function ScreenRecipeBuilder({
           className="btn-primary"
           style={{ width: '100%', opacity: saveDisabled ? 0.5 : 1 }}
         >
-          {saving ? 'Saving…' : recipeState.cookedGrams.trim() ? 'Save recipe' : 'Save as draft'}
+          {saving
+            ? 'Saving…'
+            : (recipeState.isRaw || recipeState.cookedGrams.trim())
+              ? 'Save recipe'
+              : 'Save as draft'}
         </button>
       </Footer>
     </motion.div>
