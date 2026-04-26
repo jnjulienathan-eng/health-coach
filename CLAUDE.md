@@ -9,8 +9,12 @@ _Companion to BODYCIPHER.md — that file covers what the app does. This file co
 1. Read BODYCIPHER.md in the project root in full.
 2. Read every file you plan to edit before writing a single line.
 3. Never assume you know the current state of a file — always read it first.
-4. If working on the nutrition section, also read /docs/NUTRITION_DATA_MODEL.md 
-   and /docs/NUTRITION_UX_FLOW.md in full before touching anything.
+4. If working on the nutrition section: the design lives in
+   /docs/NUTRITION_DATA_MODEL.md and /docs/NUTRITION_UX_FLOW.md, the
+   shipped code lives in components/nutrition/MealLogger.tsx,
+   components/sections/NutritionSection.tsx, lib/nutrition.ts,
+   lib/usda.ts, and app/api/nutrition/*. Read both the docs and the
+   current code — the docs describe intent, the code is the truth.
 
 ---
 
@@ -56,10 +60,28 @@ will crash. Always confirm the migration is complete and the code
 change is deployed before testing.
 
 ### Missing fields after migration
-After the April 18 DB migration, peak_glucose_mmol was missing from 
-NutritionSection.tsx, causing save failures. After any migration, 
-verify that all new fields are wired through: types.ts → db.ts → 
-the relevant section component.
+After any DB migration that adds or renames a column, verify the new
+field is wired all the way through to the UI: types → db/route helpers
+→ the relevant API route → the component. Two real precedents:
+- April 18: peak_glucose_mmol was missing from the (now-retired) old
+  NutritionSection, so saves failed silently.
+- April 26: the auth.users FK constraints on the nutrition tables
+  rejected every food_items insert because NUTRITION_USER_ID isn't an
+  auth row. The fix was an SQL migration to drop the FKs (see
+  BODYCIPHER → "FK migration applied April 26, 2026").
+
+### Supabase errors stringify to "[object Object]"
+PostgrestError is a plain object ({message, code, details, hint}), not
+a JS Error instance. `String(err)` collapses it to "[object Object]"
+and you lose the actual reason. In any try/catch around a Supabase
+call, walk the fields manually — see app/api/nutrition/food-item/route.ts
+`describe()` for the canonical helper.
+
+### framer-motion AnimatePresence with multiple conditional siblings
+Using `<AnimatePresence mode="wait">` with several sibling conditionals
+({a && <X/>}{b && <Y/>}…) is flaky — the exit/enter handoff can stall
+and the incoming screen never mounts. Always render exactly one keyed
+child via an IIFE switch (see MealLogger.tsx for the pattern).
 
 ### SSH auth only
 GitHub authentication must use SSH: git@github.com:jnjulienathan-eng/health-coach.git
@@ -76,14 +98,34 @@ pasting. Do not attempt HTTPS auth.
 - fasting_glucose_mmol — lives in daily_entries (sleep section).
 - sessions — JSONB array in daily_entries. 
   Each item: {activity_type, duration_min, zone3_plus_minutes, active_calories}
-- Nutrition is now ingredient-level. Six new tables: food_items, meal_logs, 
-  meal_log_items, daily_nutrition_summary, meal_templates, meal_template_items.
-  The old daily_entries.nutrition JSONB fields are legacy — do not add to them.
-  Coach reads from daily_nutrition_summary, not daily_entries.nutrition.
-  All USDA API calls go through Next.js API routes using process.env.USDA_API_KEY.
-  Never call USDA from client-side code.
-- RLS on all 10 tables. Policy: auth.uid() = user_id.
-  Never hardcode 'julie' as the user_id in any policy or query.
+- Nutrition is ingredient-level. Six new tables: food_items, meal_logs,
+  meal_log_items, daily_nutrition_summary, meal_templates,
+  meal_template_items. Access them through lib/nutrition.ts (server-side
+  Supabase admin client + day-boundary + summary recompute) and
+  lib/usda.ts (nutrient parser). Never call USDA from client-side code —
+  go through /api/nutrition/search.
+- The old daily_entries.nutrition JSONB columns (pre_workout_snack,
+  breakfast, lunch, dinner, incidentals + their macro fields) are legacy.
+  Don't read or write them from new code. The new nutrition section
+  ignores them; saves still go through them via lib/db.ts but the values
+  are blank. Cleanup is gated on backlog item #1.
+- Coach **should** read from daily_nutrition_summary but **currently
+  still reads daily_entries.nutrition** in app/api/coach/route.ts. This
+  is backlog item #1 — until it lands, the coach sees no data for meals
+  logged through the new flow. Don't write new code that reads
+  daily_entries.nutrition; if you touch the coach, switch it.
+- RLS on the six new nutrition tables uses `auth.uid() = user_id`. We
+  bypass it server-side with the service-role client in lib/nutrition.ts
+  → supaAdmin(). The four legacy tables (daily_entries, training_sessions,
+  biomarker_readings, health_appointments) use 'julie' as a text user_id
+  with RLS disabled — that's the existing convention there, don't change
+  it without an explicit ask.
+- New nutrition rows use `user_id = process.env.NUTRITION_USER_ID` (a
+  UUID). Never hardcode 'julie' — or the UUID — in any new nutrition
+  code or policy. Read it through lib/nutrition.ts → nutritionUserId().
+- Required env vars (Vercel, both Production and Preview):
+  USDA_API_KEY, SUPABASE_SERVICE_ROLE_KEY, NUTRITION_USER_ID. All
+  server-side only. Never reference them in client components.
 
 ---
 
