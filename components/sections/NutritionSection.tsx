@@ -274,7 +274,20 @@ function MealCard({
       </button>
 
       {/* Inline peak glucose — always visible, below macro line */}
-      <div style={{ borderTop: '1px solid var(--color-border)', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div
+        onClick={(e) => {
+          e.stopPropagation()
+          if (!glucoseEditing) {
+            setGlucoseInput(meal.peak_glucose_mmol != null ? String(meal.peak_glucose_mmol) : '')
+            setGlucoseEditing(true)
+          }
+        }}
+        style={{
+          borderTop: '1px solid var(--color-border)', padding: '6px 14px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          cursor: glucoseEditing ? 'default' : 'pointer',
+        }}
+      >
         <span style={{ fontSize: 11, color: 'var(--color-text-dim)', minWidth: 82, flexShrink: 0 }}>Peak glucose</span>
         {glucoseEditing ? (
           <>
@@ -301,25 +314,21 @@ function MealCard({
             <button
               type="button"
               onMouseDown={e => e.preventDefault()}
-              onClick={saveGlucose}
+              onClick={(e) => { e.stopPropagation(); saveGlucose() }}
               style={{ background: 'var(--color-primary)', border: 'none', borderRadius: 4, color: '#fff', padding: '2px 7px', fontSize: 12, cursor: glucoseSaving ? 'default' : 'pointer', lineHeight: 1.4, opacity: glucoseSaving ? 0.6 : 1 }}
             >✓</button>
             <button
               type="button"
               onMouseDown={e => e.preventDefault()}
-              onClick={() => { setGlucoseEditing(false); setGlucoseError(null) }}
+              onClick={(e) => { e.stopPropagation(); setGlucoseEditing(false); setGlucoseError(null) }}
               style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text-dim)', padding: '2px 6px', fontSize: 12, cursor: 'pointer', lineHeight: 1.4 }}
             >✕</button>
           </>
         ) : (
           <>
-            <button
-              type="button"
-              onClick={() => { setGlucoseInput(meal.peak_glucose_mmol != null ? String(meal.peak_glucose_mmol) : ''); setGlucoseEditing(true) }}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12, color: meal.peak_glucose_mmol != null ? 'var(--color-text-primary)' : 'var(--color-text-dim)' }}
-            >
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: meal.peak_glucose_mmol != null ? 'var(--color-text-primary)' : 'var(--color-text-dim)' }}>
               {meal.peak_glucose_mmol != null ? meal.peak_glucose_mmol : '—'}
-            </button>
+            </span>
             <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>mmol/L</span>
           </>
         )}
