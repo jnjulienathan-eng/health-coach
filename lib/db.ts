@@ -400,6 +400,9 @@ export async function getGoalsData(): Promise<GoalsData> {
   const fastingGlucose7d = ((glucoseRes.data ?? []) as Record<string, unknown>[])
     .map(row => row.fasting_glucose_mmol as number | null)
 
+  if (appointmentsRes.error) {
+    console.error('getGoalsData appointments error:', JSON.stringify(appointmentsRes.error))
+  }
   const appointments = (appointmentsRes.data ?? []) as HealthAppointment[]
 
   return { todayScores, biomarkers, fastingGlucose7d, appointments }

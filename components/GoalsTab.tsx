@@ -246,13 +246,18 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
             const fresh = await fetchHealthAppointments()
             d = { ...d, appointments: fresh }
           } catch (e) {
-            console.error('GoalsTab seed appointments error:', e)
+            const msg = e && typeof e === 'object' ? JSON.stringify(e) : String(e)
+            console.error('GoalsTab seed appointments error (likely RLS — run: ALTER TABLE health_appointments DISABLE ROW LEVEL SECURITY):', msg)
           }
         }
         setData(d)
         setLoading(false)
       })
-      .catch(e => { console.error('GoalsTab load error:', e); setLoading(false) })
+      .catch(e => {
+        const msg = e && typeof e === 'object' ? JSON.stringify(e) : String(e)
+        console.error('GoalsTab load error:', msg)
+        setLoading(false)
+      })
   }, [])
 
   // Fetch dynamic greeting from API
@@ -1578,7 +1583,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
 
       {allAppts.length === 0 ? (
         <div className="card" style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>
-          No appointments — loading…
+          No appointments found. If this persists, run in Supabase SQL editor: ALTER TABLE health_appointments DISABLE ROW LEVEL SECURITY; (check browser console for the specific error)
         </div>
       ) : (
         allAppts.map(appt => {
