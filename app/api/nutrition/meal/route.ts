@@ -227,6 +227,34 @@ export async function DELETE(req: Request) {
   return Response.json({ ok: true, date })
 }
 
+// ─── PATCH (update a single field without recomputing summary) ───────────
+export async function PATCH(req: Request) {
+  let body: { id?: string; peak_glucose_mmol?: number | null }
+  try { body = await req.json() } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }) }
+  if (!body.id) return Response.json({ error: 'id is required' }, { status: 400 })
+
+  const supabase = supaAdmin()
+  const userId = nutritionUserId()
+
+  const { data: existing, error: loadErr } = await supabase
+    .from('meal_logs')
+    .select('id')
+    .eq('id', body.id)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (loadErr) return Response.json({ error: loadErr.message }, { status: 500 })
+  if (!existing) return Response.json({ error: 'meal not found' }, { status: 404 })
+
+  const updates: Record<string, unknown> = {}
+  if (body.peak_glucose_mmol !== undefined) updates.peak_glucose_mmol = body.peak_glucose_mmol
+  if (Object.keys(updates).length === 0) return Response.json({ ok: true })
+
+  const { error: upErr } = await supabase
+    .from('meal_logs').update(updates).eq('id', body.id).eq('user_id', userId)
+  if (upErr) return Response.json({ error: upErr.message }, { status: 500 })
+  return Response.json({ ok: true })
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────
 async function bumpUseCounts(foodItemIds: string[]): Promise<void> {
   if (foodItemIds.length === 0) return

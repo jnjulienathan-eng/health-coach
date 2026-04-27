@@ -80,7 +80,6 @@ interface EditingTemplate {
 interface EditingMealProp {
   id: string
   name: string
-  peak_glucose_mmol: number | null
   notes: string | null
   items: Array<{
     food_item: {
@@ -257,9 +256,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen, editingMea
   const [libraryReturnScreen, setLibraryReturnScreen] = useState<'menu' | 'search'>('menu')
 
   // Confirm-screen fields
-  const [peakGlucose, setPeakGlucose] = useState<string>(
-    editingMeal?.peak_glucose_mmol != null ? String(editingMeal.peak_glucose_mmol) : ''
-  )
   const [notes, setNotes] = useState(editingMeal?.notes ?? '')
 
   // Save state
@@ -317,7 +313,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen, editingMea
           body: JSON.stringify({
             id: editingMeal.id,
             name: mealName,
-            peak_glucose_mmol: peakGlucose === '' ? null : Number(peakGlucose),
             notes: notes.trim() || null,
             items: items.map(it => ({ food_item_id: it.food_item.id, weight_grams: it.weight_grams })),
           }),
@@ -336,7 +331,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen, editingMea
             name: mealName,
             logged_at: new Date().toISOString(),
             logged_via: 'photo_estimate' as const,
-            peak_glucose_mmol: peakGlucose === '' ? null : Number(peakGlucose),
             notes: notes.trim() || null,
             calories: estimateResult.calories,
             protein_g: estimateResult.protein_g,
@@ -349,7 +343,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen, editingMea
             name: mealName,
             logged_at: new Date().toISOString(),
             logged_via: 'ingredients' as const,
-            peak_glucose_mmol: peakGlucose === '' ? null : Number(peakGlucose),
             notes: notes.trim() || null,
             items: items.map(it => ({ food_item_id: it.food_item.id, weight_grams: it.weight_grams })),
           }
@@ -654,8 +647,6 @@ const startNewTemplate = () => {
                     setMealName={setMealName}
                     items={items}
                     estimate={estimateResult ?? undefined}
-                    peakGlucose={peakGlucose}
-                    setPeakGlucose={setPeakGlucose}
                     notes={notes}
                     setNotes={setNotes}
                     saving={saving}
@@ -2555,15 +2546,13 @@ function CameraIcon() {
 // ─── Screen 5: Confirm ────────────────────────────────────────────────────
 function ScreenConfirm({
   mealName, setMealName, items, estimate,
-  peakGlucose, setPeakGlucose, notes, setNotes,
+  notes, setNotes,
   saving, error, onConfirm, onBack,
 }: {
   mealName: string
   setMealName: (s: string) => void
   items: BuildingItem[]
   estimate?: EstimateResult
-  peakGlucose: string
-  setPeakGlucose: (s: string) => void
   notes: string
   setNotes: (s: string) => void
   saving: boolean
@@ -2640,30 +2629,6 @@ function ScreenConfirm({
           )}
           <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 8, marginTop: 4 }}>
             <MacroLine totals={totals} />
-          </div>
-        </div>
-
-        <div>
-          <FieldLabel>Peak glucose <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></FieldLabel>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="number"
-              inputMode="decimal"
-              step={0.1}
-              min={3}
-              max={15}
-              value={peakGlucose}
-              onChange={(e) => setPeakGlucose(e.target.value)}
-              placeholder="—"
-              style={{
-                width: 96, padding: '10px 12px', fontSize: 14, fontFamily: 'var(--font-mono)',
-                color: 'var(--color-text-primary)',
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 8, outline: 'none',
-              }}
-            />
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>mmol/L</span>
           </div>
         </div>
 

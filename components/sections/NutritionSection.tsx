@@ -167,15 +167,42 @@ function MacroBar({
 
 // ─── Meal card ────────────────────────────────────────────────────────────
 function MealCard({
-  meal, onDelete, onEdit,
+  meal, onDelete, onEdit, onGlucoseUpdate,
 }: {
   meal: MealLog
   onDelete: () => void
   onEdit: () => void
+  onGlucoseUpdate: (value: number | null) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [glucoseEditing, setGlucoseEditing] = useState(false)
+  const [glucoseInput, setGlucoseInput] = useState('')
+  const [glucoseSaving, setGlucoseSaving] = useState(false)
+  const [glucoseError, setGlucoseError] = useState<string | null>(null)
   const totals = useMemo(() => macrosForMeal(meal), [meal])
+
+  const saveGlucose = async () => {
+    const numVal = glucoseInput.trim() === '' ? null : Number(glucoseInput)
+    setGlucoseEditing(false)
+    if (numVal === meal.peak_glucose_mmol) return
+    setGlucoseSaving(true)
+    setGlucoseError(null)
+    try {
+      const res = await fetch('/api/nutrition/meal', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: meal.id, peak_glucose_mmol: numVal }),
+      })
+      const j = await res.json() as { ok?: boolean; error?: string }
+      if (!res.ok || j.error) { setGlucoseError(j.error ?? 'Save failed'); return }
+      onGlucoseUpdate(numVal)
+    } catch (e) {
+      setGlucoseError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setGlucoseSaving(false)
+    }
+  }
 
   return (
     <motion.div
@@ -245,6 +272,61 @@ function MealCard({
           <span>{r(totals.fiber)}g Fi</span>
         </div>
       </button>
+
+      {/* Inline peak glucose — always visible, below macro line */}
+      <div style={{ borderTop: '1px solid var(--color-border)', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 11, color: 'var(--color-text-dim)', minWidth: 82, flexShrink: 0 }}>Peak glucose</span>
+        {glucoseEditing ? (
+          <>
+            <input
+              type="number"
+              inputMode="decimal"
+              step={0.1}
+              min={2}
+              max={20}
+              value={glucoseInput}
+              onChange={e => setGlucoseInput(e.target.value)}
+              onBlur={saveGlucose}
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              style={{
+                width: 68, padding: '3px 8px', fontSize: 13, fontFamily: 'var(--font-mono)',
+                color: 'var(--color-text-primary)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 6, outline: 'none',
+              }}
+            />
+            <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>mmol/L</span>
+            <button
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={saveGlucose}
+              style={{ background: 'var(--color-primary)', border: 'none', borderRadius: 4, color: '#fff', padding: '2px 7px', fontSize: 12, cursor: glucoseSaving ? 'default' : 'pointer', lineHeight: 1.4, opacity: glucoseSaving ? 0.6 : 1 }}
+            >✓</button>
+            <button
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { setGlucoseEditing(false); setGlucoseError(null) }}
+              style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text-dim)', padding: '2px 6px', fontSize: 12, cursor: 'pointer', lineHeight: 1.4 }}
+            >✕</button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => { setGlucoseInput(meal.peak_glucose_mmol != null ? String(meal.peak_glucose_mmol) : ''); setGlucoseEditing(true) }}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12, color: meal.peak_glucose_mmol != null ? 'var(--color-text-primary)' : 'var(--color-text-dim)' }}
+            >
+              {meal.peak_glucose_mmol != null ? meal.peak_glucose_mmol : '—'}
+            </button>
+            <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>mmol/L</span>
+          </>
+        )}
+        {glucoseError && (
+          <span style={{ fontSize: 11, color: 'var(--color-danger)', marginLeft: 4 }}>{glucoseError}</span>
+        )}
+      </div>
 
       <AnimatePresence initial={false}>
         {expanded && (
@@ -413,6 +495,13 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
     setShowLogger(true)
   }
 
+  const handleGlucoseUpdate = (id: string, value: number | null) => {
+    setDay(prev => {
+      if (!prev) return prev
+      return { ...prev, meals: prev.meals.map(m => m.id === id ? { ...m, peak_glucose_mmol: value } : m) }
+    })
+  }
+
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/nutrition/meal?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
@@ -490,7 +579,7 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <AnimatePresence initial={false}>
             {(day?.meals ?? []).map(m => (
-              <MealCard key={m.id} meal={m} onDelete={() => handleDelete(m.id)} onEdit={() => handleEdit(m)} />
+              <MealCard key={m.id} meal={m} onDelete={() => handleDelete(m.id)} onEdit={() => handleEdit(m)} onGlucoseUpdate={(v) => handleGlucoseUpdate(m.id, v)} />
             ))}
           </AnimatePresence>
           {!loading && (day?.meals.length ?? 0) === 0 && (
@@ -533,7 +622,6 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
           const editingMealProp = editMeal ? {
             id: editMeal.id,
             name: editMeal.name,
-            peak_glucose_mmol: editMeal.peak_glucose_mmol,
             notes: editMeal.notes,
             items: editMeal.items.flatMap(it => {
               const fi = pickFoodItem(it)
