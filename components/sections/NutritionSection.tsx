@@ -167,10 +167,11 @@ function MacroBar({
 
 // ─── Meal card ────────────────────────────────────────────────────────────
 function MealCard({
-  meal, onDelete,
+  meal, onDelete, onEdit,
 }: {
   meal: MealLog
   onDelete: () => void
+  onEdit: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -301,7 +302,20 @@ function MealCard({
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6, gap: 6 }}>
+                {!confirmDelete && meal.logged_via !== 'photo_estimate' && (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    style={{
+                      background: 'none', border: '1px solid var(--color-border)',
+                      color: 'var(--color-text-secondary)', borderRadius: 6,
+                      padding: '4px 10px', fontSize: 11, cursor: 'pointer',
+                    }}
+                  >
+                    Edit meal
+                  </button>
+                )}
                 {!confirmDelete ? (
                   <button
                     type="button"
@@ -349,6 +363,7 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
   const [error, setError] = useState<string | null>(null)
   const [showLogger, setShowLogger] = useState(false)
   const [loggerInitialScreen, setLoggerInitialScreen] = useState<'menu' | 'library'>('menu')
+  const [editingMealId, setEditingMealId] = useState<string | null>(null)
 
   const calorieTarget = getDailyCalorieTarget(sessions)
 
@@ -392,6 +407,11 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
       </span>
     </div>
   ) : null
+
+  const handleEdit = (meal: MealLog) => {
+    setEditingMealId(meal.id)
+    setShowLogger(true)
+  }
 
   const handleDelete = async (id: string) => {
     try {
@@ -470,7 +490,7 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <AnimatePresence initial={false}>
             {(day?.meals ?? []).map(m => (
-              <MealCard key={m.id} meal={m} onDelete={() => handleDelete(m.id)} />
+              <MealCard key={m.id} meal={m} onDelete={() => handleDelete(m.id)} onEdit={() => handleEdit(m)} />
             ))}
           </AnimatePresence>
           {!loading && (day?.meals.length ?? 0) === 0 && (
@@ -508,13 +528,43 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
           </button>
         </div>
 
-        {showLogger && (
-          <MealLogger
-            onClose={() => setShowLogger(false)}
-            onSaved={() => { setShowLogger(false); fetchDay() }}
-            initialScreen={loggerInitialScreen}
-          />
-        )}
+        {showLogger && (() => {
+          const editMeal = editingMealId ? (day?.meals ?? []).find(m => m.id === editingMealId) ?? null : null
+          const editingMealProp = editMeal ? {
+            id: editMeal.id,
+            name: editMeal.name,
+            peak_glucose_mmol: editMeal.peak_glucose_mmol,
+            notes: editMeal.notes,
+            items: editMeal.items.flatMap(it => {
+              const fi = pickFoodItem(it)
+              if (!fi) return []
+              return [{
+                food_item: {
+                  id: fi.id,
+                  name: fi.name,
+                  fdc_id: fi.fdc_id,
+                  source: fi.source,
+                  nutrients_per_100g: {
+                    calories: fi.nutrients_per_100g.calories ?? null,
+                    protein:  fi.nutrients_per_100g.protein  ?? null,
+                    carbs:    fi.nutrients_per_100g.carbs    ?? null,
+                    fat:      fi.nutrients_per_100g.fat      ?? null,
+                    fiber:    fi.nutrients_per_100g.fiber    ?? null,
+                  },
+                },
+                weight_grams: it.weight_grams,
+              }]
+            }),
+          } : undefined
+          return (
+            <MealLogger
+              onClose={() => { setShowLogger(false); setEditingMealId(null) }}
+              onSaved={() => { setShowLogger(false); setEditingMealId(null); fetchDay() }}
+              initialScreen={loggerInitialScreen}
+              editingMeal={editingMealProp}
+            />
+          )
+        })()}
       </div>
     </Section>
   )

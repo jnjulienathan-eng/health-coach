@@ -64,6 +64,7 @@ interface Props {
   onClose: () => void
   onSaved: () => void
   initialScreen?: Screen
+  editingMeal?: EditingMealProp
 }
 
 // When editingTemplate is non-null the building screen behaves as the
@@ -72,6 +73,31 @@ interface Props {
 interface EditingTemplate {
   id: string | null   // null = new template, string = editing existing
   name: string
+}
+
+// Passed from NutritionSection when the user taps "Edit meal" on a logged meal.
+// Starts the logger at the building screen pre-populated with existing items.
+interface EditingMealProp {
+  id: string
+  name: string
+  peak_glucose_mmol: number | null
+  notes: string | null
+  items: Array<{
+    food_item: {
+      id: string
+      name: string
+      fdc_id: string | null
+      source: 'usda' | 'open_food_facts' | 'custom' | 'recipe' | 'recipe_deleted'
+      nutrients_per_100g: {
+        calories: number | null
+        protein:  number | null
+        carbs:    number | null
+        fat:      number | null
+        fiber:    number | null
+      }
+    }
+    weight_grams: number
+  }>
 }
 
 // Shape returned by GET /api/nutrition/recipe
@@ -215,10 +241,10 @@ function MacroLine({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────
-export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
-  const [screen, setScreen] = useState<Screen>(initialScreen ?? 'menu')
-  const [mealName, setMealName] = useState('')
-  const [items, setItems] = useState<BuildingItem[]>([])
+export default function MealLogger({ onClose, onSaved, initialScreen, editingMeal }: Props) {
+  const [screen, setScreen] = useState<Screen>(editingMeal ? 'building' : (initialScreen ?? 'menu'))
+  const [mealName, setMealName] = useState(editingMeal?.name ?? '')
+  const [items, setItems] = useState<BuildingItem[]>((editingMeal?.items ?? []) as BuildingItem[])
   const [pending, setPending] = useState<PendingItem | null>(null)
 
   // Template-edit mode (null = logging a meal)
@@ -228,8 +254,10 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
   const [editingRecipe, setEditingRecipe] = useState<RecipeBuilderState | null>(null)
 
   // Confirm-screen fields
-  const [peakGlucose, setPeakGlucose] = useState<string>('')
-  const [notes, setNotes] = useState('')
+  const [peakGlucose, setPeakGlucose] = useState<string>(
+    editingMeal?.peak_glucose_mmol != null ? String(editingMeal.peak_glucose_mmol) : ''
+  )
+  const [notes, setNotes] = useState(editingMeal?.notes ?? '')
 
   // Save state
   const [saving, setSaving] = useState(false)
@@ -279,6 +307,26 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
     setSaving(true)
     setSaveError(null)
     try {
+      if (editingMeal) {
+        const res = await fetch('/api/nutrition/meal', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingMeal.id,
+            name: mealName,
+            peak_glucose_mmol: peakGlucose === '' ? null : Number(peakGlucose),
+            notes: notes.trim() || null,
+            items: items.map(it => ({ food_item_id: it.food_item.id, weight_grams: it.weight_grams })),
+          }),
+        })
+        const j = await res.json()
+        if (!res.ok || j.error) {
+          setSaveError(j.error ?? 'Save failed')
+          return
+        }
+        onSaved()
+        return
+      }
       const isEstimate = estimateResult !== null
       const body = isEstimate
         ? {
@@ -583,6 +631,8 @@ const startNewTemplate = () => {
                         setEditingTemplate(null)
                         setItems([])
                         setScreen('library')
+                      } else if (editingMeal) {
+                        onClose()
                       } else {
                         setScreen('menu')
                       }
@@ -618,10 +668,9 @@ const startNewTemplate = () => {
                     onNewRecipe={startNewRecipe}
                     onEditRecipe={startEditRecipe}
                     onUseRecipe={(foodItem, servingGrams) => {
-                      onItemPicked(foodItem, {
-                        serving_grams: servingGrams,
-                        weight_grams: servingGrams ?? 100,
-                      })
+                      const weight = servingGrams ?? 100
+                      setItems(prev => [...prev, { food_item: foodItem, weight_grams: weight }])
+                      setScreen('building')
                     }}
                   />
                 )
