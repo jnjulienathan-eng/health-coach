@@ -797,6 +797,14 @@ function ScreenMenu({
 }
 
 // ─── Screen 2: Search ─────────────────────────────────────────────────────
+interface MacroEditFields {
+  calories: string
+  protein: string
+  carbs: string
+  fat: string
+  fiber: string
+}
+
 function ScreenSearch({
   context = 'meal', hasItems, onPick, onScan, onCreateRecipe, onBack,
 }: {
@@ -813,6 +821,70 @@ function ScreenSearch({
   const [error, setError] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Macro edit modal state
+  const [editingResult, setEditingResult] = useState<SearchResult | null>(null)
+  const [editFields, setEditFields] = useState<MacroEditFields>({ calories: '', protein: '', carbs: '', fat: '', fiber: '' })
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
+  const openEdit = (r: SearchResult) => {
+    const n = r.nutrients_per_100g
+    setEditFields({
+      calories: n.calories != null ? String(n.calories) : '',
+      protein:  n.protein  != null ? String(n.protein)  : '',
+      carbs:    n.carbs    != null ? String(n.carbs)    : '',
+      fat:      n.fat      != null ? String(n.fat)      : '',
+      fiber:    n.fiber    != null ? String(n.fiber)    : '',
+    })
+    setEditError(null)
+    setEditingResult(r)
+  }
+
+  const closeEdit = () => { setEditingResult(null); setEditError(null) }
+
+  const saveEdit = async () => {
+    if (!editingResult?.food_item_id) return
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      const toNum = (s: string) => s.trim() === '' ? undefined : Number(s)
+      const res = await fetch('/api/nutrition/food-item', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingResult.food_item_id,
+          calories: toNum(editFields.calories),
+          protein:  toNum(editFields.protein),
+          carbs:    toNum(editFields.carbs),
+          fat:      toNum(editFields.fat),
+          fiber:    toNum(editFields.fiber),
+        }),
+      })
+      const j = await res.json() as { ok?: boolean; error?: string }
+      if (!res.ok || j.error) { setEditError(j.error ?? 'Save failed'); return }
+      // Update the local result list so the row reflects new values immediately
+      setResults(prev => prev.map(r => {
+        if (r.food_item_id !== editingResult.food_item_id) return r
+        return {
+          ...r,
+          nutrients_per_100g: {
+            ...r.nutrients_per_100g,
+            ...(toNum(editFields.calories) !== undefined ? { calories: toNum(editFields.calories)! } : {}),
+            ...(toNum(editFields.protein)  !== undefined ? { protein:  toNum(editFields.protein)!  } : {}),
+            ...(toNum(editFields.carbs)    !== undefined ? { carbs:    toNum(editFields.carbs)!    } : {}),
+            ...(toNum(editFields.fat)      !== undefined ? { fat:      toNum(editFields.fat)!      } : {}),
+            ...(toNum(editFields.fiber)    !== undefined ? { fiber:    toNum(editFields.fiber)!    } : {}),
+          },
+        }
+      }))
+      closeEdit()
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setEditSaving(false)
+    }
+  }
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
@@ -912,7 +984,7 @@ function ScreenSearch({
     <motion.div
       initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.18 }}
-      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}
     >
       <Header
         title={context === 'recipe' ? 'Add to recipe' : 'Add ingredient'}
@@ -1002,30 +1074,139 @@ function ScreenSearch({
           <div style={{ fontSize: 12, color: 'var(--color-text-dim)', textAlign: 'center', padding: 16 }}>No results</div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {results.map((r, i) => (
-            <button
-              key={`${r.source}-${r.fdc_id ?? r.food_item_id ?? i}`}
-              type="button"
-              onClick={() => pickResult(r)}
-              style={{
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 10,
-                padding: '10px 12px', textAlign: 'left', cursor: 'pointer',
-                display: 'flex', flexDirection: 'column', gap: 4,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {r.name}
-                </span>
-                <SourceBadge source={r.source} />
+          {results.map((r, i) => {
+            const isLocal = r.source === 'local'
+            return (
+              <div
+                key={`${r.source}-${r.fdc_id ?? r.food_item_id ?? i}`}
+                style={{
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 10,
+                  display: 'flex', alignItems: 'stretch',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => pickResult(r)}
+                  style={{
+                    flex: 1, minWidth: 0,
+                    padding: '10px 12px', textAlign: 'left', cursor: 'pointer',
+                    background: 'none', border: 'none', borderRadius: '10px 0 0 10px',
+                    display: 'flex', flexDirection: 'column', gap: 4,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
+                    <span style={{ fontSize: 13, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.name}
+                    </span>
+                    <SourceBadge source={r.source} />
+                  </div>
+                  <PerHundredLine n={r.nutrients_per_100g} />
+                </button>
+                {isLocal && (
+                  <button
+                    type="button"
+                    onClick={() => openEdit(r)}
+                    aria-label="Edit macros"
+                    style={{
+                      flexShrink: 0, width: 36,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'none', border: 'none',
+                      borderLeft: '1px solid var(--color-border)',
+                      borderRadius: '0 10px 10px 0',
+                      cursor: 'pointer', color: 'var(--color-text-dim)',
+                    }}
+                  >
+                    <PencilIcon />
+                  </button>
+                )}
               </div>
-              <PerHundredLine n={r.nutrients_per_100g} />
-            </button>
-          ))}
+            )
+          })}
         </div>
       </div>
+
+      {/* Macro edit modal overlay */}
+      {editingResult && (
+        <div
+          onClick={closeEdit}
+          style={{
+            position: 'absolute', inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 10, padding: 20,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--color-surface)',
+              borderRadius: 14, padding: 20,
+              width: '100%', maxWidth: 360,
+              display: 'flex', flexDirection: 'column', gap: 14,
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+              Edit macros — {editingResult.name}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-dim)' }}>per 100g</div>
+
+            {([
+              { key: 'calories' as const, label: 'Calories', suffix: 'kcal' },
+              { key: 'protein'  as const, label: 'Protein',  suffix: 'g' },
+              { key: 'carbs'    as const, label: 'Carbs',    suffix: 'g' },
+              { key: 'fat'      as const, label: 'Fat',      suffix: 'g' },
+              { key: 'fiber'    as const, label: 'Fiber',    suffix: 'g' },
+            ]).map(({ key, label, suffix }) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', width: 64 }}>{label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={editFields[key]}
+                    onChange={e => setEditFields(prev => ({ ...prev, [key]: e.target.value }))}
+                    style={{
+                      flex: 1, padding: '8px 10px', fontSize: 14, fontFamily: 'var(--font-mono)',
+                      color: 'var(--color-text-primary)',
+                      background: 'var(--color-bg)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 6, outline: 'none',
+                    }}
+                  />
+                  <span style={{ fontSize: 12, color: 'var(--color-text-dim)', width: 28 }}>{suffix}</span>
+                </div>
+              </div>
+            ))}
+
+            {editError && (
+              <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{editError}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={closeEdit}
+                className="btn-secondary"
+                style={{ flex: 1 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={editSaving}
+                className="btn-primary"
+                style={{ flex: 1, opacity: editSaving ? 0.6 : 1 }}
+              >
+                {editSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -2719,6 +2900,14 @@ function BarcodeIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
       <path d="M3 4v12M5 4v12M7 4v12M9 4v12M11 4v12M13 4v12M15 4v12M17 4v12" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M11 2l3 3-8 8H3v-3l8-8z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

@@ -32,6 +32,64 @@ function fail(stage: string, e: unknown, status = 500) {
   return Response.json({ error: `${stage}: ${describe(e)}`, stage }, { status })
 }
 
+export async function PATCH(req: Request) {
+  let body: {
+    id?: string
+    calories?: number
+    protein?: number
+    carbs?: number
+    fat?: number
+    fiber?: number
+  }
+  try {
+    body = await req.json()
+  } catch (e) {
+    return fail('parse-body', e, 400)
+  }
+
+  const { id } = body
+  if (!id) return Response.json({ error: 'id is required' }, { status: 400 })
+
+  let supabase, userId
+  try {
+    supabase = supaAdmin()
+    userId = nutritionUserId()
+  } catch (e) {
+    return fail('init-client', e)
+  }
+
+  // Ownership check
+  const { data: existing, error: lookupErr } = await supabase
+    .from('food_items')
+    .select('id, nutrients_per_100g')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (lookupErr) return fail('lookup', lookupErr)
+  if (!existing) return Response.json({ error: 'food item not found' }, { status: 404 })
+
+  // Merge macro overrides into existing JSONB, preserving other keys (e.g. raw)
+  const existing_n = (existing.nutrients_per_100g as Record<string, unknown>) ?? {}
+  const updated_n: Record<string, unknown> = { ...existing_n }
+  if (typeof body.calories === 'number') updated_n.calories = body.calories
+  if (typeof body.protein  === 'number') updated_n.protein  = body.protein
+  if (typeof body.carbs    === 'number') updated_n.carbs    = body.carbs
+  if (typeof body.fat      === 'number') updated_n.fat      = body.fat
+  if (typeof body.fiber    === 'number') updated_n.fiber    = body.fiber
+
+  try {
+    const { error: updateErr } = await supabase
+      .from('food_items')
+      .update({ nutrients_per_100g: updated_n })
+      .eq('id', id)
+      .eq('user_id', userId)
+    if (updateErr) return fail('update', updateErr)
+    return Response.json({ ok: true })
+  } catch (e) {
+    return fail('update', e)
+  }
+}
+
 export async function POST(req: Request) {
   let body: {
     fdc_id?: string | null
