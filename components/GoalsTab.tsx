@@ -230,6 +230,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
 
   // Training Load
   const [trainingHistory, setTrainingHistory] = useState<ReturnType<typeof computeTrainingLoadHistory>>([])
+  const [tlResult,        setTlResult]        = useState<ReturnType<typeof computeTrainingLoad> | null>(null)
   const [tlExpanded,      setTlExpanded]      = useState(false)
 
   // VO2 Max card
@@ -295,7 +296,10 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
   // Load 30-day history for Training Load computation
   useEffect(() => {
     fetch30DayHistory()
-      .then(entries => setTrainingHistory(computeTrainingLoadHistory(entries)))
+      .then(entries => {
+        setTrainingHistory(computeTrainingLoadHistory(entries))
+        setTlResult(computeTrainingLoad(entries))
+      })
       .catch(e => console.error('Training load history error:', e))
   }, [])
 
@@ -317,13 +321,10 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
     ? validGlucose.reduce((a, b) => a + b, 0) / validGlucose.length
     : null
 
-  // Training Load — derived from history (most recent point)
-  const tlCurrent = trainingHistory.length > 0
-    ? trainingHistory[trainingHistory.length - 1]
-    : null
-  const tlRatio   = tlCurrent?.ratio ?? null
-  const tlStatus  = tlCurrent?.status ?? 'Not enough data'
-  const tlColour  = tlCurrent?.colour ?? 'var(--color-text-dim)'
+  // Training Load — use computeTrainingLoad directly (enforces 28-day minimum)
+  const tlRatio   = tlResult?.ratio   ?? null
+  const tlStatus  = tlResult?.status  ?? 'Not enough data'
+  const tlColour  = tlResult?.colour  ?? 'var(--color-text-dim)'
 
   const now = new Date()
   const fourMonthsOut = new Date(now)
