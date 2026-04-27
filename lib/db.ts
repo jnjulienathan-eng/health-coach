@@ -400,6 +400,9 @@ export async function getGoalsData(): Promise<GoalsData> {
   const fastingGlucose7d = ((glucoseRes.data ?? []) as Record<string, unknown>[])
     .map(row => row.fasting_glucose_mmol as number | null)
 
+  if (appointmentsRes.error) {
+    console.error('getGoalsData: health_appointments query failed:', JSON.stringify(appointmentsRes.error))
+  }
   const appointments = (appointmentsRes.data ?? []) as HealthAppointment[]
 
   return { todayScores, biomarkers, fastingGlucose7d, appointments }
@@ -428,7 +431,11 @@ export async function fetchHealthAppointments() {
     .select('*')
     .eq('user_id', 'julie')
     .order('next_due_date', { ascending: true, nullsFirst: false })
-  if (error) throw error
+  if (error) {
+    console.error('fetchHealthAppointments: query failed:', JSON.stringify(error))
+    throw error
+  }
+  console.error('fetchHealthAppointments: returned', (data ?? []).length, 'rows')
   return (data ?? []) as import('./types').HealthAppointment[]
 }
 
@@ -446,10 +453,15 @@ export async function seedDefaultAppointments(): Promise<void> {
     { appointment_type: 'bone_density_scan', interval_months: 24 },
     { appointment_type: 'colonoscopy',      interval_months: 120 },
   ]
+  console.error('seedDefaultAppointments: attempting insert, user_id=julie, row count=', defaults.length)
   const { error } = await supabase
     .from('health_appointments')
     .insert(defaults.map(d => ({ ...d, user_id: 'julie' })))
-  if (error) throw error
+  if (error) {
+    console.error('seedDefaultAppointments: insert failed:', JSON.stringify(error))
+    throw error
+  }
+  console.error('seedDefaultAppointments: insert succeeded')
 }
 
 // ─── getVo2SparklineData ──────────────────────────────────────────

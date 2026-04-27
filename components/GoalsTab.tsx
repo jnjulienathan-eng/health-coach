@@ -239,20 +239,24 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
   useEffect(() => {
     getGoalsData()
       .then(async d => {
+        console.error('GoalsTab: getGoalsData returned, appointments.length=', d.appointments.length)
         // Seed default appointments on first load if table is empty
         if (d.appointments.length === 0) {
+          console.error('GoalsTab: no appointments found — attempting seed')
           try {
             await seedDefaultAppointments()
+            console.error('GoalsTab: seed succeeded, fetching fresh appointments')
             const fresh = await fetchHealthAppointments()
+            console.error('GoalsTab: fresh appointments count=', fresh.length)
             d = { ...d, appointments: fresh }
           } catch (e) {
-            console.error('GoalsTab seed appointments error:', e)
+            console.error('GoalsTab seed/fetch appointments error:', JSON.stringify(e))
           }
         }
         setData(d)
         setLoading(false)
       })
-      .catch(e => { console.error('GoalsTab load error:', e); setLoading(false) })
+      .catch(e => { console.error('GoalsTab getGoalsData error:', JSON.stringify(e)); setLoading(false) })
   }, [])
 
   // Fetch dynamic greeting from API
