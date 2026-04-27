@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: April 26, 2026_
+_Last updated: April 27, 2026_
 
 ---
 
@@ -61,95 +61,164 @@ _Last updated: April 26, 2026_
 - Active calorie target: 600 kcal intentional training
 - `avg_heart_rate` field has been removed — replaced by `zone3_plus_minutes`
 
-## Nutrition section — architecture and locked decisions
+**Nutrition section**
+- Full ingredient-level food logging built and tested in preview on branch `claude/quizzical-lalande-dce194`. All build steps complete — ready to merge.
+- Eight Supabase tables live (six original + recipes + recipe_ingredients)
+- Five-screen logging flow: bottom sheet → ingredient search → weight entry → building meal → save confirmation
+- USDA FoodData Central integration (server-side only, cached to food_items on first use)
+- Open Food Facts barcode scanning via html5-qrcode
+- Template tables and API routes preserved in DB (meal_templates, meal_template_items). Not surfaced in UI — templates removed from UX by design.
+- Macro summary bar: consumed vs target for all 5 macros
+- Meal cards with ingredient breakdown, edit and delete per ingredient
+- framer-motion animations throughout
+- daily_nutrition_summary upserted after every meal save/edit/delete
+- Old daily_entries.nutrition JSONB fields are legacy — not used going forward
+- Coach must switch to read from daily_nutrition_summary (backlog item #1)
+- Collapsed section header shows protein · fiber · calories
+- Peak glucose is an inline editable field on each meal card in the day view — not in any logging screen. Saved via PATCH /api/nutrition/meal.
+- Macro override: pencil icon on local library results in ScreenSearch opens an edit modal. PATCH /api/nutrition/food-item updates nutrients_per_100g.
 
-This section was designed April 2026. Full design documents are in /docs:
-- NUTRITION_DATA_MODEL.md
-- NUTRITION_UX_FLOW.md
+**Hydration section**
+- Logs ml per day. Passes through to Coach context.
 
-Read both before touching any nutrition code.
+**Supplements section**
+- Hormones: Progesterone (mg, toggle), Estradiol (sprays, toggle)
+- Morning stack (accordion, default collapsed): Creatine 5g, Vitamin D3+K2, Zinc+Selenium, Glucosamine, Omega-3, Berberine, DIM
+- Evening stack (accordion, default collapsed): Magnesium glycinate 200mg, L-Theanine
+- DEFAULT STATE: everything OFF. User must actively confirm.
+- NO cyclic supplements. Ashwagandha and Phosphatidylserine removed entirely.
+
+**Context section**
+- Fields: cycle day (auto-counter with manual reset), symptoms (multi-select), travelling toggle, notes
+- HRV score field: REMOVED. Do not re-add.
+
+### Coach Tab
+
+- 5 time-based modes: wakeup (<09:00), posttraining (09–12), afternoon (12–17), earlyevening (17–20), endofday (20+)
+- 30-day context window
+- Returns JSON with 5 fields: recovery, training, nutrition, insight, question. Null fields hidden.
+- CGM, Zone3+, foraging calendar, food creativity frameworks built in
+- Reactive chat below briefing cards
+- **DO NOT TOUCH the coach until the Goals tab / Training Load branch is merged to main.** Coach overhaul is the third and final branch after: (1) this nutrition merge, (2) Goals tab + Training Load.
+
+### Dashboard
+
+- Behavior Score + Outcome Score as large numbers. Color: green ≥75, amber 50–74, red <50.
+- 7-day trend charts (TO BE EXTENDED TO 30 DAYS — pending)
+- Scores below data inputs (TO BE MOVED ABOVE — pending)
+
+### History Tab
+
+- Chronological entries, expandable, color-coded scores
 
 ---
 
-### New tables (already created in Supabase)
+## Nutrition section — architecture and locked decisions
 
-Six new tables are live. Do not run migrations for these — they already exist.
+Full design documents in /docs — read both before touching any nutrition code:
+- NUTRITION_DATA_MODEL.md
+- NUTRITION_UX_FLOW.md
 
-- `food_items` — personal ingredient library, cached from USDA or Open Food Facts
-- `meal_logs` — one row per meal occasion
-- `meal_log_items` — one row per ingredient per meal, weight in grams only
-- `daily_nutrition_summary` — denormalized daily macro totals, upserted after every meal save/edit/delete
-- `meal_templates` — named meal presets
-- `meal_template_items` — ingredients and default weights inside a template
+---
 
-RLS is enabled on all six tables (policy: `auth.uid() = user_id`). The new
-nutrition API routes use the Supabase **service-role key** server-side, which
-bypasses RLS — the policies stay in place for any future browser-direct access
-but don't block our server writes.
+### Tables (all live in Supabase — do not re-run migrations)
 
-**FK migration applied April 26, 2026.** The four `user_id` foreign keys to
-`auth.users(id)` were dropped — Julie's `NUTRITION_USER_ID` UUID isn't an
-auth.users row (this app doesn't use Supabase Auth), and the FKs were the
-cause of every food_items insert failing. Internal FKs
-(`meal_log_items → meal_logs`, etc.) are intact.
+- `food_items` — ingredient library. source: 'usda' | 'openfoodfacts' | 'recipe' | 'recipe_deleted' | 'custom'
+- `meal_logs` — one row per meal. Top-level macro fields (calories, protein_g, carbs_g, fat_g, fiber_g) nullable — only populated when logged_via = 'photo_estimate'
+- `meal_log_items` — one row per ingredient per meal
+- `daily_nutrition_summary` — denormalized daily totals, coach reads this
+- `meal_templates` — named meal presets (preserved in DB and API, not surfaced in UI)
+- `meal_template_items` — ingredients and default weights per template (preserved in DB and API, not surfaced in UI)
+- `recipes` — batch recipe definitions. status: 'draft' | 'active'. is_raw: boolean DEFAULT false.
+- `recipe_ingredients` — raw batch ingredient weights per recipe
 
-```sql
-alter table food_items              drop constraint if exists food_items_user_id_fkey;
-alter table meal_logs               drop constraint if exists meal_logs_user_id_fkey;
-alter table meal_templates          drop constraint if exists meal_templates_user_id_fkey;
-alter table daily_nutrition_summary drop constraint if exists daily_nutrition_summary_user_id_fkey;
-```
+RLS enabled on all eight tables. Nutrition API routes use service-role key (bypasses RLS server-side). The four `user_id` FK constraints to `auth.users` were dropped April 26 — NUTRITION_USER_ID is not an auth row.
 
 ### Required Vercel environment variables
 
-- `USDA_API_KEY` — USDA FoodData Central. Server-side only.
-- `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role secret. Server-side only.
-- `NUTRITION_USER_ID` — UUID used as `user_id` on every nutrition row. Read by
-  `lib/nutrition.ts → nutritionUserId()`. Set per-environment (Production +
-  Preview both required).
+- `USDA_API_KEY` — server-side only
+- `SUPABASE_SERVICE_ROLE_KEY` — server-side only
+- `NUTRITION_USER_ID` — UUID for all nutrition rows, read via `nutritionUserId()` in lib/nutrition.ts
+- `ANTHROPIC_API_KEY` — used by /api/nutrition/estimate for photo estimation, server-side only
 
 ---
 
 ### Locked architecture decisions
 
-**Everything is grams.** No servings, no ml, no other units. weight_grams is the only quantity field throughout.
+**Everything is grams.** No servings, no ml, no other units.
 
-**Macros are never stored at the ingredient level.** They are always computed as nutrients_per_100g × weight_grams / 100 at read time. Never store pre-computed macros in meal_log_items or meal_template_items.
+**Macros never stored at ingredient level.** Always computed as nutrients_per_100g × weight_grams / 100 at read time.
 
-**daily_nutrition_summary is the source of truth for the coach and dashboard.** After every meal save, edit, or delete, recompute the day's totals from meal_log_items joined to food_items and upsert into daily_nutrition_summary. The coach reads from daily_nutrition_summary — never runs join queries at load time. This replaces the current daily_entries.nutrition JSONB read for the coach.
+**daily_nutrition_summary is source of truth for coach and dashboard.** Upserted after every meal save/edit/delete. For photo-estimated meals (no items), add top-level macro fields on meal_logs directly to the totals. Coach never runs join queries at load time.
 
-**No fixed meal slots.** No breakfast / lunch / dinner / snack enum. Meals are free-form, ordered by logged_at timestamp.
+**No fixed meal slots.** Free-form, ordered by logged_at.
 
-**Meal names are auto-generated if blank.** Derive from logged_at time band — before 11:00 = "Morning meal", 11:00–15:00 = "Afternoon meal", 15:00–19:00 = "Evening meal", after 19:00 = "Night meal". Never store a blank name.
+**Meal names auto-generated if blank.** before 11:00 = "Morning meal", 11:00–15:00 = "Afternoon meal", 15:00–19:00 = "Evening meal", after 19:00 = "Night meal".
 
-**Day boundary is 05:00.** Anything logged between 05:00 Monday and 04:59 Tuesday belongs to Monday. Apply this when computing the date for daily_nutrition_summary.
+**Day boundary is 05:00 Europe/Berlin.**
 
-**USDA API key is in Vercel environment variables as USDA_API_KEY.** Reference as process.env.USDA_API_KEY in API routes. Never hardcode. Never expose to the browser — all USDA calls go through Next.js API routes, never directly from the client.
+**USDA calls server-side only** via /api/nutrition/search. Never from client. Cached permanently in food_items on first use. All USDA results pass through as-is — no deduplication applied.
 
-**USDA data is cached permanently.** On first selection of a USDA result, write to food_items. On subsequent uses, read from food_items. Never re-fetch a known fdc_id.
+**Open Food Facts for barcode scanning only.** Same caching rule. html5-qrcode for scanning only — not for photo capture.
 
-**Open Food Facts is used for barcode scanning only.** No API key required. Endpoint: world.openfoodfacts.org/api/v2/product/{barcode}. Same caching rule applies — write to food_items on first scan, read locally thereafter.
+**Photo-estimated meals use top-level macro fields on meal_logs.** logged_via = 'photo_estimate', no meal_log_items rows. daily_nutrition_summary recompute must handle this — sum from items where present, top-level fields where absent.
 
-**Backward compatibility — clean break.** Existing daily_entries.nutrition JSONB data is not migrated. The coach reads daily_nutrition_summary for current data. Legacy daily_entries.nutrition data for dates before the cutover is ignored.
+**Five macros everywhere:** calories, protein, carbs, fat, fiber. That order. Never four.
 
-**Framer-motion is used for all nutrition UI animations.** Add as a dependency if not already present. See NUTRITION_UX_FLOW.md for specific animation requirements.
+**No micronutrient UI in phase 1.** Data stored in nutrients_per_100g JSONB for future use.
 
-**html5-qrcode is used for barcode scanning.** Add as a dependency.
+**Templates free-form.** Tables and API routes preserved in DB. UI removed by design — do not re-add.
 
-**Five macros are displayed everywhere consistently:** calories, protein, carbs, fat, fiber. In that order. Never show just four.
+**Backward compatibility — clean break.** Legacy daily_entries.nutrition JSONB not migrated or read by new code.
 
-**No micronutrient UI in phase 1.** Micronutrient data is stored in nutrients_per_100g JSONB and available for future use, but nothing surfaces it in the UI yet.
+**Peak glucose is inline on meal cards.** The editable peak_glucose_mmol field appears directly on each meal card in the day view. PATCH /api/nutrition/meal updates it without recomputing the daily summary. It is not part of any logging screen.
 
-**Templates have no meal type.** No breakfast/lunch/dinner assignment on templates. They are free-form.
+**Macro override via PATCH /api/nutrition/food-item.** Merges per-macro overrides into the existing nutrients_per_100g JSONB, preserving the raw USDA array. Triggered by pencil icon on local search results in ScreenSearch.
 
-**Template and log are fully independent once saved.** meal_logs has no FK back to meal_templates. Editing a template never affects historical logs.
+---
+
+### Recipe builder — locked decisions
+
+**A recipe IS a food item.** Once active, it appears in ingredient search and is logged by weight like any other item.
+
+**Two recipe modes:**
+- **Cooked (is_raw = false, default):** Raw ingredients entered at batch weights. Total cooked weight (weighed after cooking) is the divisor for per-100g computation. Accounts for water evaporation. Requires total_cooked_grams before activation.
+- **Raw / assembled (is_raw = true):** No cooking step. Divisor = sum of raw ingredient weights. Activates as soon as at least one ingredient is present. total_cooked_grams stays null.
+
+**Macro computation:**
+1. For each ingredient: `nutrients_per_100g × weight_grams / 100` → contribution
+2. Sum all contributions → total batch macros
+3. Divisor: for cooked recipes = total_cooked_grams; for raw/assembled recipes (is_raw = true) = sum of all ingredient weights
+4. `per_100g = total_batch_macro / divisor × 100`
+5. Store in food_items.nutrients_per_100g with source = 'recipe'
+
+**Draft state.** For cooked recipes: total_cooked_grams absent = status 'draft'. For raw/assembled recipes: activates immediately when ingredients are added. Draft recipes visible in My Library (amber chip) but not searchable for logging. Save draft while pot is cooking, edit later to add cooked weight and activate.
+
+**Optional default serving weight.** Stored on recipe. When logging, Screen 3 shows shortcut chip "1 serving (Xg)" — identical to barcode serving chip.
+
+**Editable.** Changing anything recomputes and updates the food_items entry. Historical logs unaffected.
+
+**Deleted recipes.** food_items source set to 'recipe_deleted'. Row not hard-deleted.
+
+**`recipes` table:** id, user_id, name, total_servings (int, min 1), total_cooked_grams (numeric, nullable — null for raw/assembled recipes), default_serving_grams (numeric, nullable), is_raw (boolean DEFAULT false), food_item_id (FK → food_items, null when draft), status ('draft'|'active'), created_at, updated_at.
+
+**`recipe_ingredients` table:** id, recipe_id (FK CASCADE), food_item_id (FK RESTRICT), weight_grams (numeric > 0) — raw weight for whole batch.
+
+---
+
+### My Library
+
+Single home for all saved content. Accessible from Screen 1 ("Browse Library") and from nutrition day view (library icon alongside "+ Log a meal").
+
+Single section: **Recipes** — draft (amber chip, not tappable for logging) and active. Edit/delete per card. "New recipe" opens recipe builder.
+
+Templates section removed by design. meal_templates and meal_template_items tables and API routes are preserved in the database. Do not re-add the Templates section to My Library.
 
 ---
 
 ### USDA API utility function
 
-When fetching from USDA, map the nutrient array to this clean object before storing in nutrients_per_100g:
-
+Map nutrient array to clean object before storing:
 ```
 {
   calories: (nutrient id 1008, kcal),
@@ -159,369 +228,188 @@ When fetching from USDA, map the nutrient array to this clean object before stor
   fiber: (nutrient id 1079, g)
 }
 ```
-
-Store the full USDA nutrient array as well under a raw key for future micronutrient use.
+Store full USDA array under raw key for future micronutrient use.
 
 ---
 
 ### daily_nutrition_summary upsert logic
 
 After every meal_log save, edit, or delete:
-
-1. Compute the date from logged_at using the 05:00 day boundary
-2. Query all meal_log_items for that user_id and date, joined to food_items
-3. Sum nutrients_per_100g × weight_grams / 100 for each nutrient across all items
+1. Compute date from logged_at using 05:00 Berlin boundary
+2. Sum nutrients_per_100g × weight_grams / 100 from meal_log_items joined to food_items for that date
+3. Add top-level macro fields from meal_logs where logged_via = 'photo_estimate' for that date
 4. Count distinct meal_log_ids for meal_count
-5. Build logged_via_summary JSONB from the logged_via values on meal_logs for that date
-6. Upsert into daily_nutrition_summary — insert if no row exists for that user/date, update if it does
+5. Build logged_via_summary JSONB
+6. Upsert into daily_nutrition_summary. Delete row if no meals remain.
 
 ---
 
-### Build status (April 26, 2026)
+### Build status
 
-All steps below are built and pushed on `claude/quizzical-lalande-dce194`.
+All on branch `claude/quizzical-lalande-dce194`.
 
-1. ~~DB migration~~ — tables already live in Supabase
-2. ~~API routes~~ — `app/api/nutrition/{search,food-item,meal,day,templates,barcode}/route.ts`
-   plus shared helpers in `lib/nutrition.ts` (service-role client, 05:00
-   Berlin day-key, `recomputeDailySummary`) and `lib/usda.ts` (nutrient parser)
-3. ~~Nutrition day view~~ — `components/sections/NutritionSection.tsx`
-   self-fetches `/api/nutrition/day`, sticky 5-macro bar, animated meal cards,
-   per-meal CGM chip, expandable ingredient breakdown with delete-with-confirm
-4. ~~Five-screen logging flow~~ — `components/nutrition/MealLogger.tsx`
-   (menu / search / weight / building / confirm), inline ghost-text autocomplete
-   on local results, debounced USDA search, live macro preview, pulse on add
-5. ~~Template list + edit view~~ — same MealLogger, screen `templates` plus
-   reuse of `building` in template-edit mode (driven by `editingTemplate`
-   state); apply staggers items into the meal at 70 ms intervals using their
-   existing enter animation
-6. ~~Barcode scanning~~ — `ScreenScan` inside MealLogger, `html5-qrcode`
-   dynamic-imported on entry, Open Food Facts via `/api/nutrition/barcode`,
-   serving-size shortcut surfaced on Screen 3 if OFF returned one
+1. ~~DB migration~~ — done
+2. ~~API routes~~ — search, food-item, meal, day, templates, barcode — done
+3. ~~Nutrition day view~~ — NutritionSection.tsx — done
+4. ~~Five-screen logging flow~~ — MealLogger.tsx — done
+5. ~~Template list + edit view~~ — inside MealLogger — done (preserved in code, not surfaced in UI)
+6. ~~Barcode scanning~~ — ScreenScan, commit c4e11b1 — done
+7. ~~Recipe API route~~ — app/api/nutrition/recipe/route.ts — done
+8. ~~Photo estimation API route~~ — app/api/nutrition/estimate/route.ts — done
+9. ~~My Library screen~~ — inside MealLogger (recipes only, templates removed from UI) — done
+10. ~~Recipe builder screens~~ — inside MealLogger — done
+11. ~~Screen 1 redesign~~ — 4 options — done
+12. ~~Photo estimation screen~~ — inside MealLogger — done
+13. "Load another template" on Screen 4 — **removed by design** (templates removed from UI)
+14. USDA deduplication — **removed by design** (search returns results as-is)
 
-### Recipe builder — `is_raw` column
+**All complete. Ready to merge.**
 
-Recipes can now be marked as **raw / assembled** (no cooking step — e.g.
-salads, overnight oats, snack mixes) via a checkbox in the recipe builder
-labelled "No cooking — assembled from raw ingredients."
+### Known follow-ups from Steps 1–14
 
-- `recipes.is_raw boolean DEFAULT false` (migration applied 2026-04-26).
-- Raw recipes always store `total_cooked_grams = null` and use
-  `sum(ingredient.weight_grams)` as the per-100g divisor instead of the
-  cooked-pot weight. Otherwise the macro pipeline is identical.
-- Raw recipes have no draft state — they activate as soon as one
-  ingredient is added. The save button reads "Save recipe" rather than
-  "Save as draft" while the toggle is on.
-- The amber chip on draft recipes in My Library reads
-  "Incomplete — add cooked weight or mark as raw" to surface both exits
-  from the draft state.
-- API: `POST` and `PUT /api/nutrition/recipe` accept `is_raw: boolean`;
-  `GET` returns it. Toggling `is_raw` on a `PUT` forces a macro
-  recompute (divisor changes) and clears any stale `total_cooked_grams`.
-
-### Known follow-ups (not done in this build)
-
-- **Coach still reads `daily_entries.nutrition`** in `app/api/coach/route.ts`
-  via `entry.nutrition.*`. Per the locked architecture decision the coach
-  should read from `daily_nutrition_summary` instead. Switch when convenient
-  — until then the coach sees no data for meals logged through the new flow.
-- The legacy four-meal-slot UI inside `lib/db.ts → rowToEntry` and
-  `lib/types.ts → NutritionData` still reads/writes the old `daily_entries.*`
-  columns. The new section ignores them entirely; saves still go through but
-  the values are blank. Cleanup is safe once the coach switch above lands.
-- camera access requires HTTPS — works on Vercel preview/prod, not on
-  `npm run dev` over plain http://localhost. Use `next dev --experimental-https`
-  or Safari (which whitelists localhost) when testing the scan flow locally.
-
-
-**Hydration section**
-- Logs ml per day
-- Passes through to Coach context
-
-**Supplements section**
-- Hormones (separate cards): Progesterone (mg, toggle), Estradiol (sprays, toggle)
-- Morning stack (accordion, default collapsed "Not taken"): Creatine 5g, Vitamin D3+K2, Zinc+Selenium, Glucosamine, Omega-3, Berberine, DIM
-- Evening stack (accordion, default collapsed "Not taken"): Magnesium glycinate 200mg, L-Theanine
-- Accordion behaviour: collapsed = "Not taken" (grey) or "Taken" (green). Open = master "Take all" toggle at top + individual toggles. Master on = all on. Individual toggles controllable independently after master flipped. Morning and evening independent.
-- DEFAULT STATE: everything OFF. User must actively confirm.
-- NO cyclic supplements section. Ashwagandha and Phosphatidylserine removed entirely.
-
-**Context section**
-- Fields: cycle day (auto-counter with manual reset), symptoms (multi-select), travelling toggle, notes
-- HRV score field: REMOVED. Do not re-add.
-
-### Coach Tab
-
-- 5 time-based modes: wakeup (<09:00), posttraining (09–12), afternoon (12–17), earlyevening (17–20), endofday (20+)
-- 30-day context window (fetches last 30 days from Supabase on load)
-- Returns JSON with 5 fields: recovery, training, nutrition, insight, question
-- Null fields are hidden in UI (not shown as empty cards)
-- CGM framework built in (optional, never affects scores if absent)
-- Zone3+ framework built in
-- Bavaria foraging calendar built in (max once/week, weekends weighted, near-Munich locations)
-- Food creativity framework: Japanese/Korean/Chinese/Thai/Vietnamese/Mediterranean/Middle Eastern/Indian. NEVER German/Bavarian.
-- Reactive chat available below briefing cards
-- Coach header text is mode-aware
-
-### Dashboard
-
-- Behavior Score + Outcome Score displayed as large numbers
-- Color: green ≥75, amber 50–74, red <50
-- 7-day trend charts (TO BE EXTENDED TO 30 DAYS — pending)
-- Scores currently below data inputs (TO BE MOVED ABOVE — pending)
-
-### History Tab
-
-- Chronological entries, expandable, color-coded scores
+- Coach still reads `daily_entries.nutrition` — switch to `daily_nutrition_summary` is backlog item #1. Do not touch Coach until Goals/Training Load branch is merged.
+- Legacy meal-slot UI in lib/db.ts and lib/types.ts — safe to clean up once coach switch lands
+- Camera requires HTTPS — works on Vercel preview/prod, not plain http://localhost
 
 ---
 
 ## SCORING MODEL (locked — do not change without explicit instruction)
 
-### Behavior Score (what Julie controlled)
+### Behavior Score
 
-| Input | Weight | Notes |
-|---|---|---|
-| Nutrition targets hit (protein + fiber priority) | 30% | |
-| Supplements confirmed (morning + evening + hormones) | 20% | |
-| Training appropriate to HRV framework | 20% | See HRV framework below |
-| Bedtime consistency (within 30 min of 21:45) | 15% | |
-| Active calorie target reached (900 kcal total) | 15% | |
+| Input | Weight |
+|---|---|
+| Nutrition targets hit (protein + fiber priority) | 30% |
+| Supplements confirmed (morning + evening + hormones) | 20% |
+| Training appropriate to HRV framework | 20% |
+| Bedtime consistency (within 30 min of 21:45) | 15% |
+| Active calorie target reached (900 kcal total) | 15% |
 
-**Critical rule:** Empty or missing fields = N/A, not zero. Weight redistributes to remaining fields. Never penalise for unlogged optional data.
+**Critical rule:** Empty or missing fields = N/A, not zero. Weight redistributes. Never penalise for unlogged optional data.
 
-**HRV training appropriateness logic:**
-- HRV >100 → trained hard (zone3+ ≥16 min or 2 sessions) = full score
-- HRV >100 → trained moderate = partial score
-- HRV >100 → rest or easy only = low score
-- HRV 80–100 → trained moderate = full score
-- HRV 80–100 → trained easy or rest = partial (not penalised, conservative is ok)
-- HRV 80–100 → trained hard = partial penalty
-- HRV 60–80 → trained easy only = full score
-- HRV 60–80 → trained moderate or hard = penalty
-- HRV <60 → rested = full score
-- HRV <60 → any training = penalty
-- HRV missing → weight redistributes out, no penalty
-- Going easier than HRV recommends is NEVER penalised. Conservative decisions are rewarded.
+**HRV training logic:**
+- HRV >100 → hard (zone3+ ≥16 min or 2 sessions) = full | moderate = partial | easy/rest = low
+- HRV 80–100 → moderate = full | easy/rest = partial (not penalised) | hard = partial penalty
+- HRV 60–80 → easy = full | moderate/hard = penalty
+- HRV <60 → rest = full | any training = penalty
+- HRV missing → redistributes, no penalty
+- Going easier than HRV recommends is NEVER penalised.
 
-### Outcome Score (what Julie's body did)
+### Outcome Score
 
-| Input | Weight | Notes |
-|---|---|---|
-| HRV vs 88ms baseline | 30% | |
-| Sleep duration + Rested score | 30% | Target 7h30–8h30 |
-| RHR vs 52 bpm baseline | 20% | Flag if >58 for 2+ days |
-| CGM glucose score | 20% | Redistributes to 0% when no CGM data logged |
+| Input | Weight |
+|---|---|
+| HRV vs 88ms baseline | 30% |
+| Sleep duration + Rested score | 30% |
+| RHR vs 52 bpm baseline | 20% |
+| CGM glucose score | 20% (redistributes to 0% if no CGM) |
 
-**CGM scoring logic:**
-- Fasting glucose only logged: score on fasting alone. Target ≤4.8 mmol/L = full score. Scales down toward 5.6 (flag threshold).
-- Fasting + meal peaks logged: fasting 40% / meal peaks 60% within CGM sub-score. Meal peak target <7.5 mmol/L. Penalty above 8.5. Average across all logged meals.
-- Neither logged: CGM sub-score = 0%, weight redistributes to other outcome fields.
-- Never penalise for missing meal peaks — they are optional.
+**CGM scoring:**
+- Fasting only: target ≤4.8 mmol/L = full, scales down toward 5.6
+- Fasting + peaks: fasting 40% / peaks 60%. Peak target <7.5 mmol/L, penalty above 8.5
+- Neither: CGM sub-score = 0%, weight redistributes
+- Never penalise for missing meal peaks
 
 ---
 
 ## DATA MODEL (Supabase)
 
-### `daily_entries` table
-- `id`, `user_id`, `date`
-- Sleep: `sleep_duration_min`, `hrv`, `rhr`, `bedtime`, `rested`, `nap_minutes`, `fasting_glucose_mmol`
-- Training: `sessions` (JSONB array), `cycled_today`, `cycling_minutes`, `cycling_calories`
-- Nutrition: `pre_workout_snack`, `breakfast`, `lunch`, `dinner`, `incidentals` (all JSONB with description, protein, fiber, fat, carbs, calories, peak_glucose_mmol)
-- Hydration: `hydration_ml`
-- Supplements: `morning_stack_taken`, `morning_exceptions`, `evening_stack_taken`, `evening_exceptions`, `progesterone_taken`, `progesterone_mg`, `estradiol_taken`, `estradiol_sprays`
-- Context: `cycle_day`, `symptoms`, `travelling`, `notes`
-- Scores: `behavior_score`, `outcome_score`
+### `daily_entries`
+Sleep: sleep_duration_min, hrv, rhr, bedtime, rested, nap_minutes, fasting_glucose_mmol
+Training: sessions (JSONB), cycled_today, cycling_minutes, cycling_calories
+Nutrition columns: LEGACY — do not read or write from new code
+Hydration: hydration_ml
+Supplements: morning_stack_taken, morning_exceptions, evening_stack_taken, evening_exceptions, progesterone_taken, progesterone_mg, estradiol_taken, estradiol_sprays
+Context: cycle_day, symptoms, travelling, notes
+Scores: behavior_score, outcome_score
 
-### `training_sessions` fields (within JSONB)
-- `activity_type`, `duration_min`, `zone3_plus_minutes`, `active_calories`
-- `avg_heart_rate`: REMOVED. Do not re-add.
+### sessions JSONB fields
+activity_type, duration_min, zone3_plus_minutes, active_calories
+avg_heart_rate: REMOVED. Do not re-add.
 
-### `user_profiles` table
-- User preferences, macro targets, profile data
+### Nutrition tables — see table list above under "Tables"
 
-### `cycle_tracker` table
-- Cycle day tracking
+### `user_profiles` — preferences, macro targets
+### `cycle_tracker` — cycle day tracking
+### `biomarker_readings` — user_id, marker, value, unit, date
 
 ### RLS
-- Enabled on all 4 tables. Policy: `user_id = 'julie'`
+- Nutrition tables: user_id = auth.uid() (bypassed server-side via service role)
+- Legacy tables: user_id = 'julie' (text), RLS disabled — do not change
 
 ---
 
 ## BACKLOG
 
 ### Active bugs
-1. **Coach "this afternoon" language** — earlyevening mode still says "this afternoon" in CoachTab.tsx header/description text.
+1. **Coach "this afternoon" language** — earlyevening mode, CoachTab.tsx
+2. **hrv_score field** — still in ContextSection.tsx, wrong field name on removal
+3. **Coach training override not working** — sessions logged but coach still recommends training
+4. **Coach calorie calc** — over-target when under
+5. **Recovery and Training cards empty in evening mode**
 
-### Features — near term (priority order)
-1. **Switch Coach to read `daily_nutrition_summary`** — `app/api/coach/route.ts` still pulls `entry.nutrition.*` from the legacy `daily_entries.nutrition` JSONB. Until this is changed the coach sees no data for meals logged through the new ingredient flow. Pass `logged_via_summary` through too so the coach can calibrate confidence.
-2. **Dashboard scores above data inputs** — move Behavior + Outcome scores to top of Today tab so progress is visible while logging.
-3. **Dashboard 30-day window** — extend from 7 to 30 days to match Coach context.
-4. **Coach refresh button** — manual refresh when new training logged mid-day, without full page reload.
-5. **Behavior/Outcome score review + CGM scoring** — full audit of scoring model. Confirm empty fields treated as N/A not zero. Implement CGM sub-score logic (see scoring model above).
-6. **CGM rolling average in Coach context** — compute 30-day rolling average glucose from history and inject into Coach context block.
-7. **Food quality coaching** — one actionable nudge per day on ingredients to add/reduce (cholesterol, inflammation, micronutrients). Design TBD: daily tip vs weekly pattern view.
-8. **Commit BODYCIPHER.md to the GitHub repo** — so Claude Code reads it at the start of every session.
+Note: bugs 1, 3, 4, 5 are in the Coach. **Do not touch Coach until Goals tab / Training Load branch is merged to main.**
+
+### Features — near term
+1. **Switch Coach to daily_nutrition_summary** — app/api/coach/route.ts still reads legacy entry.nutrition.*. Pass logged_via_summary for confidence calibration. **Do not touch until after Goals/Training Load branch merge.**
+2. **Coach redesign** — dedicated session after Goals branch. Training override, calorie calc, empty evening cards, language bugs, too generic. Reasoning across 30-day patterns. **Third and final branch.**
+3. **Accumulated training load** — third score. Acute (7-day) vs chronic (28-day) rolling stress, ratio flags overreach. Design in coach session before touching code.
+4. **Dashboard scores above data inputs**
+5. **Dashboard 30-day window**
+6. **Coach refresh button**
+7. **Behavior/Outcome score review + CGM scoring** — confirm empty = N/A not zero
+8. **CGM rolling average in Coach context**
+9. **Food quality coaching** — one nudge/day. Design TBD.
 
 ### Features — later
-1. **Responsive design / mobile layout** — proper mobile vs web layout differentiation.
-2. **Apple Health XML import** — deferred indefinitely.
-3. **Regression analysis** — needs 3+ months data. Revisit July 2026.
-4. **Goals tab** — new tab for holistic health goal setting and tracking (e.g. VO2 max target, weight, body composition, biomarker trends). Design TBD — discuss before building.
+1. Responsive design / mobile layout
+2. Apple Health XML import — deferred indefinitely
+3. Regression analysis — revisit July 2026
+4. Goals tab — specced below, not yet built
 
 ### Removed / will not do
-- Breakfast templates — removed, not working for Julie
-- Cyclic supplements UI (Ashwagandha, Phosphatidylserine) — removed entirely
-- Andreas secondary user — not interested
-- avg_heart_rate in training — replaced by zone3_plus_minutes
+- Breakfast templates
+- Cyclic supplements (Ashwagandha, Phosphatidylserine)
+- Andreas secondary user
+- avg_heart_rate in training
+- "Load another template" button on Screen 4 (removed with templates UI)
+- USDA name deduplication in search route (removed — all results pass through as-is)
 
 ---
 
 ## Goals Tab (BodyCipher Tab) — Specced 19 April 2026
 
 ### App identity
+- Name: BodyCipher · Tagline: decode your body · Tab name: BodyCipher
 
-- **Name:** BodyCipher
-- **Tagline:** decode your body
-- **Tab name:** BodyCipher (the goals/home tab)
+### Section 1: Hero
+- Dynamic API greeting on load. Context: time of day, day of week, training today (yes/no), HRV band. Never cycle day.
+- Tone: witty but warm, occasionally deadpan, never cheesy. "Good [time], Julie." Julie in green (#1D9E75).
+- Two score cards: Behavior (green #E1F5EE) and Outcome (blue #E6F1FB). Label, number, small progress ring. Tap navigates to Dashboard.
 
----
+### Section 2: Long-term goals
+Three collapsible cards.
 
-### Tab structure — three sections
+**VO2 Max** — spectrum bar (Poor <23 / Fair 23–27 / Good 28–32 / Excellent 33–36 / Superior 37+), current value marker, target diamond at 40. Glowy sparkline. Inline entry form. Queries biomarker_readings, marker = 'vo2_max'.
 
-#### Section 1: Hero
+**Cardiovascular health** — pink heart icon. LDL:HDL ratio headline. LDL and HDL spectrum bars. Sparkline with dashed threshold at 3.5. Manual entry bottom sheet.
 
-- Dynamic greeting generated via Anthropic API on tab load
-- Context passed: time of day (morning/afternoon/evening), day of week, training logged today (yes/no), HRV band (high/moderate/low/rest). Never pass cycle day.
-- Tone: witty but warm, occasionally deadpan, never cheesy, never generic fitness app energy. One sentence after "Good [time], Julie." Julie in green (#1D9E75).
-- Two score cards side by side: Behavior (green, #E1F5EE background) and Outcome (blue, #E6F1FB background)
-- Each card: label, score number, small progress ring with icon inside. No delta. No tagline on cards.
-- Tapping either card navigates to Dashboard tab
-- Score values pulled from same calculation as Dashboard, live
+**Glucose stability** — amber waveform icon. 7-day rolling fasting glucose average. HbA1c secondary stat. CGM toggle.
 
-#### Section 2: Long-term goals
-
-Section header: "Long-term goals"
-Three cards, collapsed on tab, expand inline on tap
-
-**Card 1 — VO2 Max**
-
-**Collapsed state:** shows card title "VO₂ Max" and current value + unit (e.g. "36 ml/kg/min"), or "Not yet logged" if no data exists. Chevron indicates expandable. Tapping anywhere on the collapsed card expands it.
-
-**Expanded state:**
-
-- **Header row:** large bold current value + "ml/kg/min" unit on the left, tappable to open inline entry form. "Not yet logged" is equally tappable when no data exists. Next-tier badge pill on the right showing the next band above current value with arrow (e.g. "Superior →").
-
-- **Spectrum bar:** full horizontal SVG gradient bar from muted blue-grey (left/poor) to deep green (right/superior). Five bands with labels and range text below the bar:
-  - Poor: <23
-  - Fair: 23–27
-  - Good: 28–32
-  - Excellent: 33–36
-  - Superior: 37+
-  
-  Bar extends to 50+ on the right. Two markers: current value circle with value label above it, and a subtle target diamond at 40 labeled "target". Gradient uses CSS custom properties only.
-
-- **Sparkline:** section header "Recent readings". SVG line chart, no axes, no grid lines. Glowy radiant green line achieved via SVG filter (feGaussianBlur + feMerge) or duplicate blurred path underneath main line, plus subtle gradient fill area beneath the line. Dots at each data point. Date labels below x-axis in month + year format (e.g. "Apr 2026"). Empty chart area with no placeholder text if no readings exist. Queries `biomarker_readings` for `marker = 'vo2_max'`, `user_id = 'julie'`, ordered ascending, limit 6.
-
-- **Inline entry form:** opens inside the card when current value or "Not yet logged" is tapped. `e.stopPropagation()` on the tap handler to prevent card collapse. Two fields: value (numeric, ml/kg/min) and date (date picker, defaults to today). Save button inserts new row to `biomarker_readings` then refreshes both current value and sparkline. Cancel closes form without saving.
-
-- **Data source:** manual entry. No finite ceiling — target is 40 now, will keep improving beyond that.
-
-**Card 2 — Cardiovascular health**
-
-- Pink heart icon next to card name
-- Headline: LDL:HDL ratio (current 2.5 — Good)
-- LDL spectrum: Optimal (<100) / Near optimal (100–129) / Borderline (130–159) / High (160+). Gradient left=green right=red. Current: 124 mg/dL.
-- HDL spectrum: Low (<40) / Acceptable (40–59) / Protective (60+). Gradient reversed. Current: 50 mg/dL.
-- Targets: LDL <100, HDL >60
-- Sparkline: ratio trend over time. One data point Oct 2024: 2.48. Dashed risk threshold line at 3.5.
-- Footer: "Last tested Oct 2024 · bloodwork overdue"
-- Tapping LDL or HDL stat opens manual entry bottom sheet: value + date
-- When new bloodwork logged, automatically updates health calendar bloodwork item
-- Data source: manual entry after each blood test
-
-**Card 3 — Glucose stability**
-
-- Amber waveform icon next to card name
-- Headline: 7-day rolling average of daily fasting glucose from context section entries. Current: 5.1 mmol/L.
-- Secondary stat: HbA1c (current 5.2%) — tappable to update via bottom sheet: value + date
-- Spectrum: Low (<4.0) / Optimal (4.0–5.4) / Good (5.5–6.0) / Watch (6.0+). Note displayed: "post-meal peaks up to 7.8 normal"
-- Sparkline: 7 daily fasting readings across current week
-- CGM toggle: on/off. When off — card goes greyed/dormant, sparkline replaced by "No active CGM sensor" + last snapshot date and value
-- Data source: daily fasting glucose auto-computed from context section entries (7-day rolling average), HbA1c manual
-
-#### Section 3: Health calendar
-
-Section header: "Health calendar"
-
-**Always visible (rolling booking cycle):**
-- Dermatologist — every 6 months
-- Dentist — every 6 months
-
-**Surfaces 4 months before due, disappears once logged:**
-- Gynaecologist — annual
-- Full bloodwork — annual (covers lipids, thyroid panel, ferritin, D3). Logging here links to cardiovascular goal card.
-- Breast scan — annual
-- Thyroid scan — annual (ultrasound, history of nodules)
-- Bone density scan — baseline, then every 2 years
-- Colonoscopy — every 10 years, lowest visual weight
-- Eye / optometrist — annual, low urgency
-
-**Each item shows:**
-- Coloured rounded square category icon
-- Name and cadence
-- Status: Done (green) / Overdue (red) / Due soon (amber) / Booked (green with date)
-- When booked: shows appointment date e.g. "Derm · 3 May" with calendar icon
-- Next due date when applicable
-
-**Tapping any item opens bottom sheet:**
-- Mark as done with date field
-- Book appointment with date field
-- Optional note field
-
-**Status tiers:**
-- Coming up — within 4 months, shows booked date if entered
-- Due / overdue — most prominent
-- All clear — item disappears until next cycle
-
----
+### Section 3: Health calendar
+Always visible: Dermatologist (6-monthly), Dentist (6-monthly).
+Surfaces 4 months before due: Gynaecologist, Full bloodwork, Breast scan, Thyroid scan, Bone density scan, Colonoscopy, Eye/optometrist.
+Each item: status chip, next due date, bottom sheet to mark done / book.
 
 ### Visual design
-
-- White cards on tertiary background
-- Green (#3D9A6B / #1D9E75) for behavior/VO2, blue for outcome/LDL, amber for glucose, pink for cardiovascular icon
-- Spectrum bands replace finite rings for all long-term goals
-- Small coloured rounded square icons throughout
-- Motivational footer quote at bottom of tab (fixed): "Small choices. Strong direction. You're becoming who you're building."
-- BodyCipher wordmark at top of tab
-- Logo asset to be swapped in when designed — placeholder text for now
-- Overall feel: Muji meets Apple Health, warmer and more alive, not clinical
-
----
-
-### Data connections
-
-- Behavior and Outcome scores: pulled from Dashboard calculation, live
-- VO2 max: manually logged
-- LDL/HDL: manually logged after bloodwork, links to health calendar bloodwork item
-- Glucose 7-day average: auto-computed from daily fasting glucose in context section
-- HbA1c: manually logged
-- Health calendar dates: manually entered
-- CGM toggle: manual, persists across sessions
-
----
-
-### Deferred
-
-- Outlook calendar sync
-- Apple Health VO2 max auto-sync
-- Claude Design polish pass on icons and visual warmth
+White cards on tertiary background. Green/blue/amber/pink per card type. Spectrum bands throughout. Footer: "Small choices. Strong direction. You're becoming who you're building." Feel: Muji meets Apple Health.
 
 ---
 
 ## PROCESS REMINDERS
 
-- **Branch only.** Claude Code never pushes to main directly.
-- **Review before merge.** Claude Code outputs plain-English change summary. Julie pastes it here. Claude gives go/no-go. Only then does Julie merge.
-- **DB first.** SQL migrations always run in Supabase before code changes deploy.
-- **No full rewrites.** Targeted edits only. If a full rewrite seems necessary, stop and explain why first.
+- **Branch only.** Never push to main directly.
+- **Review before merge.** Claude Code outputs change summary → Julie pastes here → go/no-go → merge.
+- **DB first.** Julie runs all SQL migrations manually in Supabase before code deploys.
+- **No full rewrites.** Targeted edits only.
+- **Update docs.** BODYCIPHER.md, NUTRITION_DATA_MODEL.md, and NUTRITION_UX_FLOW.md committed at end of every session touching nutrition code.

@@ -1,33 +1,30 @@
 # BodyCipher — Nutrition section UX flow
 
-Design decisions captured April 2026. Pre-build phase. No code written yet.
+Design decisions captured April 2026. Updated April 27, 2026 to reflect recipe builder, My Library, photo estimation, Screen 1 redesign, inline peak glucose, macro override, and template removal.
 Companion document to NUTRITION_DATA_MODEL.md.
 
 ---
 
 ## Design principles
 
-- List model for logging. Ingredients are added one at a time into a running list, confirmed all at once. Like a shopping basket — browse and add, check out once.
+- List model for logging. Ingredients added one at a time into a running list, confirmed all at once.
 - Everything is grams. No servings, no units, no ml.
-- Five macros displayed everywhere: calories, protein, carbs, fat, fiber. Consistent across logging screens, meal cards, and day summary.
-- No fixed meal slots. No breakfast / lunch / dinner / snack convention. Julie logs as many meals as she wants, named however she wants.
-- Meal names auto-generated from time of day if left blank. Never blank in the database — "Morning meal", "Afternoon meal", "Evening meal" based on time bands from `logged_at`.
-- Templates are a starting point, not a commitment. Every weight is editable after a template is applied.
-- No micronutrient section in the UI in phase 1. Data is stored in `nutrients_per_100g` JSONB and available for future use.
-- Motion throughout via `framer-motion`. The app should feel alive, not flat.
+- Five macros everywhere: calories, protein, carbs, fat, fiber. That order. Never four.
+- No fixed meal slots. Free-form, named however Julie wants.
+- Meal names auto-generated from time band if blank. Never blank in the database.
+- Recipes are food items. A batch-cooked dish is logged by weight just like any other ingredient.
+- No micronutrient section in phase 1.
+- Motion throughout via framer-motion. Every animation reflects something happening.
 
 ---
 
 ## Motion principles
 
-`framer-motion` is used throughout the nutrition section. Motion reinforces function — every animation reflects something happening, not decoration.
-
-Specific animations:
 - Bottom sheet on Screen 1 springs up on open.
-- Ingredient rows slide into the meal list on Screen 4 as they are added. Slide out and collapse when removed.
-- Live macro numbers on Screen 3 roll smoothly as weight changes — not snapping to new values.
+- Ingredient rows slide into the meal list as added. Slide out and collapse when removed.
+- Live macro numbers on Screen 3 roll smoothly as weight changes — not snapping.
 - Meal total bar on Screen 4 pulses briefly each time a new ingredient lands.
-- Template ingredients on Screen 4 enter with a staggered entrance — one after another in quick succession, making the template feel assembled rather than dumped.
+- Recipe ingredients in the recipe builder update live per-serving preview as weights or servings change.
 - Meal cards on the day view animate in on load.
 
 ---
@@ -36,11 +33,15 @@ Specific animations:
 
 Bottom sheet slides up from the nutrition day view when Julie taps "Log a meal."
 
-Two options:
+Four options:
 
-**Add ingredients** — starts a blank meal. Optional free-text name field with placeholder "e.g. post-run, desk lunch." If left blank, the meal is named automatically from the time of day. Nothing else on this screen — no running meal list, there is nothing to show yet.
+**Add ingredients** — starts a blank meal. Optional free-text name field. If blank, meal is named from time band. Goes to Screen 2.
 
-**Use a template** — opens the template list screen. Julie selects a template and drops directly into Screen 4 with ingredients pre-loaded at default weights.
+**Browse Library** — opens My Library (recipes only). See My Library screen below.
+
+**Create a recipe** — opens the recipe builder in create mode. See recipe builder screens below.
+
+**Estimate from photo or description** — opens the photo estimation screen. See below.
 
 ---
 
@@ -48,21 +49,27 @@ Two options:
 
 Full screen. Keyboard up immediately, cursor in search field.
 
-**Search behaviour:** As Julie types, the field offers inline autocomplete based on her personal `food_items` library — type "goch" and "gochujang" completes in the field. Autocomplete ranking driven by `use_count`. Below the field, full search results appear simultaneously.
+**Search behaviour:** Inline ghost-text autocomplete from personal food_items library (Tab or end-of-line ArrowRight accepts). Below, full results from two sources simultaneously:
+- Personal food_items library: instant, local, no API call
+- USDA FoodData Central: debounced 400ms, live API call
 
-Results come from two sources:
-- Personal `food_items` library: instant, local, no API call.
-- USDA FoodData Central: debounced 400ms after typing starts, live API call to `api.nal.usda.gov/fdc/v1/foods/search`.
+Results show ingredient name and compact macro line "per 100g: 97 kcal · 9g P · 4g C · 5g F · 2g Fi." Results tagged with source chip (Library / USDA).
 
-Results show ingredient name and compact macro line — "per 100g: 97 kcal · 9g P · 4g C · 5g F · 2g Fi."
+**Local library results** show a pencil icon. Tapping it opens an inline macro-edit modal — Julie can correct any of the five macros. On save, PATCH /api/nutrition/food-item merges the overrides into nutrients_per_100g, preserving the raw USDA array. Corrections persist permanently for that food item.
 
-No frequent foods section. No recent foods section. Search only.
+**USDA results** pass through as-is. No deduplication applied.
 
-Search handles Julie's full ingredient range — gochujang, miso, natto, tahini, edamame — USDA has strong coverage of whole foods, fermented foods, and Asian ingredients. No aggressive autocorrect.
+**USDA caching:** First selection from USDA writes to food_items permanently. Subsequent uses read locally.
+
+Scan icon in the search field opens Screen Scan (barcode).
+
+A "Create a recipe" button below the search field (secondary, alongside scan icon) opens the recipe builder in meal context.
+
+A "Browse Library" button is available when in meal context (not recipe context). Opening library from here returns to Screen 2 after recipe selection.
 
 Tapping a result goes to Screen 3.
 
-**USDA caching:** The first time an ingredient is selected from USDA, its nutrient data is fetched and written to `food_items` in Supabase permanently. Every subsequent use reads from `food_items` locally. The USDA API is called at most once per ingredient, ever.
+**Context routing:** Screen 2 accepts a `context` prop — 'meal' or 'recipe'. When context = 'recipe', selecting an ingredient returns to the recipe builder instead of the weight/meal flow.
 
 ---
 
@@ -70,53 +77,122 @@ Tapping a result goes to Screen 3.
 
 Single-purpose screen.
 
-- Ingredient name at the top, large and clear.
-- One large numeric input field, numeric keyboard, gram label.
-- Live macro preview updates with every keystroke: calories, protein, carbs, fat, fiber. Numbers roll smoothly via framer-motion as weight changes.
-- If item came from a barcode scan and Open Food Facts includes a serving size, a shortcut chip appears — "1 serving (30g)" — tapping it fills the weight field. Still editable.
+- Ingredient name at top, large and clear.
+- One large numeric input, numeric keyboard, gram label.
+- Live macro preview: all five macros updating smoothly as weight changes (framer-motion).
+- Serving shortcut chip if available — either from barcode scan (Open Food Facts serving size) or from recipe's default_serving_grams (e.g. "1 serving (340g)"). Tapping pre-fills weight. Always editable.
 
-Bottom: "Add to meal" button. Tapping adds the ingredient to the running meal list and returns to Screen 2, search field ready for the next ingredient. Nothing is written to the database yet.
+"Add to meal" button: adds ingredient to running list, returns to Screen 2. Nothing written to DB yet.
 
 ---
 
 ## Screen 4 — The building meal
 
-Screen 2 plus a visible running meal list below the search field.
+Screen 2 plus a visible running ingredient list below the search field.
 
-**Ingredient rows:** Each ingredient shows name, weight in grams, and its macro contribution — calories, protein, carbs, fat, fiber. Two actions per row:
-- Tap the row to edit weight — returns to Screen 3 with the field pre-filled.
-- Trash bin icon on the right edge to remove immediately. Swipe-to-delete also available as an alternative gesture.
+**Ingredient rows:** Name, weight in grams, five macro contributions. Tap to edit weight (returns to Screen 3 pre-filled). Trash bin to remove. Slide out and collapse on removal.
 
-Rows animate in as ingredients are added (slide in). Animate out on removal (slide and collapse).
+**Meal total bar** at bottom: cumulative five macros. Updates live. Pulses on new ingredient add.
 
-**Meal total bar** at the bottom: cumulative calories, protein, carbs, fat, fiber across all ingredients. Updates live. Pulses briefly when a new ingredient is added.
+**Two buttons above total bar:**
+- "+ Add another" — returns to Screen 2
+- "Save meal" — proceeds to Screen 5
 
-Two buttons above the total bar:
-- "Add another ingredient" — returns to Screen 2.
-- "Save meal" — proceeds to Screen 5.
+When opened in template-edit mode (editingTemplate state non-null), header reads "Editing template" / "New template", a name input appears above the list, and save writes to meal_templates rather than opening Screen 5. This path is only reachable from code — the template UI is not surfaced in My Library.
 
 ---
 
 ## Screen 5 — Save confirmation
 
-Lightweight confirmation before writing to the database.
+Lightweight confirmation before writing to DB.
 
-Shows:
-- Meal name (or auto-generated time-based name).
-- Time logged.
-- Ingredient count.
-- Total macros: calories, protein, carbs, fat, fiber.
-- Optional peak glucose field — one tap to enter a CGM value in mmol/L.
-- Optional notes field — free text.
-- "Save as template" option — prompts Julie to name the template, then writes to `meal_templates` and `meal_template_items` using current ingredients and weights as defaults. Meal log saves at the same time. Two separate database writes, one action.
+Shows: meal name (editable, auto-filled from time band if blank), time, source info (ingredient count for item-based; "Claude estimate" badge + confidence level for photo estimates), five macro totals, optional notes.
 
-"Confirm" writes:
-- One `meal_logs` row.
-- N `meal_log_items` rows, one per ingredient.
-- Increments `use_count` on each `food_items` row used.
-- Upserts `daily_nutrition_summary` for today's date — recomputes all macro totals from the full day's `meal_log_items`.
+Confirm writes:
+- One meal_logs row (with logged_via, and macro fields if photo_estimate)
+- N meal_log_items rows (ingredient-based only)
+- Increments use_count on each food_items row used (ingredient-based only)
+- Upserts daily_nutrition_summary for the date
 
-Returns to the day view with the new meal card visible.
+Returns to day view with new meal card visible.
+
+---
+
+## Inline peak glucose
+
+Peak glucose is NOT part of any logging screen. It lives on each meal card in the nutrition day view.
+
+Every meal card has a persistent "Peak glucose" row below the macro line. Tapping anywhere on the row opens an inline edit: numeric input pre-filled with the current value (or blank if not set), mmol/L label, ✓ and ✕ buttons. On confirm, PATCH /api/nutrition/meal saves the value. On cancel, original value is restored. Does not trigger a daily_nutrition_summary recompute.
+
+The meal card header also shows a CGM chip when peak_glucose_mmol is set.
+
+---
+
+## Photo estimation screen
+
+Accessed from Screen 1 "Estimate from photo or description."
+
+Two input methods, either or both usable:
+- **Photo:** standard `<input type="file" accept="image/*" capture="environment">` — uses device camera or file picker. Do not use html5-qrcode here.
+- **Description:** free-text textarea, e.g. "grilled salmon fillet approx 150g, roasted vegetables, small amount of rice."
+
+"Estimate macros" button (disabled until at least one input present) sends to POST /api/nutrition/estimate. Shows a loading state while the Anthropic API call runs.
+
+On response: navigates directly to Screen 5 in estimate-based mode with macros pre-filled. If the API returns an error, shows a clear message and allows retry.
+
+API route returns: meal_name, calories, protein_g, carbs_g, fat_g, fiber_g, confidence ('high'|'medium'|'low'). If neither photo nor description provided, API returns a clear error.
+
+---
+
+## My Library screen
+
+Single home for all saved recipes. Replaces the standalone templates screen.
+
+**Access points:**
+- Screen 1 "Browse Library" button
+- Library icon button on the nutrition day view (alongside "+ Log a meal")
+
+**Single section: Recipes**
+
+- "New recipe" button at top — opens recipe builder in create mode
+- One card per recipe, sorted by updated_at desc
+- Draft recipes: amber "Incomplete — add cooked weight or mark as raw" chip. Not tappable for logging. Edit opens recipe builder pre-loaded. Delete with confirmation.
+- Active recipes: name, recipe icon, per-serving macros if default_serving_grams set (else per-100g macros with "per 100g" label). Tap to use (goes to building screen with food_item added at default_serving_grams or 100g if not set). Edit opens recipe builder. Delete with confirmation.
+
+Templates section removed by design. meal_templates and meal_template_items tables and API routes preserved in the database but not visible in My Library.
+
+---
+
+## Recipe builder screens
+
+Accessed from: Screen 1 "Create a recipe", My Library recipe card Edit action, or "Create a recipe" button on Screen 2.
+
+**Create mode:** blank form.
+**Edit mode:** pre-loaded with existing recipe data.
+
+Fields in order:
+1. **Recipe name** (text input, required)
+2. **Total servings** (numeric, integer, min 1, required)
+3. **Typical portion size — g** (numeric, optional, nullable — used for serving shortcut chip when logging)
+4. **Raw / assembled toggle** (is_raw boolean). When off (default): cooked recipe mode. When on: raw/assembled mode — no cooking step, cooked weight field hidden, portion size auto-calculated.
+5. **Ingredient list** — same UI as Screen 4 building list. Each ingredient: name, raw batch weight in grams, macro contribution to batch total. Trash to remove. "Add ingredient" opens Screen 2 with context = 'recipe' (returns selected item + weight here, not to meal flow).
+6. **Total cooked weight — g** (numeric, optional — only shown when is_raw = false). Label: "Total cooked weight (g) — weigh the finished pot." Note below: "Leave blank now, add after cooking."
+
+**Raw mode auto-portion:** When is_raw = true, portion size is auto-calculated as total ingredient weight / servings and pre-filled in the Typical portion size field. Julie can override. Auto-computation stops once she manually edits the field; resets if she changes the ingredient list or servings.
+
+**Live per-serving macro preview** at bottom:
+- Cooked mode with total_cooked_grams set: shows all five macros per serving, updating with framer-motion.
+- Cooked mode without cooked weight: shows "Add cooked weight to see macros" instead of numbers.
+- Raw mode with ingredients: shows all five macros per serving (divisor = sum of ingredient weights).
+- Raw mode with no ingredients: shows "Add ingredients to see macros".
+
+**Save behaviour:**
+- Cooked mode, total_cooked_grams present → POST (create) or PUT (update). Recipe activates. food_items entry created/updated. Returns to My Library.
+- Cooked mode, total_cooked_grams absent → saves as draft. Returns to My Library with amber chip.
+- Raw mode, at least one ingredient → POST (create) or PUT (update). Recipe activates immediately. Returns to My Library.
+- Raw mode, no ingredients → saves as draft.
+
+**Draft workflow (cooked):** Julie can build the ingredient list while the pot is on the stove, save as draft, close. When the pot is done, she opens My Library, taps Edit on the draft, enters the cooked weight, saves. Recipe activates.
 
 ---
 
@@ -124,105 +200,56 @@ Returns to the day view with the new meal card visible.
 
 Main nutrition tab screen.
 
-**Date navigation:** Date at the top with left/right arrows to step between days. Today is the default on open. No calendar picker.
+**Date navigation:** left/right arrows at top. Today default. No calendar picker.
 
-**Macro summary bar:** Always visible, even when scrolling. Shows five numbers vs daily targets from Julie's profile: calories, protein, carbs, fat, fiber. Format: "124 / 160g" per macro. Read from `daily_nutrition_summary`. No calorie warning states — calorie warnings are removed from BodyCipher.
+**Macro summary bar:** Always visible when scrolling. Five macros vs daily targets: "124 / 160g" format. Read from daily_nutrition_summary. No calorie warnings.
 
-**Meal cards:** One card per logged meal, sorted chronologically by `logged_at`. Each card shows:
-- Meal name (or auto-generated time-based name).
-- Time logged.
-- Five macro totals for the meal: calories, protein, carbs, fat, fiber.
-- CGM chip if `peak_glucose_mmol` is present — just the number in mmol/L. Not shown if no value recorded.
+**Collapsed section header:** Shows protein · fiber · calories when data is present.
 
-Tapping a card expands it to show the full ingredient breakdown — each ingredient, weight, and individual macro contribution. From expanded view Julie can edit the meal: tap an ingredient to adjust weight, tap trash to remove, tap "Add ingredient" to re-enter the logging flow at Screen 2. Any edit triggers a recompute and upsert of `daily_nutrition_summary`.
+**Meal cards:** One per logged meal, sorted by logged_at. Shows: name, time, five macro totals, CGM chip if peak_glucose_mmol set. For photo-estimated meals, a "Claude estimate" badge.
 
-**Persistent "Log a meal" button** at the bottom, always accessible without scrolling up.
+Each meal card has a persistent "Peak glucose" row (see Inline peak glucose section above).
 
-No micronutrient section. Data is stored and available for future surfacing.
+Tapping the header area expands the card: ingredient breakdown for ingredient-based meals, or macro totals with confidence label for photo-estimated meals. Edit and delete available from expanded view. Photo-estimated meals cannot be edited (no Edit button shown).
 
----
-
-## Template list screen
-
-Accessed from Screen 1 via "Use a template."
-
-A list of all saved templates, sorted by `use_count` descending — most used floats to the top over time without Julie managing order manually.
-
-Each template card shows:
-- Template name.
-- Ingredient count.
-- Total macros at default weights.
-
-Three actions per template card:
-- **Tap to use** — loads template into Screen 4 with ingredients pre-filled at default weights via staggered entrance animation. Increments `meal_templates.use_count`. From Screen 4 the experience is identical to manual logging.
-- **Edit icon** — opens template in edit mode.
-- **Trash bin** — delete with confirmation: "Delete [name]?" Yes / No.
-
-**"New template" button** at the top — opens a blank edit view for building a template from scratch.
-
----
-
-## Template edit view
-
-Same ingredient list UI as Screen 4 but in edit mode, not logging mode.
-
-Header clearly labelled "Editing template" — distinct from "Logging meal" so there is no confusion about what is being saved.
-
-Julie can:
-- Adjust default weights on any ingredient.
-- Remove ingredients (trash bin per row).
-- Add new ingredients via the same search flow as Screen 2.
-- Rename the template.
-
-Save writes changes back to `meal_templates` and `meal_template_items`. No meal log is created. No `daily_nutrition_summary` update triggered.
-
----
-
-## Template creation paths
-
-**From a logged meal (primary path):** "Save as template" on Screen 5 after logging. Names the template, writes to `meal_templates` and `meal_template_items` using actual logged weights as defaults. Meal log saves simultaneously. This is how the library grows naturally over time.
-
-**From scratch:** "New template" button in the template list. Builds ingredient list using the same search flow. Writes directly to `meal_templates` and `meal_template_items`. No meal log created.
-
-**By editing an existing template:** Via the template edit view.
+**Two persistent buttons at bottom:**
+- "+ Log a meal" — opens Screen 1
+- Library icon — opens My Library
 
 ---
 
 ## Barcode scanning
 
-Accessed from Screen 2 — a scan icon in or alongside the search field.
+Scan icon in Screen 2 search field. Uses html5-qrcode (not for photo capture — that uses file input on photo estimation screen).
 
-Flow: scan barcode → product identified via Open Food Facts API (`world.openfoodfacts.org/api/v2/product/{barcode}`) → weight entry on Screen 3, with serving size shortcut chip if Open Food Facts includes one → stored value always in grams → same `meal_log_items` row as all other methods.
+Flow: scan → Open Food Facts lookup → weight entry Screen 3 with serving chip if available → meal_log_items row as normal.
 
-`logged_via = 'barcode'` on the `meal_logs` row.
-`source = 'open_food_facts'` on the `food_items` row.
-
-Data quality from Open Food Facts varies. UI handles missing nutrient fields gracefully — shows available values, leaves others blank rather than showing zero.
-
-Library: `html5-qrcode` (confirmed for phase 1 — browser-based, no native code required, ~50KB gzipped).
+logged_via = 'barcode' on meal_logs. source = 'openfoodfacts' on food_items.
 
 ---
 
 ## Libraries
 
-- `framer-motion` — motion throughout the nutrition section.
-- `html5-qrcode` — barcode scanning.
-- No other new dependencies. Search UI, weight entry, and macro display built in plain React and Tailwind.
+- framer-motion — motion throughout
+- html5-qrcode — barcode scanning only (not photo capture)
+- @anthropic-ai/sdk — used server-side in /api/nutrition/estimate only
+- No other new dependencies
 
 ---
 
 ## API and infrastructure notes
 
-**USDA FoodData Central:** Free, no rate limits, public domain data. Called once per new ingredient then cached in `food_items` permanently.
+**USDA FoodData Central:** Free, no rate limits. Called once per new ingredient then cached permanently. No deduplication — results returned as-is.
 
-**Open Food Facts:** Free, no key required. Called once per barcode scan then cached in `food_items` permanently.
+**Open Food Facts:** Free, no key. Called once per barcode then cached permanently.
 
-**Supabase:** All nutrition queries are joins across small tables. Fast at Julie's single-user scale. `daily_nutrition_summary` is upserted on every save so the coach and dashboard always read one pre-computed row — no join queries at load time.
+**Anthropic API:** Used for photo/description macro estimation. Server-side only via /api/nutrition/estimate. Returns JSON macro estimate with confidence level.
+
+**Supabase:** All nutrition queries are joins across small tables. daily_nutrition_summary pre-computes day totals for fast coach/dashboard reads.
 
 ---
 
 ## What is not yet designed
 
-- Coach integration — `daily_nutrition_summary` replaces current `daily_entries.nutrition` JSONB read. Coach prompt structure unchanged, only the data source changes. `logged_via_summary` JSONB passed to coach for confidence calibration.
-- Handling of historical `daily_entries.nutrition` data for dates before the cutover — clean break decided, legacy fallback read TBD.
+- Coach integration detail — daily_nutrition_summary replaces current daily_entries.nutrition read. Tracked as backlog item #1. Do not touch until Goals/Training Load branch is merged.
 - Responsive / mobile layout details.
