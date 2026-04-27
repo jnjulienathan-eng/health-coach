@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     ].join('\n')
 
     const msg = await client.messages.create({
-      model: 'claude-sonnet-4-5-20251022',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 120,
       system: `You are BodyCipher, a personal health coach. Write a single short greeting for Julie — witty, warm, specific to her data, never generic fitness-app language. Never mention cycle day. Max 2 sentences. Address her directly as "Julie" (in green — but you just write the text, no markup). Keep it punchy.`,
       messages: [{ role: 'user', content: userPrompt }],
