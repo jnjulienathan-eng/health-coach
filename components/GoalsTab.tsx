@@ -505,7 +505,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
         )}
 
         {/* Score cards — 3-col */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, alignItems: 'start' }}>
 
           <button
             type="button"
@@ -1569,7 +1569,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
 
       {allAppts.length === 0 ? (
         <div className="card" style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>
-          No appointments — loading…
+          No appointments found. If this persists, the health_appointments table may need RLS disabled in Supabase (check browser console for details).
         </div>
       ) : (
         allAppts.map(appt => {
