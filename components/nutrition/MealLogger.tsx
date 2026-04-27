@@ -253,6 +253,9 @@ export default function MealLogger({ onClose, onSaved, initialScreen, editingMea
   // Recipe builder mode (null = not building a recipe)
   const [editingRecipe, setEditingRecipe] = useState<RecipeBuilderState | null>(null)
 
+  // Where to return when the user presses Back on the library screen
+  const [libraryReturnScreen, setLibraryReturnScreen] = useState<'menu' | 'search'>('menu')
+
   // Confirm-screen fields
   const [peakGlucose, setPeakGlucose] = useState<string>(
     editingMeal?.peak_glucose_mmol != null ? String(editingMeal.peak_glucose_mmol) : ''
@@ -574,6 +577,10 @@ const startNewTemplate = () => {
                     onPick={(food_item) => onItemPicked(food_item)}
                     onScan={() => setScreen('scan')}
                     onCreateRecipe={startNewRecipe}
+                    onBrowseLibrary={editingRecipe === null ? () => {
+                      setLibraryReturnScreen('search')
+                      setScreen('library')
+                    } : undefined}
                     onBack={() => {
                       if (editingRecipe !== null) setScreen('recipeBuilder')
                       else if (items.length > 0) setScreen('building')
@@ -663,7 +670,7 @@ const startNewTemplate = () => {
                     key="library"
                     onBack={() => {
                       if (initialScreen === 'library') onClose()
-                      else setScreen('menu')
+                      else setScreen(libraryReturnScreen)
                     }}
                     onNewRecipe={startNewRecipe}
                     onEditRecipe={startEditRecipe}
@@ -804,13 +811,14 @@ interface MacroEditFields {
 }
 
 function ScreenSearch({
-  context = 'meal', hasItems, onPick, onScan, onCreateRecipe, onBack,
+  context = 'meal', hasItems, onPick, onScan, onCreateRecipe, onBrowseLibrary, onBack,
 }: {
   context?: 'meal' | 'recipe'
   hasItems: boolean
   onPick: (food_item: FoodItem) => void
   onScan: () => void
   onCreateRecipe: () => void
+  onBrowseLibrary?: () => void
   onBack: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -1050,14 +1058,26 @@ function ScreenSearch({
           </div>
         )}
         {context === 'meal' && (
-          <button
-            type="button"
-            onClick={onCreateRecipe}
-            className="btn-secondary"
-            style={{ marginTop: 8, fontSize: 12, padding: '6px 12px' }}
-          >
-            Create a recipe
-          </button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={onCreateRecipe}
+              className="btn-secondary"
+              style={{ fontSize: 12, padding: '6px 12px' }}
+            >
+              Create a recipe
+            </button>
+            {onBrowseLibrary && (
+              <button
+                type="button"
+                onClick={onBrowseLibrary}
+                className="btn-secondary"
+                style={{ fontSize: 12, padding: '6px 12px' }}
+              >
+                Browse Library
+              </button>
+            )}
+          </div>
         )}
       </div>
 
