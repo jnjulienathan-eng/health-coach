@@ -489,13 +489,10 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
 
   // Compact summary used in the collapsed Section header
   const summaryBars = totals.protein != null && totals.protein > 0 ? (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-secondary)' }}>
-        {r(totals.protein)}g P
-      </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-dim)' }}>
-        · {r(totals.calories ?? 0)} kcal
-      </span>
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+      <span style={{ color: 'var(--color-text-secondary)' }}>{r(totals.protein)}g P</span>
+      <span style={{ color: 'var(--color-text-dim)' }}>· {r(totals.fiber ?? 0)}g Fi</span>
+      <span style={{ color: 'var(--color-text-dim)' }}>· {r(totals.calories ?? 0)} kcal</span>
     </div>
   ) : null
 
