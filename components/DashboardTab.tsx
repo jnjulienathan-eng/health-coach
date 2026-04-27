@@ -139,7 +139,15 @@ function ScoreCard({ label, score, bullets }: { label: string; score: number; bu
 }
 
 // ─── Training Load status card ────────────────────────────────────
-function TrainingLoadCard({ status, colour }: { status: string; colour: string }) {
+function TrainingLoadCard({ status, colour, acute, chronic, ratio, daysOfData }: {
+  status: string
+  colour: string
+  acute: number | null
+  chronic: number | null
+  ratio: number | null
+  daysOfData: number
+}) {
+  const isBaseline = status === 'Establishing baseline'
   return (
     <div style={{
       flex: 1,
@@ -155,6 +163,19 @@ function TrainingLoadCard({ status, colour }: { status: string; colour: string }
       <div style={{ fontSize: 10, fontWeight: 600, color: colour, lineHeight: 1.3 }}>{status}</div>
       <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginTop: 3 }}>
         Training Load
+      </div>
+      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {isBaseline ? (
+          <div style={{ fontSize: 10, lineHeight: 1.4, color: 'var(--color-text-dim)' }}>
+            Building baseline — check back in {Math.max(0, 28 - daysOfData)} days
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 10, lineHeight: 1.4, color: 'var(--color-text-secondary)' }}>· Acute (7d): {acute} TSU</div>
+            <div style={{ fontSize: 10, lineHeight: 1.4, color: 'var(--color-text-secondary)' }}>· Chronic (28d): {chronic} TSU</div>
+            <div style={{ fontSize: 10, lineHeight: 1.4, color: 'var(--color-text-secondary)' }}>· Ratio: {ratio?.toFixed(2) ?? '—'}</div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -302,10 +323,17 @@ export default function DashboardTab({ today, currentDate }: Props) {
       </div>
 
       {/* ── Score cards — 3-col ───────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
         <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(today)} />
         <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(today)} />
-        <TrainingLoadCard status={tlResult.status} colour={tlResult.colour} />
+        <TrainingLoadCard
+          status={tlResult.status}
+          colour={tlResult.colour}
+          acute={tlResult.acute}
+          chronic={tlResult.chronic}
+          ratio={tlResult.ratio}
+          daysOfData={allEntries.length}
+        />
       </div>
 
       {/* ── No data message ───────────────────────────────────────── */}
@@ -461,6 +489,12 @@ export default function DashboardTab({ today, currentDate }: Props) {
 
                 {tlExpanded && (
                   <div style={{ padding: '0 16px 16px' }}>
+                    {tlResult.status === 'Establishing baseline' ? (
+                      <div style={{ fontSize: 12, color: 'var(--color-text-dim)', marginBottom: 14 }}>
+                        Building baseline — check back in {Math.max(0, 28 - allEntries.length)} days
+                      </div>
+                    ) : (
+                    <>
                     {/* Acute / Chronic row */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
                       <div style={{ textAlign: 'center', padding: '8px', background: 'var(--color-bg)', borderRadius: 8 }}>
@@ -537,6 +571,8 @@ export default function DashboardTab({ today, currentDate }: Props) {
                           })}
                         </svg>
                       </div>
+                    )}
+                    </>
                     )}
                   </div>
                 )}
