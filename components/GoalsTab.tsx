@@ -264,7 +264,16 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
     fetch('/api/goals/greeting', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timeOfDay: getTimeOfDay(), hrvBand, trainedToday }),
+      body: JSON.stringify({
+        timeOfDay:     getTimeOfDay(),
+        hrvBand,
+        trainedToday,
+        proteinLogged: today.nutrition.total_protein ?? null,
+        proteinTarget: 135,
+        lastBedtime:   today.sleep.bedtime ?? null,
+        sleepDuration: today.sleep.duration_min ?? null,
+        rested:        today.sleep.rested ?? null,
+      }),
     })
       .then(r => r.json())
       .then(({ greeting: g }) => {
