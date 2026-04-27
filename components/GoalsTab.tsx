@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { getGoalsData, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, getVo2SparklineData, saveVo2Reading, saveCardioReading, fetch30DayHistory } from '@/lib/db'
 import type { GoalsData, HealthAppointment, BiomarkerReading, DailyEntry } from '@/lib/types'
 import { scoreColor, hrvZone } from '@/lib/types'
-import { computeTrainingLoad, computeTrainingLoadHistory, computeDailyTSU } from '@/lib/trainingLoad'
+import { computeTrainingLoadHistory } from '@/lib/trainingLoad'
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -215,9 +215,8 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
   const [editNotes,         setEditNotes]         = useState('')
   const [saving,            setSaving]            = useState(false)
 
-  // Training Load
+  // Training Load (hero score card only — no expandable card in GoalsTab)
   const [trainingHistory, setTrainingHistory] = useState<ReturnType<typeof computeTrainingLoadHistory>>([])
-  const [tlExpanded,      setTlExpanded]      = useState(false)
 
   // VO2 Max card
   const [vo2Expanded,        setVo2Expanded]        = useState(false)
@@ -246,13 +245,18 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
             const fresh = await fetchHealthAppointments()
             d = { ...d, appointments: fresh }
           } catch (e) {
-            console.error('GoalsTab seed appointments error:', e)
+            const msg = e && typeof e === 'object' ? JSON.stringify(e) : String(e)
+            console.error('GoalsTab seed appointments error (likely RLS — run: ALTER TABLE health_appointments DISABLE ROW LEVEL SECURITY):', msg)
           }
         }
         setData(d)
         setLoading(false)
       })
-      .catch(e => { console.error('GoalsTab load error:', e); setLoading(false) })
+      .catch(e => {
+        const msg = e && typeof e === 'object' ? JSON.stringify(e) : String(e)
+        console.error('GoalsTab load error:', msg)
+        setLoading(false)
+      })
   }, [])
 
   // Fetch dynamic greeting from API
@@ -264,7 +268,16 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
     fetch('/api/goals/greeting', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timeOfDay: getTimeOfDay(), hrvBand, trainedToday }),
+      body: JSON.stringify({
+        timeOfDay:     getTimeOfDay(),
+        hrvBand,
+        trainedToday,
+        proteinLogged: today.nutrition.total_protein ?? null,
+        proteinTarget: 135,
+        lastBedtime:   today.sleep.bedtime ?? null,
+        sleepDuration: today.sleep.duration_min ?? null,
+        rested:        today.sleep.rested ?? null,
+      }),
     })
       .then(r => r.json())
       .then(({ greeting: g }) => {
@@ -300,13 +313,10 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
     ? validGlucose.reduce((a, b) => a + b, 0) / validGlucose.length
     : null
 
-  // Training Load — derived from history (most recent point)
-  const tlCurrent = trainingHistory.length > 0
-    ? trainingHistory[trainingHistory.length - 1]
-    : null
-  const tlRatio   = tlCurrent?.ratio ?? null
-  const tlStatus  = tlCurrent?.status ?? 'Not enough data'
-  const tlColour  = tlCurrent?.colour ?? 'var(--color-text-dim)'
+  // Training Load — hero card status only (no expandable card here)
+  const tlCurrent  = trainingHistory.length > 0 ? trainingHistory[trainingHistory.length - 1] : null
+  const tlStatus   = trainingHistory.length < 28 ? 'Establishing baseline' : (tlCurrent?.status ?? 'Not enough data')
+  const tlColour   = trainingHistory.length < 28 ? '#9E9E9E'               : (tlCurrent?.colour ?? 'var(--color-text-dim)')
 
   const now = new Date()
   const fourMonthsOut = new Date(now)
@@ -505,7 +515,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
         )}
 
         {/* Score cards — 3-col */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
 
           <button
             type="button"
@@ -1379,188 +1389,6 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
         )}
       </div>
 
-      {/* Training Load card */}
-      <div className="card" style={{ padding: 0 }}>
-        <button
-          type="button"
-          onClick={() => setTlExpanded(prev => !prev)}
-          style={{
-            width: '100%', textAlign: 'left', background: 'none', border: 'none',
-            cursor: 'pointer', padding: 16,
-            display: 'flex', alignItems: 'center', gap: 10,
-          }}
-        >
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: tlColour, flexShrink: 0 }} />
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>Training Load</span>
-          <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500, color: tlColour }}>{tlStatus}</span>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${tlExpanded ? ' open' : ''}`} style={{ flexShrink: 0 }}>
-            <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-
-        {tlExpanded && (() => {
-          const lastPoint = trainingHistory.length > 0 ? trainingHistory[trainingHistory.length - 1] : null
-          const acute   = lastPoint?.acute   ?? 0
-          const chronic = lastPoint?.chronic  ?? 0
-          const ratio   = lastPoint?.ratio    ?? null
-
-          // Spectrum bar: full scale 0–2.0, five zones
-          const BAR_W = 280
-          const ZONES = [
-            { end: 0.6,  colour: 'var(--color-amber)' },
-            { end: 0.8,  colour: 'var(--color-training-easy)' },
-            { end: 1.3,  colour: 'var(--color-success)' },
-            { end: 1.5,  colour: 'var(--color-amber)' },
-            { end: 2.0,  colour: 'var(--color-danger)' },
-          ]
-          const SCALE_MAX = 2.0
-          const ratioX = ratio != null ? Math.min(ratio, SCALE_MAX) / SCALE_MAX * BAR_W : null
-
-          // 30-day chart
-          const n = trainingHistory.length
-          const PAD_X = 8, PAD_Y = 8, CHART_H = 44, CHART_W = 280
-          const ratios = trainingHistory.map(p => p.ratio ?? 0)
-          const maxR = Math.max(...ratios, 1.6)
-          const xOf = (i: number) => n <= 1 ? PAD_X : PAD_X + (i / (n - 1)) * (CHART_W - 2 * PAD_X)
-          const yOf = (v: number) => PAD_Y + CHART_H * (1 - v / maxR)
-          const opt_y1 = yOf(1.3), opt_y2 = yOf(0.8)
-
-          return (
-            <div style={{ padding: '0 16px 16px' }}>
-
-              {/* Acute / Chronic row */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
-                <div style={{ textAlign: 'center', padding: '10px 8px', background: 'var(--color-bg)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 3 }}>
-                    Acute (7d)
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                    {acute}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--color-text-dim)' }}>TSU</div>
-                </div>
-                <div style={{ textAlign: 'center', padding: '10px 8px', background: 'var(--color-bg)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 3 }}>
-                    Chronic (28d)
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                    {chronic}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--color-text-dim)' }}>TSU</div>
-                </div>
-              </div>
-
-              {/* Ratio + spectrum bar */}
-              <div style={{ marginBottom: 4 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>Ratio (acute / chronic)</div>
-                  {ratio != null && (
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: tlColour }}>
-                      {ratio.toFixed(2)}
-                    </div>
-                  )}
-                </div>
-
-                <svg viewBox={`0 0 ${BAR_W} 30`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
-                  {/* Zone bands */}
-                  {(() => {
-                    let x = 0
-                    return ZONES.map((z, i) => {
-                      const prev = i === 0 ? 0 : ZONES[i - 1].end
-                      const w = (z.end - prev) / SCALE_MAX * BAR_W
-                      const rect = <rect key={z.end} x={x} y="14" width={w} height="10" fill={z.colour} opacity="0.5"
-                        rx={i === 0 ? 5 : 0}
-                        style={{ borderRadius: i === ZONES.length - 1 ? '0 5px 5px 0' : '0' }}
-                      />
-                      x += w
-                      return rect
-                    })
-                  })()}
-
-                  {/* Zone dividers + scale labels */}
-                  {[0.6, 0.8, 1.3, 1.5].map(v => {
-                    const cx = v / SCALE_MAX * BAR_W
-                    return (
-                      <g key={v}>
-                        <line x1={cx} y1="12" x2={cx} y2="24" stroke="var(--color-surface)" strokeWidth="1.5" />
-                        <text x={cx} y="29" textAnchor="middle" fontSize="7" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
-                          {v}
-                        </text>
-                      </g>
-                    )
-                  })}
-
-                  {/* Current ratio pin */}
-                  {ratioX != null && (
-                    <>
-                      <line x1={ratioX} y1="8" x2={ratioX} y2="14" stroke={tlColour} strokeWidth="1.5" />
-                      <circle cx={ratioX} cy="5" r="4" fill={tlColour} />
-                    </>
-                  )}
-                </svg>
-              </div>
-
-              {/* 30-day trend chart */}
-              {trainingHistory.length >= 2 && (
-                <div style={{ marginTop: 16 }}>
-                  <div className="section-label" style={{ marginBottom: 8 }}>30-day trend</div>
-                  <svg viewBox={`0 0 ${CHART_W} ${PAD_Y * 2 + CHART_H + 12}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
-                    <defs>
-                      <clipPath id="tlClip">
-                        <rect x={PAD_X} y={PAD_Y} width={CHART_W - 2 * PAD_X} height={CHART_H} />
-                      </clipPath>
-                    </defs>
-
-                    {/* Optimal zone shaded band */}
-                    <rect
-                      x={PAD_X} y={opt_y1}
-                      width={CHART_W - 2 * PAD_X}
-                      height={Math.max(0, opt_y2 - opt_y1)}
-                      fill="var(--color-success)"
-                      opacity="0.08"
-                      clipPath="url(#tlClip)"
-                    />
-
-                    {/* Line segments coloured per-day status */}
-                    {trainingHistory.slice(1).map((pt, i) => {
-                      const prev = trainingHistory[i]
-                      return (
-                        <line
-                          key={pt.date}
-                          x1={xOf(i).toFixed(1)} y1={yOf(prev.ratio ?? 0).toFixed(1)}
-                          x2={xOf(i + 1).toFixed(1)} y2={yOf(pt.ratio ?? 0).toFixed(1)}
-                          stroke={pt.colour}
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                      )
-                    })}
-
-                    {/* First and last date labels */}
-                    {trainingHistory.length > 0 && (() => {
-                      const first = trainingHistory[0]
-                      const last  = trainingHistory[trainingHistory.length - 1]
-                      const fmt = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                      return (
-                        <>
-                          <text x={PAD_X} y={PAD_Y * 2 + CHART_H + 10} fontSize="8" textAnchor="start" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
-                            {fmt(first.date)}
-                          </text>
-                          <text x={CHART_W - PAD_X} y={PAD_Y * 2 + CHART_H + 10} fontSize="8" textAnchor="end" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
-                            {fmt(last.date)}
-                          </text>
-                        </>
-                      )
-                    })()}
-                  </svg>
-                </div>
-              )}
-
-            </div>
-          )
-        })()}
-      </div>
-
       {/* ── SECTION 3: Health calendar ───────────────────────────── */}
 
       <div className="section-label" style={{ paddingLeft: 4, marginTop: 4 }}>
@@ -1569,7 +1397,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
 
       {allAppts.length === 0 ? (
         <div className="card" style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>
-          No appointments found. If this persists, the health_appointments table may need RLS disabled in Supabase (check browser console for details).
+          No appointments found. If this persists, run in Supabase SQL editor: ALTER TABLE health_appointments DISABLE ROW LEVEL SECURITY; (check browser console for the specific error)
         </div>
       ) : (
         allAppts.map(appt => {

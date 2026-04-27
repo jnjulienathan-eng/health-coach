@@ -24,16 +24,21 @@ const CHRONIC_DECAY = 1 - 1 / 28
 
 // ─── computeTrainingLoad ─────────────────────────────────────────
 // Returns current acute/chronic loads and ratio using all provided entries.
+// Requires ≥28 days of entries for a meaningful ratio; returns "Establishing
+// baseline" with null values if the window is too short.
 export function computeTrainingLoad(entries: DailyEntry[]): {
-  acute: number
-  chronic: number
+  acute: number | null
+  chronic: number | null
   ratio: number | null
   status: string
   colour: string
 } {
   if (entries.length === 0) {
-    const { status, colour } = statusFromRatio(null)
-    return { acute: 0, chronic: 0, ratio: null, status, colour }
+    return { acute: null, chronic: null, ratio: null, status: 'Establishing baseline', colour: '#9E9E9E' }
+  }
+
+  if (entries.length < 28) {
+    return { acute: null, chronic: null, ratio: null, status: 'Establishing baseline', colour: '#9E9E9E' }
   }
 
   const sorted = [...entries].sort((a, b) => a.date < b.date ? -1 : 1)
@@ -44,8 +49,8 @@ export function computeTrainingLoad(entries: DailyEntry[]): {
   let acute = 0, chronic = 0
   for (const date of allDates) {
     const tsu = tsuByDate[date] ?? 0
-    acute   = tsu + ACUTE_DECAY  * acute
-    chronic = tsu + CHRONIC_DECAY * chronic
+    acute   = tsu / 7  + ACUTE_DECAY  * acute
+    chronic = tsu / 28 + CHRONIC_DECAY * chronic
   }
 
   const ratio = chronic > 0 ? acute / chronic : null
@@ -76,8 +81,8 @@ export function computeTrainingLoadHistory(entries: DailyEntry[]): Array<{
   let acute = 0, chronic = 0
   for (const date of allDates) {
     const tsu = tsuByDate[date] ?? 0
-    acute   = tsu + ACUTE_DECAY  * acute
-    chronic = tsu + CHRONIC_DECAY * chronic
+    acute   = tsu / 7  + ACUTE_DECAY  * acute
+    chronic = tsu / 28 + CHRONIC_DECAY * chronic
     const ratio = chronic > 0 ? acute / chronic : null
     const { status, colour } = statusFromRatio(ratio)
     result.push({
