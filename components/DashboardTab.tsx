@@ -13,6 +13,7 @@ import { loadRecentEntries } from '@/lib/db'
 import { behaviorScore, outcomeScore } from '@/lib/scores'
 import { scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry } from '@/lib/types'
+import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
 
 interface Props {
   today: DailyEntry
@@ -110,74 +111,51 @@ function ScoreCard({ label, score, bullets }: { label: string; score: number; bu
       style={{
         flex: 1,
         textAlign: 'center',
-        padding: '24px 12px 16px',
+        padding: '14px 8px 12px',
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
-        borderRadius: 16,
+        borderRadius: 12,
       }}
     >
-      <div
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 64,
-          fontWeight: 400,
-          color,
-          lineHeight: 1,
-        }}
-      >
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 40, fontWeight: 700, color, lineHeight: 1 }}>
         {score}
       </div>
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 500,
-          color,
-          marginTop: 6,
-        }}
-      >
-        {word}
-      </div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 500,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          color: 'var(--color-text-dim)',
-          marginTop: 4,
-        }}
-      >
+      <div style={{ fontSize: 11, fontWeight: 500, color, marginTop: 4 }}>{word}</div>
+      <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginTop: 3 }}>
         {label}
       </div>
       {bullets && bullets.length > 0 && (
-        <div
-          style={{
-            marginTop: 10,
-            paddingTop: 10,
-            borderTop: '1px solid var(--color-border)',
-            textAlign: 'left',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-          }}
-        >
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 4 }}>
           {bullets.map((b, i) => (
-            <div
-              key={i}
-              style={{
-                fontSize: 11,
-                lineHeight: 1.4,
-                color: b.ok ? 'var(--color-text-secondary)' : 'var(--color-text-dim)',
-                display: 'flex',
-                gap: 4,
-              }}
-            >
+            <div key={i} style={{ fontSize: 10, lineHeight: 1.4, color: b.ok ? 'var(--color-text-secondary)' : 'var(--color-text-dim)', display: 'flex', gap: 4 }}>
               <span style={{ flexShrink: 0 }}>{b.ok ? '✓' : '✗'}</span>
               <span>{b.text}</span>
             </div>
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Training Load status card ────────────────────────────────────
+function TrainingLoadCard({ status, colour }: { status: string; colour: string }) {
+  return (
+    <div style={{
+      flex: 1,
+      textAlign: 'center',
+      padding: '14px 8px 12px',
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-border)',
+      borderRadius: 12,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
+        <div style={{ width: 10, height: 10, borderRadius: '50%', background: colour }} />
+      </div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: colour, lineHeight: 1.3 }}>{status}</div>
+      <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginTop: 3 }}>
+        Training Load
+      </div>
     </div>
   )
 }
@@ -224,11 +202,12 @@ const tooltipLabelStyle = { color: '#5A7A66', marginBottom: 2 }
 
 // ─── Main component ───────────────────────────────────────────────
 export default function DashboardTab({ today, currentDate }: Props) {
-  const [entries, setEntries] = useState<DailyEntry[]>([])
-  const [loading, setLoading] = useState(true)
+  const [entries,     setEntries]     = useState<DailyEntry[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [tlExpanded,  setTlExpanded]  = useState(false)
 
   useEffect(() => {
-    loadRecentEntries(14)
+    loadRecentEntries(30)
       .then(setEntries)
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -248,33 +227,37 @@ export default function DashboardTab({ today, currentDate }: Props) {
   const todayBehavior = behaviorScore(today)
   const todayOutcome  = outcomeScore(today)
 
-  // 7 most recent days for charts (oldest→newest for left→right display)
-  const chart7 = allEntries.slice(0, 7).reverse()
+  // 30 most recent days for charts (oldest→newest for left→right display)
+  const chart30 = allEntries.slice(0, 30).reverse()
 
   const hasEnoughData = entriesWithData.length >= 2
 
+  // Training Load computation from full history
+  const tlResult   = computeTrainingLoad(allEntries)
+  const tlHistory  = computeTrainingLoadHistory(chart30)
+
   // Chart data arrays
-  const hrvData = chart7.map(e => ({
+  const hrvData = chart30.map(e => ({
     date:  chartDate(e.date),
     value: e.sleep.hrv,
   }))
 
-  const sleepData = chart7.map(e => ({
+  const sleepData = chart30.map(e => ({
     date:  chartDate(e.date),
     value: durationToH(e.sleep.duration_min),
   }))
 
-  const proteinData = chart7.map(e => ({
+  const proteinData = chart30.map(e => ({
     date:  chartDate(e.date),
     value: e.nutrition.total_protein != null ? Math.round(e.nutrition.total_protein) : null,
   }))
 
-  const fiberData = chart7.map(e => ({
+  const fiberData = chart30.map(e => ({
     date:  chartDate(e.date),
     value: e.nutrition.total_fiber != null ? Math.round(e.nutrition.total_fiber) : null,
   }))
 
-  const trainingData = chart7.map(e => ({
+  const trainingData = chart30.map(e => ({
     date:  chartDate(e.date),
     value: e.training.sessions.length > 0
       ? e.training.sessions.reduce((sum, s) => sum + s.duration_min, 0)
@@ -318,10 +301,11 @@ export default function DashboardTab({ today, currentDate }: Props) {
         </p>
       </div>
 
-      {/* ── Score cards ───────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 12 }}>
+      {/* ── Score cards — 3-col ───────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 8 }}>
         <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(today)} />
         <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(today)} />
+        <TrainingLoadCard status={tlResult.status} colour={tlResult.colour} />
       </div>
 
       {/* ── No data message ───────────────────────────────────────── */}
@@ -349,7 +333,7 @@ export default function DashboardTab({ today, currentDate }: Props) {
       {hasEnoughData && (
         <>
           {/* HRV */}
-          <ChartCard title="HRV — 7 days">
+          <ChartCard title="HRV — 30 days">
             <ResponsiveContainer width="100%" height={CHART_H}>
               <LineChart data={hrvData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <XAxis dataKey="date" tick={axisStyle} />
@@ -372,7 +356,7 @@ export default function DashboardTab({ today, currentDate }: Props) {
           </ChartCard>
 
           {/* Sleep duration */}
-          <ChartCard title="Sleep — 7 days">
+          <ChartCard title="Sleep — 30 days">
             <ResponsiveContainer width="100%" height={CHART_H}>
               <BarChart data={sleepData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <XAxis dataKey="date" tick={axisStyle} />
@@ -388,7 +372,7 @@ export default function DashboardTab({ today, currentDate }: Props) {
           </ChartCard>
 
           {/* Protein */}
-          <ChartCard title="Protein — 7 days">
+          <ChartCard title="Protein — 30 days">
             <ResponsiveContainer width="100%" height={CHART_H}>
               <BarChart data={proteinData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <XAxis dataKey="date" tick={axisStyle} />
@@ -404,7 +388,7 @@ export default function DashboardTab({ today, currentDate }: Props) {
           </ChartCard>
 
           {/* Fiber */}
-          <ChartCard title="Fiber — 7 days">
+          <ChartCard title="Fiber — 30 days">
             <ResponsiveContainer width="100%" height={CHART_H}>
               <BarChart data={fiberData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <XAxis dataKey="date" tick={axisStyle} />
@@ -419,8 +403,8 @@ export default function DashboardTab({ today, currentDate }: Props) {
             </div>
           </ChartCard>
 
-          {/* Training load */}
-          <ChartCard title="Training load — 7 days">
+          {/* Training minutes */}
+          <ChartCard title="Training minutes — 30 days">
             <ResponsiveContainer width="100%" height={CHART_H}>
               <BarChart data={trainingData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <XAxis dataKey="date" tick={axisStyle} />
@@ -433,6 +417,132 @@ export default function DashboardTab({ today, currentDate }: Props) {
               Total training minutes per day
             </div>
           </ChartCard>
+
+          {/* Training Load expandable card */}
+          {(() => {
+            const n = tlHistory.length
+            const PAD_X = 8, PAD_Y = 8, CHART_W = 280, TL_H = 44
+            const maxR = Math.max(...tlHistory.map(p => p.ratio ?? 0), 1.6)
+            const xOf = (i: number) => n <= 1 ? PAD_X : PAD_X + (i / (n - 1)) * (CHART_W - 2 * PAD_X)
+            const yOf = (v: number) => PAD_Y + TL_H * (1 - v / maxR)
+            const opt_y1 = yOf(1.3), opt_y2 = yOf(0.8)
+
+            const BAR_W = 280
+            const ZONES = [
+              { end: 0.6,  colour: 'var(--color-amber)' },
+              { end: 0.8,  colour: 'var(--color-training-easy)' },
+              { end: 1.3,  colour: 'var(--color-success)' },
+              { end: 1.5,  colour: 'var(--color-amber)' },
+              { end: 2.0,  colour: 'var(--color-danger)' },
+            ]
+            const SCALE_MAX = 2.0
+            const ratioX = tlResult.ratio != null ? Math.min(tlResult.ratio, SCALE_MAX) / SCALE_MAX * BAR_W : null
+
+            return (
+              <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setTlExpanded(prev => !prev)}
+                  style={{
+                    width: '100%', textAlign: 'left', background: 'none', border: 'none',
+                    cursor: 'pointer', padding: '14px 16px',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}
+                >
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: tlResult.colour, flexShrink: 0 }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+                    Training Load
+                  </span>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500, color: tlResult.colour }}>{tlResult.status}</span>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${tlExpanded ? ' open' : ''}`} style={{ flexShrink: 0 }}>
+                    <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+
+                {tlExpanded && (
+                  <div style={{ padding: '0 16px 16px' }}>
+                    {/* Acute / Chronic row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                      <div style={{ textAlign: 'center', padding: '8px', background: 'var(--color-bg)', borderRadius: 8 }}>
+                        <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 2 }}>Acute (7d)</div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: 'var(--color-text-primary)' }}>{tlResult.acute}</div>
+                        <div style={{ fontSize: 9, color: 'var(--color-text-dim)' }}>TSU</div>
+                      </div>
+                      <div style={{ textAlign: 'center', padding: '8px', background: 'var(--color-bg)', borderRadius: 8 }}>
+                        <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 2 }}>Chronic (28d)</div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: 'var(--color-text-primary)' }}>{tlResult.chronic}</div>
+                        <div style={{ fontSize: 9, color: 'var(--color-text-dim)' }}>TSU</div>
+                      </div>
+                    </div>
+
+                    {/* Ratio + spectrum bar */}
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                        <div style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>Ratio</div>
+                        {tlResult.ratio != null && (
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: tlResult.colour }}>
+                            {tlResult.ratio.toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+                      <svg viewBox={`0 0 ${BAR_W} 30`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                        {(() => {
+                          let x = 0
+                          return ZONES.map((z, i) => {
+                            const prev = i === 0 ? 0 : ZONES[i - 1].end
+                            const w = (z.end - prev) / SCALE_MAX * BAR_W
+                            const rect = <rect key={z.end} x={x} y="14" width={w} height="10" fill={z.colour} opacity="0.5" />
+                            x += w
+                            return rect
+                          })
+                        })()}
+                        {[0.6, 0.8, 1.3, 1.5].map(v => {
+                          const cx = v / SCALE_MAX * BAR_W
+                          return (
+                            <g key={v}>
+                              <line x1={cx} y1="12" x2={cx} y2="24" stroke="var(--color-surface)" strokeWidth="1.5" />
+                              <text x={cx} y="29" textAnchor="middle" fontSize="7" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{v}</text>
+                            </g>
+                          )
+                        })}
+                        {ratioX != null && (
+                          <>
+                            <line x1={ratioX} y1="8" x2={ratioX} y2="14" stroke={tlResult.colour} strokeWidth="1.5" />
+                            <circle cx={ratioX} cy="5" r="4" fill={tlResult.colour} />
+                          </>
+                        )}
+                      </svg>
+                    </div>
+
+                    {/* 30-day trend */}
+                    {n >= 2 && (
+                      <div style={{ marginTop: 14 }}>
+                        <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginBottom: 6 }}>30-day trend</div>
+                        <svg viewBox={`0 0 ${CHART_W} ${PAD_Y * 2 + TL_H + 12}`} width="100%" style={{ display: 'block' }}>
+                          <defs>
+                            <clipPath id="dashTlClip">
+                              <rect x={PAD_X} y={PAD_Y} width={CHART_W - 2 * PAD_X} height={TL_H} />
+                            </clipPath>
+                          </defs>
+                          <rect x={PAD_X} y={opt_y1} width={CHART_W - 2 * PAD_X} height={Math.max(0, opt_y2 - opt_y1)} fill="var(--color-success)" opacity="0.08" clipPath="url(#dashTlClip)" />
+                          {tlHistory.slice(1).map((pt, i) => {
+                            const prev = tlHistory[i]
+                            return (
+                              <line key={pt.date}
+                                x1={xOf(i).toFixed(1)} y1={yOf(prev.ratio ?? 0).toFixed(1)}
+                                x2={xOf(i + 1).toFixed(1)} y2={yOf(pt.ratio ?? 0).toFixed(1)}
+                                stroke={pt.colour} strokeWidth="1.5" strokeLinecap="round"
+                              />
+                            )
+                          })}
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </>
       )}
     </div>

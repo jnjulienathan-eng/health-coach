@@ -211,7 +211,11 @@ export default function App() {
 
         {/* ── GOALS TAB (BodyCipher home) ───────────────────────── */}
         {activeTab === 'goals' && (
-          <GoalsTab onNavigateDashboard={() => setActiveTab('dashboard')} />
+          <GoalsTab
+            onNavigateDashboard={() => setActiveTab('dashboard')}
+            today={entry}
+            currentDate={currentDate}
+          />
         )}
 
         {/* ── TODAY TAB ────────────────────────────────────────── */}

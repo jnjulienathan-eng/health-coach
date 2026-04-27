@@ -385,7 +385,8 @@ export async function getGoalsData(): Promise<GoalsData> {
     supabase
       .from('health_appointments')
       .select('*')
-      .eq('user_id', 'julie'),
+      .eq('user_id', 'julie')
+      .order('next_due_date', { ascending: true, nullsFirst: false }),
   ])
 
   const sr = scoresRes.data as Record<string, unknown> | null
@@ -404,16 +405,50 @@ export async function getGoalsData(): Promise<GoalsData> {
   return { todayScores, biomarkers, fastingGlucose7d, appointments }
 }
 
-// ─── saveAppointment ──────────────────────────────────────────────
-export async function saveAppointment(
-  id: string,
-  updates: { last_visit?: string | null; next_booked?: string | null },
-): Promise<void> {
+// ─── saveHealthAppointment ────────────────────────────────────────
+export async function saveHealthAppointment(data: {
+  id: string
+  last_completed_date?: string | null
+  next_due_date?: string | null
+  notes?: string | null
+}): Promise<void> {
+  const { id, ...fields } = data
   const { error } = await supabase
     .from('health_appointments')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', id)
     .eq('user_id', 'julie')
+  if (error) throw error
+}
+
+// ─── fetchHealthAppointments ──────────────────────────────────────
+export async function fetchHealthAppointments() {
+  const { data, error } = await supabase
+    .from('health_appointments')
+    .select('*')
+    .eq('user_id', 'julie')
+    .order('next_due_date', { ascending: true, nullsFirst: false })
+  if (error) throw error
+  return (data ?? []) as import('./types').HealthAppointment[]
+}
+
+// ─── seedDefaultAppointments ─────────────────────────────────────
+// Inserts default appointment rows if the table is empty for this user.
+export async function seedDefaultAppointments(): Promise<void> {
+  const defaults = [
+    { appointment_type: 'dermatologist',    interval_months: 6   },
+    { appointment_type: 'dentist',          interval_months: 6   },
+    { appointment_type: 'gynaecologist',    interval_months: 12  },
+    { appointment_type: 'full_bloodwork',   interval_months: 12  },
+    { appointment_type: 'breast_scan',      interval_months: 12  },
+    { appointment_type: 'thyroid_scan',     interval_months: 12  },
+    { appointment_type: 'eye_optometrist',  interval_months: 12  },
+    { appointment_type: 'bone_density_scan', interval_months: 24 },
+    { appointment_type: 'colonoscopy',      interval_months: 120 },
+  ]
+  const { error } = await supabase
+    .from('health_appointments')
+    .insert(defaults.map(d => ({ ...d, user_id: 'julie' })))
   if (error) throw error
 }
 
@@ -458,6 +493,13 @@ export async function saveCardioReading(ldl: number, hdl: number, date: string):
     ])
 
   if (error) throw error
+}
+
+// ─── fetch30DayHistory ────────────────────────────────────────────
+// Returns 30 days of entries including training sessions, used for
+// Training Load EWMA computation. Sessions are loaded via loadSessionsForDates.
+export async function fetch30DayHistory(): Promise<DailyEntry[]> {
+  return loadRecentEntries(30)
 }
 
 // ─── Breakfast templates (hardcoded) ─────────────────────────────

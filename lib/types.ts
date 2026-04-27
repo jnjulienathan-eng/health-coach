@@ -171,10 +171,21 @@ export interface BiomarkerReading {
 export interface HealthAppointment {
   id: string
   user_id: string
-  type: string
-  last_visit: string | null    // YYYY-MM-DD
-  interval_months: number | null
-  next_booked: string | null   // YYYY-MM-DD
+  appointment_type: string
+  interval_months: number
+  last_completed_date: string | null  // YYYY-MM-DD
+  next_due_date: string | null        // YYYY-MM-DD
+  notes: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface TrainingLoadResult {
+  acute: number
+  chronic: number
+  ratio: number | null
+  status: string
+  colour: string
 }
 
 export interface GoalsData {

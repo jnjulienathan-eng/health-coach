@@ -29,6 +29,9 @@
   --color-heart-pink-bg:   #FBE4E4;
   --color-spectrum-yellow: #F4D35E;
 
+  /* Training Load */
+  --color-training-easy: #6DBF8A;
+
   /* Hydration cups */
   --hydration-cups-gap: 2px;
   --hydration-cup-min:  44px;
