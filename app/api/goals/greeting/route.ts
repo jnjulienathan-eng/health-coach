@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const msg = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 120,
-      system: `You are BodyCipher, a personal health coach. Write a single short greeting for Julie — witty, warm, specific to her data, never generic fitness-app language. Never mention cycle day. Max 2 sentences. Address her directly as "Julie" (in green — but you just write the text, no markup). Keep it punchy.`,
+      system: `You are BodyCipher, a personal health coach. Write a single short greeting for Julie — witty, warm, specific to her data, never generic fitness-app language. Never mention cycle day. Max 2 sentences. Address her directly as "Julie" (in green — but you just write the text, no markup). Keep it punchy. Total response must be under 30 words. Every word must earn its place.`,
       messages: [{ role: 'user', content: userPrompt }],
     })
 
