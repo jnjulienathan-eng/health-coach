@@ -1,6 +1,6 @@
 # BodyCipher — Nutrition section data model
 
-Design decisions captured April 2026. Updated April 26, 2026 to reflect recipe builder and photo estimation additions.
+Design decisions captured April 2026. Updated April 27, 2026 to reflect recipe builder, photo estimation, raw recipe mode, PATCH endpoints, and UI changes.
 Companion document to NUTRITION_UX_FLOW.md.
 
 ---
@@ -12,7 +12,7 @@ Companion document to NUTRITION_UX_FLOW.md.
 - A denormalized daily summary is maintained for coach and dashboard reads. Recomputed and upserted after every meal save, edit, or delete. The coach never runs join queries at load time.
 - No fixed meal slots. The four-slot convention is dropped. Julie logs as many meals as she wants, named however she wants, in the order they happen.
 - No date entry. The app captures the timestamp automatically. Day boundary is 05:00 Europe/Berlin.
-- Templates have no assigned meal type. A template is a named collection of ingredients with default weights.
+- Templates have no assigned meal type. A template is a named collection of ingredients with default weights. Template tables and API routes preserved in DB — not surfaced in UI.
 - A recipe is a food item. Once built and activated, it appears in ingredient search like any other item and is logged by weight.
 
 ---
@@ -38,7 +38,7 @@ One row per meal occasion.
 | `logged_at` | timestamptz | Auto-set on save. Determines day and order. |
 | `name` | text | Auto-generated from time band if blank. Never stored blank. |
 | `logged_via` | text | See values below. |
-| `peak_glucose_mmol` | numeric | Optional CGM reading for this meal. Nullable. |
+| `peak_glucose_mmol` | numeric | Optional CGM reading for this meal. Nullable. Editable inline on meal card via PATCH /api/nutrition/meal. |
 | `notes` | text | Optional free text. Nullable. |
 | `calories` | numeric | Nullable. Only populated when logged_via = 'photo_estimate'. |
 | `protein_g` | numeric | Nullable. Only populated when logged_via = 'photo_estimate'. |
@@ -54,7 +54,7 @@ One row per meal occasion.
 
 **Photo estimate approach:** When logged_via = 'photo_estimate', there are no meal_log_items rows. The five macro fields on meal_logs itself (calories, protein_g, carbs_g, fat_g, fiber_g) hold the values. The daily_nutrition_summary recompute adds these directly to the running totals alongside item-based macros. This is the correct approach — do not create synthetic food_items entries for photo estimates.
 
-`peak_glucose_mmol` is a single manually-entered value. If CGM integration becomes automatic, this migrates to a separate `cgm_readings` table with `meal_log_id` FK. That is a future decision.
+`peak_glucose_mmol` is a single manually-entered value updated inline on meal cards in the day view via PATCH /api/nutrition/meal. If CGM integration becomes automatic, this migrates to a separate `cgm_readings` table with `meal_log_id` FK. That is a future decision.
 
 ---
 
@@ -73,7 +73,9 @@ Julie's personal food library. Every ingredient or product ever used gets cached
 | `use_count` | int | Incremented each time this item is logged. Drives autocomplete ranking. |
 | `created_at` | timestamptz | Auto-set |
 
-`food_items` is the hub. Both `meal_log_items` and `meal_template_items` and `recipe_ingredients` reference it. When a recipe is activated, a food_items row is created with source = 'recipe'. When a recipe is deleted, that row's source is set to 'recipe_deleted' so it no longer surfaces in search — the row is never hard-deleted in case it is referenced in historical meal_logs.
+`food_items` is the hub. Both `meal_log_items`, `meal_template_items`, and `recipe_ingredients` reference it. When a recipe is activated, a food_items row is created with source = 'recipe'. When a recipe is deleted, that row's source is set to 'recipe_deleted' so it no longer surfaces in search — the row is never hard-deleted in case it is referenced in historical meal_logs.
+
+Macro overrides are applied via PATCH /api/nutrition/food-item: the route merges per-macro values into the existing nutrients_per_100g JSONB, preserving the raw USDA array key.
 
 ---
 
@@ -120,7 +122,7 @@ Denormalized daily macro totals. Upserted after every meal save, edit, or delete
 
 ### `meal_templates`
 
-Named meal presets. No meal type assigned.
+Named meal presets. No meal type assigned. Tables preserved in DB and API — not surfaced in UI.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -135,7 +137,7 @@ Named meal presets. No meal type assigned.
 
 ### `meal_template_items`
 
-Ingredients and default weights inside a template.
+Ingredients and default weights inside a template. Preserved in DB and API — not surfaced in UI.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -150,7 +152,7 @@ Template edits do not affect historical logs. meal_logs has no FK back to meal_t
 
 ### `recipes`
 
-Batch-cooked recipe definitions. A recipe becomes a food item once activated.
+Batch recipe definitions. A recipe becomes a food item once activated.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -158,18 +160,27 @@ Batch-cooked recipe definitions. A recipe becomes a food item once activated.
 | `user_id` | text | Owner |
 | `name` | text | e.g. "Lentil pilaf — Julie's recipe" |
 | `total_servings` | integer | Whole batch makes this many portions. Min 1. |
-| `total_cooked_grams` | numeric | Weight of the finished cooked pot in grams. Nullable — null = draft. |
+| `total_cooked_grams` | numeric | Weight of the finished cooked pot in grams. Nullable — null when draft (cooked) or when is_raw = true. |
 | `default_serving_grams` | numeric | Optional typical portion weight. When set, shows shortcut chip on Screen 3. Nullable. |
+| `is_raw` | boolean | DEFAULT false. When true: no cooking step. Divisor = sum of raw ingredient weights. total_cooked_grams stays null. Activates as soon as ingredients are present. |
 | `food_item_id` | uuid | FK → food_items. Null when draft. Set when activated. |
 | `status` | text | 'draft' \| 'active' |
 | `created_at` | timestamptz | Auto-set |
 | `updated_at` | timestamptz | Updated on every change |
 
-**Draft state:** When total_cooked_grams is null, status = 'draft'. The recipe builder can be saved as a draft while the pot is still cooking. Draft recipes appear in My Library with an amber chip but do not appear in ingredient search.
+**Cooked recipes (is_raw = false):** total_cooked_grams absent = status 'draft'. Activates when cooked weight is provided. Draft recipes appear in My Library with amber chip but do not appear in ingredient search.
 
-**Activation:** When total_cooked_grams is set (either at creation or via edit), macros are computed and a food_items entry is created or updated. Status becomes 'active'. The recipe now appears in ingredient search.
+**Raw / assembled recipes (is_raw = true):** No cooking step. total_cooked_grams stays null. Activates as soon as there is at least one ingredient — no cooked weight needed. Divisor for per-100g computation = sum of raw ingredient weights.
 
-**Editing:** Changing ingredients, weights, servings, or cooked weight recomputes and updates the linked food_items entry. Historical meal_logs are unaffected — macros were captured at logging time.
+**Macro computation:**
+1. For each ingredient: `food_items.nutrients_per_100g[macro] × weight_grams / 100` → ingredient contribution
+2. Sum all contributions → total batch macros
+3. Divisor: `total_cooked_grams` for cooked recipes; sum of ingredient weights for raw recipes (is_raw = true)
+4. `per_100g_macro = total_batch_macro / divisor × 100`
+5. Apply to all five macros (calories, protein, carbs, fat, fiber)
+6. Store result in the linked food_items.nutrients_per_100g
+
+**Editing:** Changing ingredients, weights, servings, cooked weight, or is_raw recomputes and updates the linked food_items entry. Historical meal_logs are unaffected — macros were captured at logging time.
 
 ---
 
@@ -184,14 +195,7 @@ Raw ingredient weights for the whole batch. One row per ingredient per recipe.
 | `food_item_id` | uuid | FK → food_items.id. RESTRICT delete. |
 | `weight_grams` | numeric | Raw weight for the **whole batch**. Not per serving. Min > 0. |
 
-**Important:** weight_grams here is the raw pre-cooking weight for the full batch. This is different from meal_log_items where weight_grams is the cooked portion the user ate. The recipe macro formula accounts for this via total_cooked_grams.
-
-**Macro computation from a recipe:**
-1. For each ingredient: `food_items.nutrients_per_100g[macro] × weight_grams / 100` → ingredient contribution
-2. Sum all contributions → total batch macros
-3. `per_100g_macro = total_batch_macro / total_cooked_grams × 100`
-4. Apply to all five macros (calories, protein, carbs, fat, fiber)
-5. Store result in the linked food_items.nutrients_per_100g
+**Important:** weight_grams here is the raw pre-cooking weight for the full batch. This is different from meal_log_items where weight_grams is the cooked portion the user ate. The recipe macro formula accounts for this via the divisor (total_cooked_grams for cooked recipes; sum of ingredient weights for raw recipes).
 
 ---
 
@@ -209,13 +213,50 @@ recipes                ||--o|  food_items              : produces
 
 ---
 
+## API routes
+
+### POST /api/nutrition/meal
+Create a meal_log + meal_log_items, bump use_count on each food_items row, recompute daily_nutrition_summary. Optionally save as template (save_as_template: true + template_name). For photo_estimate meals: pass top-level macro fields, no items required.
+
+### PUT /api/nutrition/meal
+Replace items on an existing meal and/or update name/notes/peak_glucose_mmol. Recomputes daily_nutrition_summary.
+
+### PATCH /api/nutrition/meal
+Update `peak_glucose_mmol` on a single meal_log row. Does NOT recompute daily_nutrition_summary (glucose is not part of the macro totals). Used by the inline glucose field on meal cards in the day view.
+
+### DELETE /api/nutrition/meal
+Remove a meal_log (cascades items), recompute daily_nutrition_summary.
+
+### POST /api/nutrition/food-item
+Idempotent upsert. Used the first time an ingredient is selected from USDA or Open Food Facts. Returns existing row if already cached.
+
+### PATCH /api/nutrition/food-item
+Merge macro overrides into an existing food_items row's nutrients_per_100g JSONB. Accepts: `{ id, calories?, protein?, carbs?, fat?, fiber? }`. Preserves all other keys (e.g. the raw USDA array). Ownership-checked. Used by the pencil icon on local library results in ScreenSearch.
+
+### GET /api/nutrition/recipe
+List all recipes (draft + active) with their ingredients, ordered by updated_at desc.
+
+### POST /api/nutrition/recipe
+Create a recipe. If total_cooked_grams provided (cooked) or is_raw = true with ingredients: activates immediately (creates food_items entry). Otherwise saves as draft.
+
+### PUT /api/nutrition/recipe
+Update a recipe. Activates when cooked weight first arrives (cooked mode) or when ingredients are first added (raw mode). Recomputes/upserts the linked food_items row when ingredients, weight, name, or is_raw change on an active recipe.
+
+### DELETE /api/nutrition/recipe
+Delete the recipe (cascades recipe_ingredients) and flip the linked food_items row to source = 'recipe_deleted'. food_items row never hard-deleted.
+
+### POST /api/nutrition/estimate
+Accept optional base64 image and/or text description. Call Anthropic Vision via claude-sonnet-4-20250514. Return JSON macro estimate. No DB writes — caller writes to meal_logs via POST /api/nutrition/meal when user confirms.
+
+---
+
 ## External data sources
 
 **USDA FoodData Central**
 - REST API: `api.nal.usda.gov/fdc/v1/foods/search`
 - Free, no rate limits, public domain data. Nutrient IDs are stable.
 - Called at most once per ingredient — cached in food_items permanently.
-- **Deduplication rule:** When search returns multiple results with identical names, collapse to the entry with the most complete nutrient data (all 5 macros present and non-zero). If tied, prefer the higher fdc_id (more recent). Never surface duplicate names to the user.
+- All results returned as-is. No deduplication applied.
 
 **Open Food Facts**
 - REST API: `world.openfoodfacts.org/api/v2/product/{barcode}`
@@ -253,8 +294,7 @@ Supabase free tier: 500MB storage, 2GB bandwidth per month. Not a current concer
 
 ## What is deferred
 
-- Manual nutrient editing on food_items — would require an overridden flag and editable nutrients_per_100g
-- Automatic CGM integration — peak_glucose_mmol stays as single manual field until CGM streams automatically
+- Automatic CGM integration — peak_glucose_mmol stays as single manual inline field until CGM streams automatically
 - Micronutrient tracking UI — data stored in nutrients_per_100g JSONB but not surfaced in phase 1
 - Supplement dosage data model — needed before micronutrient totalling is meaningful
 - Regression analysis against HRV / sleep / glucose — needs 3+ months clean data

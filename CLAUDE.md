@@ -100,20 +100,27 @@ pasting. Do not attempt HTTPS auth.
 
 **food_items, meal_logs, meal_log_items, daily_nutrition_summary, meal_templates, meal_template_items** — built in Steps 1–6 (April 26). Access via lib/nutrition.ts (server-side admin client, day boundary, summary recompute) and lib/usda.ts (nutrient parser). Never call USDA from client-side code.
 
-**recipes, recipe_ingredients** — added April 26, 2026. Store batch-cooked recipe definitions. A recipe produces a single food_items entry (source = 'recipe') once activated. Accessed via app/api/nutrition/recipe/route.ts.
+**recipes, recipe_ingredients** — added April 26, 2026. Store batch recipe definitions. A recipe produces a single food_items entry (source = 'recipe') once activated. Accessed via app/api/nutrition/recipe/route.ts.
+
+**is_raw** — boolean field on recipes (DEFAULT false). When true: no cooking step, divisor for per-100g macro computation = sum of raw ingredient weights. total_cooked_grams is null for raw/assembled recipes. Activates as soon as ingredients are present.
 
 **meal_logs top-level macro fields:** calories, protein_g, carbs_g, fat_g, fiber_g are nullable columns on meal_logs. They are ONLY populated when logged_via = 'photo_estimate'. All other logged_via types use meal_log_items rows instead. Do not populate these fields for ingredient-based or barcode-scanned meals.
 
 **Photo estimation:** When logged_via = 'photo_estimate', no meal_log_items rows are created. Macros go into the top-level fields on meal_logs. The recomputeDailySummary function must add these directly to the running totals. Do NOT create synthetic food_items entries for photo estimates — that was the old incorrect approach.
 
-**My Library:** The standalone templates screen inside MealLogger has been replaced by a unified My Library screen with two sections: Recipes and Templates. Templates are no longer accessed from Screen 1 directly.
+**My Library:** Recipes only. The standalone templates screen has been replaced by a unified My Library screen showing only Recipes. Templates (meal_templates, meal_template_items) exist in the DB and API routes but are NOT surfaced in the UI. Do not re-add the Templates section to My Library.
 
 **Screen 1** now has four options: Add ingredients / Browse Library / Create a recipe / Estimate from photo or description.
+
+**Peak glucose:** The peak_glucose_mmol field is an inline editable field on each meal card in the day view. It is NOT part of any logging screen (not Screen 5, not the edit flow). PATCH /api/nutrition/meal updates it without recomputing the daily summary.
+
+**Macro override:** PATCH /api/nutrition/food-item merges per-macro overrides into nutrients_per_100g JSONB, preserving the raw USDA array. Triggered by pencil icon on local library results in ScreenSearch.
 
 - The old daily_entries.nutrition JSONB columns (pre_workout_snack, breakfast, lunch, dinner,
   incidentals + their macro fields) are legacy. Don't read or write them from new code.
 - Coach **should** read from daily_nutrition_summary but **currently still reads
   daily_entries.nutrition** in app/api/coach/route.ts. This is backlog item #1.
+  **Do not touch Coach at all until Goals tab / Training Load branch is merged to main.**
 - RLS on the eight nutrition tables uses `auth.uid() = user_id`. We bypass it
   server-side with the service-role client in lib/nutrition.ts → supaAdmin().
 - New nutrition rows use `user_id = process.env.NUTRITION_USER_ID`. Never hardcode.
@@ -121,6 +128,7 @@ pasting. Do not attempt HTTPS auth.
 - Required env vars (Vercel, both Production and Preview):
   USDA_API_KEY, SUPABASE_SERVICE_ROLE_KEY, NUTRITION_USER_ID, ANTHROPIC_API_KEY.
   All server-side only. Never reference in client components.
+- food_items.source allowlist: 'usda' | 'openfoodfacts' | 'recipe' | 'recipe_deleted' | 'custom'
 
 ---
 
@@ -138,3 +146,5 @@ pasting. Do not attempt HTTPS auth.
 - Never create synthetic food_items entries for photo-estimated meals — use top-level macro fields on meal_logs
 - Never call the USDA API from client-side code — always go through /api/nutrition/search
 - Never call the Anthropic API from client-side code — always go through /api/nutrition/estimate
+- Never re-add the Templates section to My Library — meal_templates and meal_template_items exist in DB and API but the UI was removed by design
+- Never touch app/api/coach/route.ts or any coach component until Goals tab / Training Load branch is merged to main

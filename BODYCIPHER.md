@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: April 26, 2026_
+_Last updated: April 27, 2026_
 
 ---
 
@@ -62,26 +62,21 @@ _Last updated: April 26, 2026_
 - `avg_heart_rate` field has been removed — replaced by `zone3_plus_minutes`
 
 **Nutrition section**
-- Full ingredient-level food logging built and tested in preview. On branch `claude/quizzical-lalande-dce194` — do not merge to main until items 7–14 in build status are complete (see below).
+- Full ingredient-level food logging built and tested in preview on branch `claude/quizzical-lalande-dce194`. All build steps complete — ready to merge.
 - Eight Supabase tables live (six original + recipes + recipe_ingredients)
 - Five-screen logging flow: bottom sheet → ingredient search → weight entry → building meal → save confirmation
 - USDA FoodData Central integration (server-side only, cached to food_items on first use)
 - Open Food Facts barcode scanning via html5-qrcode
-- Template system: create, use, edit, delete. Sorted by use_count.
+- Template tables and API routes preserved in DB (meal_templates, meal_template_items). Not surfaced in UI — templates removed from UX by design.
 - Macro summary bar: consumed vs target for all 5 macros
 - Meal cards with ingredient breakdown, edit and delete per ingredient
 - framer-motion animations throughout
 - daily_nutrition_summary upserted after every meal save/edit/delete
 - Old daily_entries.nutrition JSONB fields are legacy — not used going forward
 - Coach must switch to read from daily_nutrition_summary (backlog item #1)
-
-**Still to build on this branch before merge:**
-- Recipe builder (screens in MealLogger + API route)
-- My Library screen (replaces standalone templates screen, adds recipes)
-- Screen 1 redesign (4 options)
-- Photo estimation screen + API route
-- "Add another template" on Screen 4
-- USDA deduplication
+- Collapsed section header shows protein · fiber · calories
+- Peak glucose is an inline editable field on each meal card in the day view — not in any logging screen. Saved via PATCH /api/nutrition/meal.
+- Macro override: pencil icon on local library results in ScreenSearch opens an edit modal. PATCH /api/nutrition/food-item updates nutrients_per_100g.
 
 **Hydration section**
 - Logs ml per day. Passes through to Coach context.
@@ -104,6 +99,7 @@ _Last updated: April 26, 2026_
 - Returns JSON with 5 fields: recovery, training, nutrition, insight, question. Null fields hidden.
 - CGM, Zone3+, foraging calendar, food creativity frameworks built in
 - Reactive chat below briefing cards
+- **DO NOT TOUCH the coach until the Goals tab / Training Load branch is merged to main.** Coach overhaul is the third and final branch after: (1) this nutrition merge, (2) Goals tab + Training Load.
 
 ### Dashboard
 
@@ -131,9 +127,9 @@ Full design documents in /docs — read both before touching any nutrition code:
 - `meal_logs` — one row per meal. Top-level macro fields (calories, protein_g, carbs_g, fat_g, fiber_g) nullable — only populated when logged_via = 'photo_estimate'
 - `meal_log_items` — one row per ingredient per meal
 - `daily_nutrition_summary` — denormalized daily totals, coach reads this
-- `meal_templates` — named meal presets
-- `meal_template_items` — ingredients and default weights per template
-- `recipes` — batch recipe definitions. status: 'draft' | 'active'
+- `meal_templates` — named meal presets (preserved in DB and API, not surfaced in UI)
+- `meal_template_items` — ingredients and default weights per template (preserved in DB and API, not surfaced in UI)
+- `recipes` — batch recipe definitions. status: 'draft' | 'active'. is_raw: boolean DEFAULT false.
 - `recipe_ingredients` — raw batch ingredient weights per recipe
 
 RLS enabled on all eight tables. Nutrition API routes use service-role key (bypasses RLS server-side). The four `user_id` FK constraints to `auth.users` were dropped April 26 — NUTRITION_USER_ID is not an auth row.
@@ -161,9 +157,7 @@ RLS enabled on all eight tables. Nutrition API routes use service-role key (bypa
 
 **Day boundary is 05:00 Europe/Berlin.**
 
-**USDA calls server-side only** via /api/nutrition/search. Never from client. Cached permanently in food_items on first use.
-
-**USDA deduplication.** When search returns identical names, collapse to the entry with most complete nutrient data (all 5 macros non-zero). Prefer higher fdc_id if tied. Never surface duplicates to user.
+**USDA calls server-side only** via /api/nutrition/search. Never from client. Cached permanently in food_items on first use. All USDA results pass through as-is — no deduplication applied.
 
 **Open Food Facts for barcode scanning only.** Same caching rule. html5-qrcode for scanning only — not for photo capture.
 
@@ -173,9 +167,13 @@ RLS enabled on all eight tables. Nutrition API routes use service-role key (bypa
 
 **No micronutrient UI in phase 1.** Data stored in nutrients_per_100g JSONB for future use.
 
-**Templates free-form.** No meal type. Log and template independent once saved.
+**Templates free-form.** Tables and API routes preserved in DB. UI removed by design — do not re-add.
 
 **Backward compatibility — clean break.** Legacy daily_entries.nutrition JSONB not migrated or read by new code.
+
+**Peak glucose is inline on meal cards.** The editable peak_glucose_mmol field appears directly on each meal card in the day view. PATCH /api/nutrition/meal updates it without recomputing the daily summary. It is not part of any logging screen.
+
+**Macro override via PATCH /api/nutrition/food-item.** Merges per-macro overrides into the existing nutrients_per_100g JSONB, preserving the raw USDA array. Triggered by pencil icon on local search results in ScreenSearch.
 
 ---
 
@@ -183,15 +181,18 @@ RLS enabled on all eight tables. Nutrition API routes use service-role key (bypa
 
 **A recipe IS a food item.** Once active, it appears in ingredient search and is logged by weight like any other item.
 
-**Raw ingredients, cooked weight.** Ingredients entered at raw batch weights. Total cooked weight (weighed after cooking) is the divisor for per-100g computation. Accounts for water evaporation.
+**Two recipe modes:**
+- **Cooked (is_raw = false, default):** Raw ingredients entered at batch weights. Total cooked weight (weighed after cooking) is the divisor for per-100g computation. Accounts for water evaporation. Requires total_cooked_grams before activation.
+- **Raw / assembled (is_raw = true):** No cooking step. Divisor = sum of raw ingredient weights. Activates as soon as at least one ingredient is present. total_cooked_grams stays null.
 
 **Macro computation:**
 1. For each ingredient: `nutrients_per_100g × weight_grams / 100` → contribution
 2. Sum all contributions → total batch macros
-3. `per_100g = total_batch_macro / total_cooked_grams × 100`
-4. Store in food_items.nutrients_per_100g with source = 'recipe'
+3. Divisor: for cooked recipes = total_cooked_grams; for raw/assembled recipes (is_raw = true) = sum of all ingredient weights
+4. `per_100g = total_batch_macro / divisor × 100`
+5. Store in food_items.nutrients_per_100g with source = 'recipe'
 
-**Draft state.** total_cooked_grams absent = status 'draft'. Draft recipes visible in My Library (amber chip) but not searchable for logging. Save draft while pot is cooking, edit later to add cooked weight and activate.
+**Draft state.** For cooked recipes: total_cooked_grams absent = status 'draft'. For raw/assembled recipes: activates immediately when ingredients are added. Draft recipes visible in My Library (amber chip) but not searchable for logging. Save draft while pot is cooking, edit later to add cooked weight and activate.
 
 **Optional default serving weight.** Stored on recipe. When logging, Screen 3 shows shortcut chip "1 serving (Xg)" — identical to barcode serving chip.
 
@@ -199,7 +200,7 @@ RLS enabled on all eight tables. Nutrition API routes use service-role key (bypa
 
 **Deleted recipes.** food_items source set to 'recipe_deleted'. Row not hard-deleted.
 
-**`recipes` table:** id, user_id, name, total_servings (int, min 1), total_cooked_grams (numeric, nullable), default_serving_grams (numeric, nullable), food_item_id (FK → food_items, null when draft), status ('draft'|'active'), created_at, updated_at.
+**`recipes` table:** id, user_id, name, total_servings (int, min 1), total_cooked_grams (numeric, nullable — null for raw/assembled recipes), default_serving_grams (numeric, nullable), is_raw (boolean DEFAULT false), food_item_id (FK → food_items, null when draft), status ('draft'|'active'), created_at, updated_at.
 
 **`recipe_ingredients` table:** id, recipe_id (FK CASCADE), food_item_id (FK RESTRICT), weight_grams (numeric > 0) — raw weight for whole batch.
 
@@ -209,9 +210,9 @@ RLS enabled on all eight tables. Nutrition API routes use service-role key (bypa
 
 Single home for all saved content. Accessible from Screen 1 ("Browse Library") and from nutrition day view (library icon alongside "+ Log a meal").
 
-Two sections:
-- **Recipes** — draft (amber chip, not tappable) and active. Edit/delete per card. "New recipe" opens recipe builder.
-- **Templates** — sorted by use_count. Use/edit/delete per card. "New template" opens building screen in template-edit mode.
+Single section: **Recipes** — draft (amber chip, not tappable for logging) and active. Edit/delete per card. "New recipe" opens recipe builder.
+
+Templates section removed by design. meal_templates and meal_template_items tables and API routes are preserved in the database. Do not re-add the Templates section to My Library.
 
 ---
 
@@ -251,24 +252,22 @@ All on branch `claude/quizzical-lalande-dce194`.
 2. ~~API routes~~ — search, food-item, meal, day, templates, barcode — done
 3. ~~Nutrition day view~~ — NutritionSection.tsx — done
 4. ~~Five-screen logging flow~~ — MealLogger.tsx — done
-5. ~~Template list + edit view~~ — inside MealLogger — done
+5. ~~Template list + edit view~~ — inside MealLogger — done (preserved in code, not surfaced in UI)
 6. ~~Barcode scanning~~ — ScreenScan, commit c4e11b1 — done
+7. ~~Recipe API route~~ — app/api/nutrition/recipe/route.ts — done
+8. ~~Photo estimation API route~~ — app/api/nutrition/estimate/route.ts — done
+9. ~~My Library screen~~ — inside MealLogger (recipes only, templates removed from UI) — done
+10. ~~Recipe builder screens~~ — inside MealLogger — done
+11. ~~Screen 1 redesign~~ — 4 options — done
+12. ~~Photo estimation screen~~ — inside MealLogger — done
+13. "Load another template" on Screen 4 — **removed by design** (templates removed from UI)
+14. USDA deduplication — **removed by design** (search returns results as-is)
 
-**Remaining before merge to main:**
-7. Recipe API route — app/api/nutrition/recipe/route.ts
-8. Photo estimation API route — app/api/nutrition/estimate/route.ts
-9. My Library screen — inside MealLogger (absorbs templates screen)
-10. Recipe builder screens — inside MealLogger
-11. Screen 1 redesign — 4 options
-12. Photo estimation screen — inside MealLogger
-13. "Add another template" on Screen 4
-14. USDA deduplication — in /api/nutrition/search
+**All complete. Ready to merge.**
 
-**Do not merge to main until 7–14 are complete and tested in preview.**
+### Known follow-ups from Steps 1–14
 
-### Known follow-ups from Steps 1–6
-
-- Coach still reads `daily_entries.nutrition` — switch to `daily_nutrition_summary` is backlog item #1
+- Coach still reads `daily_entries.nutrition` — switch to `daily_nutrition_summary` is backlog item #1. Do not touch Coach until Goals/Training Load branch is merged.
 - Legacy meal-slot UI in lib/db.ts and lib/types.ts — safe to clean up once coach switch lands
 - Camera requires HTTPS — works on Vercel preview/prod, not plain http://localhost
 
@@ -349,17 +348,11 @@ avg_heart_rate: REMOVED. Do not re-add.
 4. **Coach calorie calc** — over-target when under
 5. **Recovery and Training cards empty in evening mode**
 
-### Pre-merge nutrition items (branch claude/quizzical-lalande-dce194)
-1. **Recipe builder** — tables already created. Build API route + UI. Full spec above.
-2. **My Library screen** — absorbs templates screen, adds recipes section
-3. **Screen 1 redesign** — 4 options: Add ingredients / Browse Library / Create a recipe / Estimate from photo or description
-4. **Photo estimation** — photoEstimate screen + /api/nutrition/estimate route. Top-level macro fields on meal_logs. ANTHROPIC_API_KEY server-side.
-5. **"Add another template" on Screen 4** — appends second template ingredients to existing meal
-6. **USDA deduplication** — collapse identical-name results in /api/nutrition/search
+Note: bugs 1, 3, 4, 5 are in the Coach. **Do not touch Coach until Goals tab / Training Load branch is merged to main.**
 
 ### Features — near term
-1. **Switch Coach to daily_nutrition_summary** — app/api/coach/route.ts still reads legacy entry.nutrition.*. Pass logged_via_summary for confidence calibration.
-2. **Coach redesign** — dedicated session. Training override, calorie calc, empty evening cards, language bugs, too generic. Reasoning across 30-day patterns.
+1. **Switch Coach to daily_nutrition_summary** — app/api/coach/route.ts still reads legacy entry.nutrition.*. Pass logged_via_summary for confidence calibration. **Do not touch until after Goals/Training Load branch merge.**
+2. **Coach redesign** — dedicated session after Goals branch. Training override, calorie calc, empty evening cards, language bugs, too generic. Reasoning across 30-day patterns. **Third and final branch.**
 3. **Accumulated training load** — third score. Acute (7-day) vs chronic (28-day) rolling stress, ratio flags overreach. Design in coach session before touching code.
 4. **Dashboard scores above data inputs**
 5. **Dashboard 30-day window**
@@ -379,6 +372,8 @@ avg_heart_rate: REMOVED. Do not re-add.
 - Cyclic supplements (Ashwagandha, Phosphatidylserine)
 - Andreas secondary user
 - avg_heart_rate in training
+- "Load another template" button on Screen 4 (removed with templates UI)
+- USDA name deduplication in search route (removed — all results pass through as-is)
 
 ---
 

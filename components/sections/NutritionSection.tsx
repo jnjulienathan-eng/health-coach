@@ -1,135 +1,160 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import type { NutritionData, MealMacros, BreakfastMeal, TrainingSession } from '@/lib/types'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import type { TrainingSession } from '@/lib/types'
 import { MACRO_TARGETS } from '@/lib/types'
 import Section from '@/components/ui/Section'
+import MealLogger from '@/components/nutrition/MealLogger'
 
 interface Props {
-  data: NutritionData
-  onChange: (data: NutritionData) => void
-  onSave: () => void
-  saving?: boolean
+  currentDate: string
   sessions?: TrainingSession[]
 }
 
-// ─── Dynamic calorie target ───────────────────────────────────────
+// ─── API types ────────────────────────────────────────────────────────────
+interface NutrientsPer100g {
+  calories?: number | null
+  protein?:  number | null
+  carbs?:    number | null
+  fat?:      number | null
+  fiber?:    number | null
+}
+
+interface FoodItemLite {
+  id: string
+  name: string
+  source: 'usda' | 'open_food_facts' | 'custom' | 'recipe' | 'recipe_deleted'
+  fdc_id: string | null
+  nutrients_per_100g: NutrientsPer100g
+}
+
+interface MealItem {
+  id: string
+  meal_log_id: string
+  weight_grams: number
+  food_items: FoodItemLite | FoodItemLite[] | null
+}
+
+interface MealLog {
+  id: string
+  logged_at: string
+  name: string
+  logged_via: string
+  peak_glucose_mmol: number | null
+  notes: string | null
+  // Top-level fields for photo_estimate meals (null for item-based)
+  calories?: number | null
+  protein_g?: number | null
+  carbs_g?: number | null
+  fat_g?: number | null
+  fiber_g?: number | null
+  items: MealItem[]
+}
+
+interface DaySummary {
+  calories: number | null
+  protein:  number | null
+  carbs:    number | null
+  fat:      number | null
+  fiber:    number | null
+  meal_count: number | null
+}
+
+interface DayResponse {
+  date: string
+  meals: MealLog[]
+  summary: DaySummary | null
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
 function getDailyCalorieTarget(sessions: TrainingSession[]): number {
   if (sessions.length === 0) return 1800
   const totalZone3 = sessions.reduce((sum, s) => sum + (s.zone3_plus_minutes ?? 0), 0)
   const sessionCount = sessions.length
-  if (sessionCount >= 2 && totalZone3 >= 30) return 2500   // Very high
-  if (sessionCount >= 2 || totalZone3 >= 16) return 2300   // High
-  if (totalZone3 >= 6) return 2100                         // Moderate
-  return 1950                                              // Light
+  if (sessionCount >= 2 && totalZone3 >= 30) return 2500
+  if (sessionCount >= 2 || totalZone3 >= 16) return 2300
+  if (totalZone3 >= 6) return 2100
+  return 1950
 }
 
-// ─── Compute daily totals ────────────────────────────────────────
-function computeTotals(d: NutritionData): NutritionData {
-  const meals: MealMacros[] = [
-    d.pre_workout_snack,
-    d.breakfast,
-    d.lunch,
-    d.dinner,
-    d.incidentals,
-  ]
-  const sum = (k: keyof Pick<MealMacros, 'protein' | 'fiber' | 'fat' | 'carbs'>) =>
-    meals.some((m) => m[k] != null)
-      ? meals.reduce((acc, m) => acc + (m[k] ?? 0), 0)
-      : null
-  const sumCal = meals.some((m) => m.calories != null)
-    ? meals.reduce((acc, m) => acc + (m.calories ?? 0), 0)
-    : null
+function pickFoodItem(it: MealItem): FoodItemLite | null {
+  if (!it.food_items) return null
+  return Array.isArray(it.food_items) ? it.food_items[0] ?? null : it.food_items
+}
 
+function macrosForItem(it: MealItem): { calories: number; protein: number; carbs: number; fat: number; fiber: number } {
+  const fi = pickFoodItem(it)
+  const n = fi?.nutrients_per_100g ?? {}
+  const w = it.weight_grams || 0
   return {
-    ...d,
-    total_protein: sum('protein'),
-    total_fiber: sum('fiber'),
-    total_fat: sum('fat'),
-    total_carbs: sum('carbs'),
-    total_calories: sumCal,
+    calories: ((n.calories ?? 0) * w) / 100,
+    protein:  ((n.protein  ?? 0) * w) / 100,
+    carbs:    ((n.carbs    ?? 0) * w) / 100,
+    fat:      ((n.fat      ?? 0) * w) / 100,
+    fiber:    ((n.fiber    ?? 0) * w) / 100,
   }
 }
 
-// ─── Incidentals quick-add data ──────────────────────────────────
-const INCIDENTAL_CHIPS: { label: string; macros: Partial<MealMacros> }[] = [
-  { label: 'Dark chocolate (2 sq)',     macros: { description: 'Dark chocolate, 2 squares', protein: 1, fiber: 1, fat: 5, carbs: 7, calories: 55 } },
-  { label: 'Choc blueberries (handful)', macros: { description: 'True Fruit chocolate blueberries, small handful', protein: 1, fiber: 1, fat: 4, carbs: 12, calories: 86 } },
-  { label: 'Mixed nuts (handful)',       macros: { description: 'Mixed nuts, small handful', protein: 4, fiber: 2, fat: 14, carbs: 4, calories: 160 } },
-  { label: 'Rye crackers (1–2)',        macros: { description: 'Rye crackers, 1-2 pieces', protein: 2, fiber: 2, fat: 1, carbs: 14, calories: 65 } },
-  { label: 'Medjool date (1)',           macros: { description: 'Medjool date', protein: 0, fiber: 2, fat: 0, carbs: 18, calories: 66 } },
-]
-
-// ─── Spinner icon (uses @keyframes spin from globals.css) ────────
-function SpinnerIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      style={{ animation: 'spin 0.8s linear infinite', transformOrigin: 'center center' }}
-    >
-      <circle
-        cx="8"
-        cy="8"
-        r="6"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeDasharray="20 16"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
+function macrosForMeal(m: MealLog) {
+  if (m.logged_via === 'photo_estimate') {
+    return {
+      calories: m.calories ?? 0,
+      protein:  m.protein_g ?? 0,
+      carbs:    m.carbs_g   ?? 0,
+      fat:      m.fat_g     ?? 0,
+      fiber:    m.fiber_g   ?? 0,
+    }
+  }
+  const t = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+  for (const it of m.items) {
+    const x = macrosForItem(it)
+    t.calories += x.calories
+    t.protein  += x.protein
+    t.carbs    += x.carbs
+    t.fat      += x.fat
+    t.fiber    += x.fiber
+  }
+  return t
 }
 
-// ─── MacroBar component ──────────────────────────────────────────
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin',
+  })
+}
+
+function r(n: number): number { return Math.round(n) }
+
+// ─── Macro summary bar ────────────────────────────────────────────────────
 function MacroBar({
-  label,
-  value,
-  target,
-  flagBelow,
-  flagAbove,
-  unit = 'g',
+  label, value, target, flagBelow, flagAbove, unit = 'g',
 }: {
   label: string
-  value: number | null
+  value: number
   target: { min: number; max: number }
   flagBelow?: number
   flagAbove?: number
   unit?: string
 }) {
-  if (value == null) return null
   const pct = Math.min(100, (value / target.max) * 100)
-  const isUnder = flagBelow != null && value < flagBelow
+  const isUnder = flagBelow != null && value > 0 && value < flagBelow
   const isOver  = flagAbove != null && value > flagAbove
   const fillClass = isUnder ? 'under' : isOver ? 'over' : 'on-track'
+  const numColor =
+    value === 0 ? 'var(--color-text-dim)'
+    : isUnder ? 'var(--color-danger)'
+    : isOver ? 'var(--color-amber)'
+    : 'var(--color-success)'
 
   return (
     <div>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 4,
-          fontSize: 12,
-        }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
         <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>{label}</span>
-        <span
-          style={{
-            fontFamily: 'var(--font-mono)',
-            color: isUnder
-              ? 'var(--color-danger)'
-              : isOver
-              ? 'var(--color-amber)'
-              : 'var(--color-success)',
-          }}
-        >
-          {Math.round(value)}{unit}
+        <span style={{ fontFamily: 'var(--font-mono)', color: numColor }}>
+          {r(value)}{unit}
           <span style={{ color: 'var(--color-text-dim)', fontFamily: 'var(--font-sans)' }}>
-            {' / '}{target.min}–{target.max}{unit}
+            {' / '}{target.max}{unit}
           </span>
         </span>
       </div>
@@ -140,802 +165,511 @@ function MacroBar({
   )
 }
 
-// ─── Meal row ────────────────────────────────────────────────────
-function MealRow({
-  label,
-  meal,
-  onChange,
-  showEstimate = false,
-  noMacros = false,
-  noBorder = false,
-  placeholder = 'What did you eat?',
+// ─── Meal card ────────────────────────────────────────────────────────────
+function MealCard({
+  meal, onDelete, onEdit, onGlucoseUpdate,
 }: {
-  label: string
-  meal: MealMacros
-  onChange: (m: MealMacros) => void
-  showEstimate?: boolean
-  noMacros?: boolean
-  noBorder?: boolean
-  placeholder?: string
+  meal: MealLog
+  onDelete: () => void
+  onEdit: () => void
+  onGlucoseUpdate: (value: number | null) => void
 }) {
-  const [actionSheetOpen, setActionSheetOpen] = useState(false)
-  const [estimating, setEstimating] = useState(false)
-  const [analysing, setAnalysing] = useState(false)
-  const [listening, setListening] = useState(false)
-  const [transcribing, setTranscribing] = useState(false)
-  const [voiceError, setVoiceError] = useState<string | null>(null)
-  const [photoError, setPhotoError] = useState<string | null>(null)
-  const [thumbnail, setThumbnail] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [glucoseEditing, setGlucoseEditing] = useState(false)
+  const [glucoseInput, setGlucoseInput] = useState('')
+  const [glucoseSaving, setGlucoseSaving] = useState(false)
+  const [glucoseError, setGlucoseError] = useState<string | null>(null)
+  const totals = useMemo(() => macrosForMeal(meal), [meal])
 
-  const plusRef = useRef<HTMLDivElement>(null)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
-  const libraryInputRef = useRef<HTMLInputElement>(null)
-
-  // Close action sheet on outside click
-  useEffect(() => {
-    if (!actionSheetOpen) return
-    const handler = (e: MouseEvent) => {
-      if (plusRef.current && !plusRef.current.contains(e.target as Node)) {
-        setActionSheetOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [actionSheetOpen])
-
-  // Auto-clear photo error after 3 seconds
-  useEffect(() => {
-    if (!photoError) return
-    const t = setTimeout(() => setPhotoError(null), 3000)
-    return () => clearTimeout(t)
-  }, [photoError])
-
-  const handleFile = async (file: File) => {
-    setActionSheetOpen(false)
-    setPhotoError(null)
-
-    const reader = new FileReader()
-    reader.onload = async (ev) => {
-      const dataUrl = ev.target?.result as string
-      const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
-      if (!match) {
-        setPhotoError('Could not read image file.')
-        return
-      }
-      const [, mediaType, base64] = match
-      setThumbnail(dataUrl)
-      setAnalysing(true)
-
-      try {
-        const res = await fetch('/api/vision', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64, mediaType, mealType: label }),
-        })
-        const data = await res.json()
-        if (!res.ok || data.error) {
-          setPhotoError(data.error || 'Vision analysis failed.')
-          return
-        }
-        if (noMacros) {
-          onChange({ ...meal, description: data.description || meal.description })
-        } else {
-          onChange({ ...meal, ...data })
-        }
-      } catch {
-        setPhotoError('Failed to analyse photo. Please try again.')
-      } finally {
-        setAnalysing(false)
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const startListening = () => {
-    setActionSheetOpen(false)
-    setVoiceError(null)
-    setTranscribing(false)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) {
-      setVoiceError('Voice not supported on this browser — please type instead.')
-      return
-    }
-    const recognition = new SR()
-    recognition.continuous = false
-    recognition.interimResults = false
-    recognition.lang = 'en-US'
-
-    let gotTranscript = false
-
-    recognition.onstart = () => setListening(true)
-    recognition.onend   = () => {
-      setListening(false)
-      if (!gotTranscript) {
-        setTranscribing(true)
-        setTimeout(() => setTranscribing(false), 5000)
-      }
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onerror = (e: any) => {
-      setListening(false)
-      setTranscribing(false)
-      if (gotTranscript) return
-      const messages: Record<string, string> = {
-        'not-allowed':            'Microphone permission denied. Allow mic access in browser settings.',
-        'audio-capture':          'No microphone found.',
-        'network':                'Network error — speech recognition requires internet.',
-        'no-speech':              'No speech detected. Try again.',
-        'aborted':                '',
-        'language-not-supported': 'Language not supported.',
-      }
-      const msg = messages[e.error as string] ?? `Voice error: ${e.error}`
-      if (msg) setVoiceError(msg)
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (e: any) => {
-      gotTranscript = true
-      setTranscribing(false)
-      const transcript: string = e.results[0][0].transcript
-      onChange({ ...meal, description: meal.description ? meal.description + ' ' + transcript : transcript })
-    }
-
+  const saveGlucose = async () => {
+    const numVal = glucoseInput.trim() === '' ? null : Number(glucoseInput)
+    setGlucoseEditing(false)
+    if (numVal === meal.peak_glucose_mmol) return
+    setGlucoseSaving(true)
+    setGlucoseError(null)
     try {
-      recognition.start()
-    } catch (err) {
-      setListening(false)
-      setTranscribing(false)
-      console.error('SpeechRecognition start error:', err)
-      setVoiceError('Could not start voice input. Try again.')
-    }
-  }
-
-  const estimate = async () => {
-    if (!meal.description.trim()) return
-    setEstimating(true)
-    try {
-      const res = await fetch('/api/macros', {
-        method: 'POST',
+      const res = await fetch('/api/nutrition/meal', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: meal.description }),
+        body: JSON.stringify({ id: meal.id, peak_glucose_mmol: numVal }),
       })
-      const macros = await res.json()
-      if (!res.ok || macros.error) return
-      onChange({ ...meal, ...macros })
-    } catch {
-      // silently fail — user can enter manually
+      const j = await res.json() as { ok?: boolean; error?: string }
+      if (!res.ok || j.error) { setGlucoseError(j.error ?? 'Save failed'); return }
+      onGlucoseUpdate(numVal)
+    } catch (e) {
+      setGlucoseError(e instanceof Error ? e.message : 'Save failed')
     } finally {
-      setEstimating(false)
+      setGlucoseSaving(false)
     }
   }
-
-  const setMacro = (k: keyof MealMacros, v: number | null | string) =>
-    onChange({ ...meal, [k]: v })
-
-  const hasMacros =
-    meal.protein != null || meal.fat != null || meal.carbs != null || meal.calories != null
-
-  const plusBusy = analysing || listening || transcribing
 
   return (
-    <div style={{ borderBottom: noBorder ? 'none' : '1px solid var(--color-border)', paddingBottom: noBorder ? 0 : 16 }}>
-      {label && (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.2 }}
+      style={{
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 10,
+        overflow: 'hidden',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          width: '100%', textAlign: 'left', background: 'none', border: 'none',
+          padding: '12px 14px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {meal.name}
+            </span>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', marginTop: 2 }}>
+              {formatTime(meal.logged_at)}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+            {meal.logged_via === 'photo_estimate' && (
+              <span
+                title="Estimated by Claude"
+                style={{
+                  fontSize: 10, fontWeight: 500,
+                  background: 'var(--color-amber-light, rgba(255,180,0,0.12))',
+                  color: 'var(--color-amber)',
+                  padding: '3px 7px', borderRadius: 999,
+                }}
+              >
+                Claude estimate
+              </span>
+            )}
+            {meal.peak_glucose_mmol != null && (
+              <span
+                title="Peak glucose"
+                style={{
+                  fontSize: 11, fontFamily: 'var(--font-mono)',
+                  background: 'var(--color-primary-light)',
+                  color: 'var(--color-primary-dark)',
+                  padding: '3px 8px', borderRadius: 999, fontWeight: 500,
+                }}
+              >
+                {meal.peak_glucose_mmol} mmol
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>
+          <span>{r(totals.calories)} kcal</span>
+          <span>{r(totals.protein)}g P</span>
+          <span>{r(totals.carbs)}g C</span>
+          <span>{r(totals.fat)}g F</span>
+          <span>{r(totals.fiber)}g Fi</span>
+        </div>
+      </button>
+
+      {/* Inline peak glucose — always visible, below macro line */}
+      <div
+        onClick={(e) => {
+          e.stopPropagation()
+          if (!glucoseEditing) {
+            setGlucoseInput(meal.peak_glucose_mmol != null ? String(meal.peak_glucose_mmol) : '')
+            setGlucoseEditing(true)
+          }
+        }}
+        style={{
+          borderTop: '1px solid var(--color-border)', padding: '6px 14px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          cursor: glucoseEditing ? 'default' : 'pointer',
+        }}
+      >
+        <span style={{ fontSize: 11, color: 'var(--color-text-dim)', minWidth: 82, flexShrink: 0 }}>Peak glucose</span>
+        {glucoseEditing ? (
+          <>
+            <input
+              type="number"
+              inputMode="decimal"
+              step={0.1}
+              min={2}
+              max={20}
+              value={glucoseInput}
+              onChange={e => setGlucoseInput(e.target.value)}
+              onBlur={saveGlucose}
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              style={{
+                width: 68, padding: '3px 8px', fontSize: 13, fontFamily: 'var(--font-mono)',
+                color: 'var(--color-text-primary)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 6, outline: 'none',
+              }}
+            />
+            <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>mmol/L</span>
+            <button
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={(e) => { e.stopPropagation(); saveGlucose() }}
+              style={{ background: 'var(--color-primary)', border: 'none', borderRadius: 4, color: '#fff', padding: '2px 7px', fontSize: 12, cursor: glucoseSaving ? 'default' : 'pointer', lineHeight: 1.4, opacity: glucoseSaving ? 0.6 : 1 }}
+            >✓</button>
+            <button
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={(e) => { e.stopPropagation(); setGlucoseEditing(false); setGlucoseError(null) }}
+              style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text-dim)', padding: '2px 6px', fontSize: 12, cursor: 'pointer', lineHeight: 1.4 }}
+            >✕</button>
+          </>
+        ) : (
+          <>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: meal.peak_glucose_mmol != null ? 'var(--color-text-primary)' : 'var(--color-text-dim)' }}>
+              {meal.peak_glucose_mmol != null ? meal.peak_glucose_mmol : '—'}
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>mmol/L</span>
+          </>
+        )}
+        {glucoseError && (
+          <span style={{ fontSize: 11, color: 'var(--color-danger)', marginLeft: 4 }}>{glucoseError}</span>
+        )}
+      </div>
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{ overflow: 'hidden', borderTop: '1px solid var(--color-border)' }}
+          >
+            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {meal.logged_via === 'photo_estimate' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginBottom: 2 }}>
+                    Claude estimate · macros only
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>
+                    <span>{r(totals.calories)} kcal</span>
+                    <span>{r(totals.protein)}g P</span>
+                    <span>{r(totals.carbs)}g C</span>
+                    <span>{r(totals.fat)}g F</span>
+                    <span>{r(totals.fiber)}g Fi</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {meal.items.length === 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>No ingredients logged.</div>
+                  )}
+                  {meal.items.map(it => {
+                    const fi = pickFoodItem(it)
+                    const m = macrosForItem(it)
+                    return (
+                      <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {fi?.name ?? '—'}
+                          </div>
+                          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', fontSize: 11, marginTop: 1 }}>
+                            {r(it.weight_grams)}g
+                          </div>
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {r(m.calories)} kcal · {r(m.protein)}P · {r(m.carbs)}C · {r(m.fat)}F · {r(m.fiber)}Fi
+                        </div>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+
+              {meal.notes && (
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', borderTop: '1px solid var(--color-border)', paddingTop: 8, marginTop: 4 }}>
+                  {meal.notes}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6, gap: 6 }}>
+                {!confirmDelete && meal.logged_via !== 'photo_estimate' && (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    style={{
+                      background: 'none', border: '1px solid var(--color-border)',
+                      color: 'var(--color-text-secondary)', borderRadius: 6,
+                      padding: '4px 10px', fontSize: 11, cursor: 'pointer',
+                    }}
+                  >
+                    Edit meal
+                  </button>
+                )}
+                {!confirmDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    style={{
+                      background: 'none', border: '1px solid var(--color-border)',
+                      color: 'var(--color-danger)', borderRadius: 6,
+                      padding: '4px 10px', fontSize: 11, cursor: 'pointer',
+                    }}
+                  >
+                    Delete meal
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>Delete this meal?</span>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onDelete}
+                      style={{ background: 'var(--color-danger)', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#fff' }}
+                    >
+                      Yes, delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
+// ─── Main component ──────────────────────────────────────────────────────
+export default function NutritionSection({ currentDate, sessions = [] }: Props) {
+  const [day, setDay] = useState<DayResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showLogger, setShowLogger] = useState(false)
+  const [loggerInitialScreen, setLoggerInitialScreen] = useState<'menu' | 'library'>('menu')
+  const [editingMealId, setEditingMealId] = useState<string | null>(null)
+
+  const calorieTarget = getDailyCalorieTarget(sessions)
+
+  const fetchDay = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/nutrition/day?date=${encodeURIComponent(currentDate)}`)
+      const data = await res.json() as DayResponse | { error: string }
+      if ('error' in data) {
+        setError(data.error)
+        setDay(null)
+      } else {
+        setDay(data)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load')
+      setDay(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [currentDate])
+
+  useEffect(() => { fetchDay() }, [fetchDay])
+
+  const totals: DaySummary = day?.summary ?? {
+    calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, meal_count: 0,
+  }
+
+  const hasData = (day?.meals.length ?? 0) > 0
+  const calorieTargetRange = { min: Math.round(calorieTarget * 0.9), max: calorieTarget }
+
+  // Compact summary used in the collapsed Section header
+  const summaryBars = totals.protein != null && totals.protein > 0 ? (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+      <span style={{ color: 'var(--color-text-secondary)' }}>{r(totals.protein)}g P</span>
+      <span style={{ color: 'var(--color-text-dim)' }}>· {r(totals.fiber ?? 0)}g Fi</span>
+      <span style={{ color: 'var(--color-text-dim)' }}>· {r(totals.calories ?? 0)} kcal</span>
+    </div>
+  ) : null
+
+  const handleEdit = (meal: MealLog) => {
+    setEditingMealId(meal.id)
+    setShowLogger(true)
+  }
+
+  const handleGlucoseUpdate = (id: string, value: number | null) => {
+    setDay(prev => {
+      if (!prev) return prev
+      return { ...prev, meals: prev.meals.map(m => m.id === id ? { ...m, peak_glucose_mmol: value } : m) }
+    })
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await fetch(`/api/nutrition/meal?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        setError((j as { error?: string }).error ?? 'Delete failed')
+        return
+      }
+      await fetchDay()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+    }
+  }
+
+  return (
+    <Section title="Nutrition" isComplete={hasData} rightSlot={summaryBars}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+        {/* Macro summary bar */}
         <div
           style={{
-            fontSize: 11,
-            fontWeight: 500,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--color-text-secondary)',
-            marginBottom: 8,
+            padding: 14,
+            background: 'var(--color-bg)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 10,
+            display: 'flex', flexDirection: 'column', gap: 10,
+            position: 'sticky', top: 0, zIndex: 5,
           }}
         >
-          {label}
+          <MacroBar
+            label="Protein"
+            value={totals.protein ?? 0}
+            target={MACRO_TARGETS.protein}
+            flagBelow={MACRO_TARGETS.protein.flagBelow}
+          />
+          <MacroBar
+            label="Fiber"
+            value={totals.fiber ?? 0}
+            target={MACRO_TARGETS.fiber}
+            flagBelow={MACRO_TARGETS.fiber.flagBelow}
+          />
+          <MacroBar
+            label="Carbs"
+            value={totals.carbs ?? 0}
+            target={MACRO_TARGETS.carbs}
+            flagAbove={(MACRO_TARGETS.carbs as { flagAbove?: number }).flagAbove}
+          />
+          <MacroBar
+            label="Fat"
+            value={totals.fat ?? 0}
+            target={MACRO_TARGETS.fat}
+            flagAbove={(MACRO_TARGETS.fat as { flagAbove?: number }).flagAbove}
+          />
+          <MacroBar
+            label="Calories"
+            value={totals.calories ?? 0}
+            target={calorieTargetRange}
+            unit=" kcal"
+          />
         </div>
-      )}
 
-      {/* Button row: [+] [thumbnail?] textarea [Estimate?] */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: (!noMacros && hasMacros) ? 10 : 0 }}>
+        {/* Loading / error states */}
+        {loading && !day && (
+          <div style={{ fontSize: 12, color: 'var(--color-text-dim)', textAlign: 'center', padding: 12 }}>
+            Loading…
+          </div>
+        )}
+        {error && (
+          <div style={{ fontSize: 12, color: 'var(--color-danger)', textAlign: 'center', padding: 8 }}>
+            {error}
+          </div>
+        )}
 
-        {/* + button and action sheet */}
-        <div ref={plusRef} style={{ position: 'relative', flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={() => !plusBusy && setActionSheetOpen((v) => !v)}
-            aria-label={listening ? 'Listening…' : analysing ? 'Analysing…' : 'Add via photo or voice'}
-            style={{
-              width: 40,
-              height: 40,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: listening
-                ? 'var(--color-primary-light)'
-                : 'var(--color-surface)',
-              border: `1px solid ${listening ? 'var(--color-danger)' : 'var(--color-border)'}`,
-              borderRadius: 8,
-              cursor: plusBusy ? 'default' : 'pointer',
-              fontSize: 20,
-              color: listening
-                ? 'var(--color-danger)'
-                : analysing
-                ? 'var(--color-text-dim)'
-                : 'var(--color-text-secondary)',
-              lineHeight: 1,
-            }}
-          >
-            {(analysing || transcribing) ? <SpinnerIcon /> : '+'}
-          </button>
-
-          {/* Action sheet */}
-          {actionSheetOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: 4,
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 10,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
-                zIndex: 200,
-                minWidth: 196,
-                overflow: 'hidden',
-              }}
-            >
-              {(
-                [
-                  { emoji: '📷', label: 'Take photo',          onClick: () => { setActionSheetOpen(false); cameraInputRef.current?.click() } },
-                  { emoji: '🖼️', label: 'Choose from library', onClick: () => { setActionSheetOpen(false); libraryInputRef.current?.click() } },
-                  { emoji: '🎤', label: 'Speak',               onClick: startListening },
-                ] as { emoji: string; label: string; onClick: () => void }[]
-              ).map(({ emoji, label: optLabel, onClick }, idx, arr) => (
-                <button
-                  key={optLabel}
-                  type="button"
-                  onClick={onClick}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    width: '100%',
-                    padding: '12px 14px',
-                    background: 'none',
-                    border: 'none',
-                    borderBottom: idx < arr.length - 1 ? '1px solid var(--color-border)' : 'none',
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    color: 'var(--color-text-primary)',
-                    textAlign: 'left',
-                    fontFamily: 'var(--font-sans)',
-                  }}
-                >
-                  <span>{emoji}</span>
-                  <span>{optLabel}</span>
-                </button>
-              ))}
+        {/* Meal cards */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <AnimatePresence initial={false}>
+            {(day?.meals ?? []).map(m => (
+              <MealCard key={m.id} meal={m} onDelete={() => handleDelete(m.id)} onEdit={() => handleEdit(m)} onGlucoseUpdate={(v) => handleGlucoseUpdate(m.id, v)} />
+            ))}
+          </AnimatePresence>
+          {!loading && (day?.meals.length ?? 0) === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--color-text-dim)', textAlign: 'center', padding: 16 }}>
+              No meals logged yet.
             </div>
           )}
         </div>
 
-        {/* Hidden file inputs */}
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            if (e.target.files?.[0]) handleFile(e.target.files[0])
-            e.target.value = ''
-          }}
-        />
-        <input
-          ref={libraryInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            if (e.target.files?.[0]) handleFile(e.target.files[0])
-            e.target.value = ''
-          }}
-        />
-
-        {/* Thumbnail */}
-        {thumbnail && (
+        {/* Bottom action bar */}
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <button
             type="button"
-            onClick={() => setThumbnail(null)}
-            aria-label="Remove photo"
-            style={{
-              flexShrink: 0,
-              width: 48,
-              height: 48,
-              padding: 0,
-              border: '1px solid var(--color-border)',
-              borderRadius: 6,
-              overflow: 'hidden',
-              cursor: 'pointer',
-              background: 'none',
-            }}
+            onClick={() => { setLoggerInitialScreen('menu'); setShowLogger(true) }}
+            className="btn-primary"
+            style={{ flex: 1 }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={thumbnail}
-              alt="Meal photo"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            />
+            + Log a meal
           </button>
-        )}
-
-        {/* Textarea */}
-        <textarea
-          value={meal.description}
-          onChange={(e) => setMacro('description', e.target.value)}
-          placeholder={analysing ? 'Analysing photo…' : placeholder}
-          rows={2}
-          disabled={analysing}
-          style={{
-            flex: 1,
-            padding: '10px 12px',
-            fontSize: 14,
-            color: analysing ? 'var(--color-text-dim)' : 'var(--color-text-primary)',
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 8,
-            outline: 'none',
-            resize: 'none',
-            fontFamily: 'var(--font-sans)',
-          }}
-        />
-
-        {/* Estimate button */}
-        {showEstimate && (
           <button
             type="button"
-            onClick={estimate}
-            disabled={estimating || !meal.description.trim()}
+            onClick={() => { setLoggerInitialScreen('library'); setShowLogger(true) }}
+            aria-label="My Library"
             style={{
-              flexShrink: 0,
-              width: 52,
-              alignSelf: 'stretch',
-              background: 'var(--color-primary-light)',
-              border: '1px solid var(--color-primary)',
-              borderRadius: 8,
-              fontSize: 11,
-              color: 'var(--color-primary)',
-              cursor: meal.description.trim() ? 'pointer' : 'not-allowed',
-              fontWeight: 500,
-              opacity: meal.description.trim() ? 1 : 0.4,
-              padding: '0 4px',
-              lineHeight: 1.3,
-              textAlign: 'center',
-            }}
-          >
-            {estimating ? '…' : 'Est-\nimate'}
-          </button>
-        )}
-      </div>
-
-      {/* Errors / transcribing status */}
-      {(voiceError || photoError || transcribing) && (
-        <div style={{ fontSize: 12, color: transcribing ? 'var(--color-text-dim)' : 'var(--color-danger)', marginTop: 6, marginBottom: 2 }}>
-          {transcribing ? 'Transcribing…' : photoError || voiceError}
-        </div>
-      )}
-
-      {/* Macros grid */}
-      {!noMacros && hasMacros && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
-          {(
-            [
-              { key: 'protein',  label: 'P',   unit: 'g'    },
-              { key: 'fiber',    label: 'F',   unit: 'g'    },
-              { key: 'fat',      label: 'Fat', unit: 'g'    },
-              { key: 'carbs',    label: 'C',   unit: 'g'    },
-              { key: 'calories', label: 'Cal', unit: 'kcal' },
-            ] as { key: keyof MealMacros; label: string; unit: string }[]
-          ).map(({ key, label, unit }) => (
-            <div key={key} style={{ textAlign: 'center' }}>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={(meal[key] as number | null) ?? ''}
-                onChange={(e) =>
-                  setMacro(key, e.target.value === '' ? null : Number(e.target.value))
-                }
-                placeholder="—"
-                style={{
-                  width: '100%',
-                  height: 36,
-                  textAlign: 'center',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 14,
-                  color: 'var(--color-text-primary)',
-                  background: 'var(--color-surface)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 6,
-                  outline: 'none',
-                  padding: 0,
-                }}
-              />
-              <div
-                style={{
-                  fontSize: 9,
-                  color: 'var(--color-text-dim)',
-                  marginTop: 3,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                {label} {unit}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Show macros button if none */}
-      {!noMacros && !hasMacros && meal.description && (
-        <button
-          type="button"
-          onClick={() => onChange({ ...meal, protein: null, fiber: null, fat: null, carbs: null, calories: null })}
-          style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: 'var(--color-primary)',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-            fontFamily: 'var(--font-sans)',
-          }}
-        >
-          + Add macros manually
-        </button>
-      )}
-
-      {/* Peak glucose — only visible when meal has a description */}
-      {!noMacros && meal.description && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', minWidth: 90 }}>
-            Peak glucose
-          </div>
-          <input
-            type="number"
-            inputMode="decimal"
-            step={0.1}
-            min={3.0}
-            max={15.0}
-            value={meal.peak_glucose_mmol ?? ''}
-            onChange={(e) => onChange({ ...meal, peak_glucose_mmol: e.target.value === '' ? null : Number(e.target.value) })}
-            placeholder="—"
-            style={{
-              width: 64,
-              height: 32,
-              padding: '0 8px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 14,
-              color: 'var(--color-text-primary)',
+              width: 44,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border)',
-              borderRadius: 6,
-              outline: 'none',
+              borderRadius: 8, cursor: 'pointer',
+              color: 'var(--color-text-secondary)',
+              flexShrink: 0,
             }}
-          />
-          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>mmol/L</span>
+          >
+            <LibraryIcon />
+          </button>
         </div>
-      )}
-    </div>
+
+        {showLogger && (() => {
+          const editMeal = editingMealId ? (day?.meals ?? []).find(m => m.id === editingMealId) ?? null : null
+          const editingMealProp = editMeal ? {
+            id: editMeal.id,
+            name: editMeal.name,
+            notes: editMeal.notes,
+            items: editMeal.items.flatMap(it => {
+              const fi = pickFoodItem(it)
+              if (!fi) return []
+              return [{
+                food_item: {
+                  id: fi.id,
+                  name: fi.name,
+                  fdc_id: fi.fdc_id,
+                  source: fi.source,
+                  nutrients_per_100g: {
+                    calories: fi.nutrients_per_100g.calories ?? null,
+                    protein:  fi.nutrients_per_100g.protein  ?? null,
+                    carbs:    fi.nutrients_per_100g.carbs    ?? null,
+                    fat:      fi.nutrients_per_100g.fat      ?? null,
+                    fiber:    fi.nutrients_per_100g.fiber    ?? null,
+                  },
+                },
+                weight_grams: it.weight_grams,
+              }]
+            }),
+          } : undefined
+          return (
+            <MealLogger
+              onClose={() => { setShowLogger(false); setEditingMealId(null) }}
+              onSaved={() => { setShowLogger(false); setEditingMealId(null); fetchDay() }}
+              initialScreen={loggerInitialScreen}
+              editingMeal={editingMealProp}
+            />
+          )
+        })()}
+      </div>
+    </Section>
   )
 }
 
-// ─── Main component ──────────────────────────────────────────────
-export default function NutritionSection({
-  data,
-  onChange,
-  onSave,
-  saving,
-  sessions = [],
-}: Props) {
-  const calorieTarget = getDailyCalorieTarget(sessions)
-  console.log('[NutritionSection] sessions:', JSON.stringify(sessions), '→ target:', calorieTarget)
-  const [localSaved, setLocalSaved] = useState(false)
-  const [saveError, setSaveError] = useState(false)
-  const [showIncidentals, setShowIncidentals] = useState(false)
-
-  const hasData =
-    data.lunch.description ||
-    data.dinner.description ||
-    data.breakfast.description ||
-    data.pre_workout_snack.description
-
-  const updateMeal = (key: keyof NutritionData, meal: MealMacros | BreakfastMeal) => {
-    setLocalSaved(false)
-    setSaveError(false)
-    const updated = computeTotals({ ...data, [key]: meal })
-    onChange(updated)
-  }
-
-  const addIncidental = (chip: { macros: Partial<MealMacros> }) => {
-    const current = data.incidentals
-    const merged: MealMacros = {
-      description: [current.description, chip.macros.description]
-        .filter(Boolean)
-        .join(', '),
-      protein:  (current.protein  ?? 0) + (chip.macros.protein  ?? 0),
-      fiber:    (current.fiber    ?? 0) + (chip.macros.fiber    ?? 0),
-      fat:      (current.fat      ?? 0) + (chip.macros.fat      ?? 0),
-      carbs:    (current.carbs    ?? 0) + (chip.macros.carbs    ?? 0),
-      calories: (current.calories ?? 0) + (chip.macros.calories ?? 0),
-      peak_glucose_mmol: current.peak_glucose_mmol ?? null,
-    }
-    updateMeal('incidentals', merged)
-  }
-
-  const handleSave = async () => {
-    setSaveError(false)
-    try {
-      await onSave()
-      setLocalSaved(true)
-      setTimeout(() => setLocalSaved(false), 2000)
-    } catch {
-      setSaveError(true)
-    }
-  }
-
-  // Collapsed summary: macro bars
-  const summaryBars =
-    data.total_protein != null ? (
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        {[
-          { v: data.total_protein, t: MACRO_TARGETS.protein, flag: MACRO_TARGETS.protein.flagBelow },
-          { v: data.total_fiber,   t: MACRO_TARGETS.fiber,   flag: MACRO_TARGETS.fiber.flagBelow },
-        ].map((b, i) => {
-          if (b.v == null) return null
-          const isLow = b.flag != null && b.v < b.flag
-          return (
-            <div
-              key={i}
-              style={{
-                width: 32,
-                height: 4,
-                borderRadius: 2,
-                background: 'var(--color-primary-light)',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${Math.min(100, (b.v / b.t.max) * 100)}%`,
-                  background: isLow ? 'var(--color-danger)' : 'var(--color-success)',
-                  borderRadius: 2,
-                }}
-              />
-            </div>
-          )
-        })}
-        <span
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 11,
-            color: 'var(--color-text-secondary)',
-          }}
-        >
-          {Math.round(data.total_protein ?? 0)}g P
-        </span>
-      </div>
-    ) : null
-
+function LibraryIcon() {
   return (
-    <Section title="Nutrition" isComplete={!!hasData} rightSlot={summaryBars}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-
-        {/* Daily macro overview */}
-        {data.total_protein != null && (
-          <div
-            style={{
-              marginBottom: 20,
-              padding: 14,
-              background: 'var(--color-bg)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 10,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}
-          >
-            <MacroBar
-              label="Protein"
-              value={data.total_protein}
-              target={MACRO_TARGETS.protein}
-              flagBelow={MACRO_TARGETS.protein.flagBelow}
-            />
-            <MacroBar
-              label="Fiber"
-              value={data.total_fiber}
-              target={MACRO_TARGETS.fiber}
-              flagBelow={MACRO_TARGETS.fiber.flagBelow}
-            />
-            <MacroBar
-              label="Fat"
-              value={data.total_fat}
-              target={MACRO_TARGETS.fat}
-              flagAbove={(MACRO_TARGETS.fat as { flagAbove?: number }).flagAbove}
-            />
-            <MacroBar
-              label="Carbs"
-              value={data.total_carbs}
-              target={MACRO_TARGETS.carbs}
-              flagAbove={(MACRO_TARGETS.carbs as { flagAbove?: number }).flagAbove}
-            />
-            {data.total_calories != null && (
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontSize: 12,
-                  paddingTop: 6,
-                  borderTop: '1px solid var(--color-border)',
-                }}
-              >
-                <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-                  Total calories
-                </span>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    color:
-                      data.total_calories < calorieTarget * 0.9
-                        ? 'var(--color-danger)'
-                        : data.total_calories > calorieTarget * 1.1
-                        ? 'var(--color-amber)'
-                        : 'var(--color-success)',
-                  }}
-                >
-                  {data.total_calories} kcal
-                  <span style={{ color: 'var(--color-text-dim)', fontFamily: 'var(--font-sans)' }}>
-                    {' / '}{calorieTarget}
-                  </span>
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Pre-workout snack */}
-          <MealRow
-            label="Pre-workout snack"
-            meal={data.pre_workout_snack}
-            onChange={(m) => updateMeal('pre_workout_snack', m)}
-            showEstimate
-            placeholder="Small snack before training…"
-          />
-
-          {/* Breakfast */}
-          <MealRow
-            label="Breakfast"
-            meal={data.breakfast}
-            onChange={(m) => updateMeal('breakfast', m)}
-            showEstimate
-            placeholder="Describe what you had…"
-          />
-
-          {/* Lunch */}
-          <MealRow
-            label="Lunch"
-            meal={data.lunch}
-            onChange={(m) => updateMeal('lunch', m)}
-            showEstimate
-            placeholder="Describe what you had…"
-          />
-
-          {/* Dinner */}
-          <MealRow
-            label="Dinner"
-            meal={data.dinner}
-            onChange={(m) => updateMeal('dinner', m)}
-            showEstimate
-            placeholder="Describe what you had…"
-          />
-
-          {/* Incidentals */}
-          <div style={{ paddingBottom: 4 }}>
-            <button
-              type="button"
-              onClick={() => setShowIncidentals((v) => !v)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                marginBottom: showIncidentals ? 12 : 0,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  color: 'var(--color-text-secondary)',
-                }}
-              >
-                Incidentals
-              </span>
-              {data.incidentals.calories != null && (
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    color: 'var(--color-text-dim)',
-                  }}
-                >
-                  +{data.incidentals.calories} kcal
-                </span>
-              )}
-              <span
-                style={{
-                  fontSize: 14,
-                  color: 'var(--color-text-dim)',
-                  transform: showIncidentals ? 'rotate(90deg)' : 'none',
-                  transition: 'transform 200ms',
-                }}
-              >
-                ›
-              </span>
-            </button>
-
-            {showIncidentals && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {/* Quick-add chips */}
-                <div className="scroll-row">
-                  {INCIDENTAL_CHIPS.map((chip) => (
-                    <button
-                      key={chip.label}
-                      type="button"
-                      onClick={() => addIncidental(chip)}
-                      className="btn-template"
-                      style={{ minWidth: 'auto', fontSize: 12 }}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Free text + macros + estimate */}
-                <MealRow
-                  label="Other incidentals"
-                  meal={data.incidentals}
-                  onChange={(m) => updateMeal('incidentals', m)}
-                  showEstimate
-                  placeholder="Snacks, treats, extras…"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Save */}
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="btn-primary"
-          style={{
-            marginTop: 16,
-            background: saveError ? 'var(--color-danger)' : localSaved ? '#52B882' : undefined,
-          }}
-        >
-          {saveError ? 'Save failed — retry' : localSaved ? '✓ Saved' : saving ? 'Saving…' : 'Save nutrition'}
-        </button>
-      </div>
-    </Section>
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+      <rect x="3" y="4" width="3" height="12" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="8" y="4" width="3" height="12" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M13 4l3 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
   )
 }
