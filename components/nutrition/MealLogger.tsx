@@ -230,8 +230,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
   // Confirm-screen fields
   const [peakGlucose, setPeakGlucose] = useState<string>('')
   const [notes, setNotes] = useState('')
-  const [saveAsTemplate, setSaveAsTemplate] = useState(false)
-  const [templateName, setTemplateName] = useState('')
 
   // Save state
   const [saving, setSaving] = useState(false)
@@ -239,9 +237,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
 
   // Photo estimation result (non-null when coming from ScreenPhotoEstimate)
   const [estimateResult, setEstimateResult] = useState<EstimateResult | null>(null)
-
-  // True when My Library is opened from "Load another template" on Screen 4
-  const [libraryFromBuilding, setLibraryFromBuilding] = useState(false)
 
   // Lock body scroll while logger is open
   useEffect(() => {
@@ -306,8 +301,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
             peak_glucose_mmol: peakGlucose === '' ? null : Number(peakGlucose),
             notes: notes.trim() || null,
             items: items.map(it => ({ food_item_id: it.food_item.id, weight_grams: it.weight_grams })),
-            save_as_template: saveAsTemplate,
-            template_name: saveAsTemplate ? (templateName.trim() || mealName.trim() || null) : null,
           }
       const res = await fetch('/api/nutrition/meal', {
         method: 'POST',
@@ -356,31 +349,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
     })
   }
 
-  // Appends a template's ingredients to the current meal without clearing
-  // existing items. Used by "Load another template" on Screen 4.
-  const appendTemplate = (t: TemplateRow) => {
-    const built: BuildingItem[] = t.items
-      .map(it => {
-        const fi = pickFoodItemFromTemplate(it)
-        return fi ? { food_item: fi, weight_grams: it.default_weight_grams } : null
-      })
-      .filter((x): x is BuildingItem => x !== null)
-
-    setLibraryFromBuilding(false)
-    setScreen('building')
-
-    fetch('/api/nutrition/templates', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: t.id, bump_use_count: true }),
-    }).catch(() => {})
-
-    built.forEach((bi, i) => {
-      setTimeout(() => setItems(prev => [...prev, bi]), 80 + i * 70)
-    })
-  }
-
-  const startNewTemplate = () => {
+const startNewTemplate = () => {
     setEditingTemplate({ id: null, name: '' })
     setItems([])
     setMealName('')
@@ -609,7 +578,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                     onAddAnother={goToSearch}
                     onSave={() => setScreen('confirm')}
                     onSaveTemplate={saveTemplate}
-                    onLoadTemplate={() => { setLibraryFromBuilding(true); setScreen('library') }}
                     onBack={() => {
                       if (editingTemplate) {
                         setEditingTemplate(null)
@@ -619,16 +587,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                         setScreen('menu')
                       }
                     }}
-                  />
-                )
-              case 'templates':
-                return (
-                  <ScreenTemplates
-                    key="templates"
-                    onApply={applyTemplate}
-                    onEdit={startEditTemplate}
-                    onNew={startNewTemplate}
-                    onBack={() => setScreen('menu')}
                   />
                 )
               case 'confirm':
@@ -643,10 +601,6 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                     setPeakGlucose={setPeakGlucose}
                     notes={notes}
                     setNotes={setNotes}
-                    saveAsTemplate={saveAsTemplate}
-                    setSaveAsTemplate={setSaveAsTemplate}
-                    templateName={templateName}
-                    setTemplateName={setTemplateName}
                     saving={saving}
                     error={saveError}
                     onConfirm={handleConfirm}
@@ -657,15 +611,10 @@ export default function MealLogger({ onClose, onSaved, initialScreen }: Props) {
                 return (
                   <ScreenLibrary
                     key="library"
-                    templateOnly={libraryFromBuilding}
                     onBack={() => {
-                      if (libraryFromBuilding) { setLibraryFromBuilding(false); setScreen('building') }
-                      else if (initialScreen === 'library') onClose()
+                      if (initialScreen === 'library') onClose()
                       else setScreen('menu')
                     }}
-                    onUseTemplate={libraryFromBuilding ? appendTemplate : applyTemplate}
-                    onEditTemplate={startEditTemplate}
-                    onNewTemplate={startNewTemplate}
                     onNewRecipe={startNewRecipe}
                     onEditRecipe={startEditRecipe}
                     onUseRecipe={(foodItem, servingGrams) => {
@@ -1547,7 +1496,7 @@ function ScreenWeight({
 function ScreenBuilding({
   mealName, items, template, setTemplateName,
   saving, saveError,
-  onEdit, onRemove, onAddAnother, onSave, onSaveTemplate, onLoadTemplate, onBack,
+  onEdit, onRemove, onAddAnother, onSave, onSaveTemplate, onBack,
 }: {
   mealName: string
   items: BuildingItem[]
@@ -1560,7 +1509,6 @@ function ScreenBuilding({
   onAddAnother: () => void
   onSave: () => void
   onSaveTemplate: () => void
-  onLoadTemplate: () => void
   onBack: () => void
 }) {
   const isTemplate = template != null
@@ -1718,16 +1666,6 @@ function ScreenBuilding({
           >
             + Add another
           </button>
-          {!isTemplate && (
-            <button
-              type="button"
-              onClick={onLoadTemplate}
-              className="btn-secondary"
-              style={{ flex: 1 }}
-            >
-              Load template
-            </button>
-          )}
           <button
             type="button"
             onClick={handleSave}
@@ -1922,39 +1860,26 @@ function ScreenTemplates({
 
 // ─── My Library: recipes + templates unified screen ──────────────────────
 function ScreenLibrary({
-  templateOnly = false,
-  onBack, onUseTemplate, onEditTemplate, onNewTemplate,
-  onNewRecipe, onEditRecipe, onUseRecipe,
+  onBack, onNewRecipe, onEditRecipe, onUseRecipe,
 }: {
-  templateOnly?: boolean
   onBack: () => void
-  onUseTemplate: (t: TemplateRow) => void
-  onEditTemplate: (t: TemplateRow) => void
-  onNewTemplate: () => void
   onNewRecipe: () => void
   onEditRecipe: (recipe: RecipeRow) => void
   onUseRecipe: (foodItem: FoodItem, servingGrams: number | null) => void
 }) {
   const [recipes, setRecipes] = useState<RecipeRow[]>([])
-  const [templates, setTemplates] = useState<TemplateRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<{ type: 'recipe' | 'template'; id: string } | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<{ type: 'recipe'; id: string } | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [recipeRes, templateRes] = await Promise.all([
-        fetch('/api/nutrition/recipe'),
-        fetch('/api/nutrition/templates'),
-      ])
+      const recipeRes = await fetch('/api/nutrition/recipe')
       const recipeJ = await recipeRes.json() as { recipes?: RecipeRow[]; error?: string }
-      const templateJ = await templateRes.json() as { templates?: TemplateRow[]; error?: string }
       if (recipeJ.error) setError(recipeJ.error)
       else setRecipes(recipeJ.recipes ?? [])
-      if (templateJ.error) setError(prev => prev ? `${prev} | ${templateJ.error}` : templateJ.error ?? null)
-      else setTemplates(templateJ.templates ?? [])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load')
     } finally {
@@ -1976,19 +1901,7 @@ function ScreenLibrary({
     }
   }
 
-  const handleDeleteTemplate = async (id: string) => {
-    try {
-      const res = await fetch(`/api/nutrition/templates?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-      const j = await res.json().catch(() => ({})) as { error?: string }
-      if (!res.ok || j.error) { setError(j.error ?? 'Delete failed'); return }
-      setConfirmDeleteId(null)
-      await fetchAll()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Delete failed')
-    }
-  }
-
-  const pickRecipeFoodItem = (recipe: RecipeRow): FoodItem | null => {
+const pickRecipeFoodItem = (recipe: RecipeRow): FoodItem | null => {
     if (!recipe.food_items) return null
     return Array.isArray(recipe.food_items) ? recipe.food_items[0] ?? null : recipe.food_items
   }
@@ -1999,7 +1912,7 @@ function ScreenLibrary({
       transition={{ duration: 0.18 }}
       style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
     >
-      <Header title={templateOnly ? 'Load a template' : 'My Library'} onBack={onBack} backLabel="Back" />
+      <Header title="My Library" onBack={onBack} backLabel="Back" />
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 24px' }}>
         {error && (
@@ -2012,7 +1925,7 @@ function ScreenLibrary({
         {!loading && (
           <>
             {/* ── Recipes (hidden in template-only mode) ────────────── */}
-            {!templateOnly && <div style={{ marginBottom: 28 }}>
+            <div style={{ marginBottom: 28 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingTop: 8 }}>
                 <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-text-secondary)' }}>
                   Recipes
@@ -2121,105 +2034,8 @@ function ScreenLibrary({
                   })}
                 </div>
               )}
-            </div>}
-
-            {/* ── Templates ────────────────────────────────────────── */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-text-secondary)' }}>
-                  Templates
-                </span>
-                {!templateOnly && (
-                  <button
-                    type="button" onClick={onNewTemplate} className="btn-secondary"
-                    style={{ fontSize: 12, padding: '5px 10px' }}
-                  >
-                    + New template
-                  </button>
-                )}
-              </div>
-
-              {templates.length === 0 ? (
-                <div style={{ fontSize: 13, color: 'var(--color-text-dim)', textAlign: 'center', padding: 16 }}>
-                  No templates yet — save one from a meal, or create one from scratch.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {templates.map(t => {
-                    const built = t.items
-                      .map(it => {
-                        const fi = pickFoodItemFromTemplate(it)
-                        return fi ? { food_item: fi, weight_grams: it.default_weight_grams } : null
-                      })
-                      .filter((x): x is BuildingItem => x !== null)
-                    const tTotals = totalsFor(built)
-                    const isConfirming = confirmDeleteId?.id === t.id && confirmDeleteId?.type === 'template'
-
-                    return (
-                      <div
-                        key={t.id}
-                        style={{
-                          background: 'var(--color-surface)',
-                          border: '1px solid var(--color-border)',
-                          borderRadius: 10, padding: '10px 12px',
-                          display: 'flex', flexDirection: 'column', gap: 8,
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                          <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {t.name}
-                          </span>
-                          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', flexShrink: 0 }}>
-                            {built.length} item{built.length === 1 ? '' : 's'} · used {t.use_count}×
-                          </span>
-                        </div>
-                        <MacroLine totals={tTotals} dim />
-
-                        {templateOnly ? (
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <button
-                              type="button" onClick={() => onUseTemplate(t)}
-                              className="btn-primary"
-                              style={{ fontSize: 12, padding: '4px 14px' }}
-                            >Use</button>
-                          </div>
-                        ) : isConfirming ? (
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
-                            <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>Delete &ldquo;{t.name}&rdquo;?</span>
-                            <button
-                              type="button" onClick={() => setConfirmDeleteId(null)}
-                              style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' }}
-                            >Cancel</button>
-                            <button
-                              type="button" onClick={() => handleDeleteTemplate(t.id)}
-                              style={{ background: 'var(--color-danger)', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#fff' }}
-                            >Yes, delete</button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                            <button
-                              type="button" onClick={() => onEditTemplate(t)}
-                              style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--color-text-secondary)' }}
-                            >Edit</button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteId({ type: 'template', id: t.id })}
-                              aria-label="Delete template"
-                              style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', color: 'var(--color-text-dim)' }}
-                            ><TrashIcon /></button>
-                            <button
-                              type="button" onClick={() => onUseTemplate(t)}
-                              className="btn-primary"
-                              style={{ fontSize: 12, padding: '4px 14px' }}
-                            >Use</button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
             </div>
+
           </>
         )}
       </div>
@@ -2648,7 +2464,6 @@ function CameraIcon() {
 function ScreenConfirm({
   mealName, setMealName, items, estimate,
   peakGlucose, setPeakGlucose, notes, setNotes,
-  saveAsTemplate, setSaveAsTemplate, templateName, setTemplateName,
   saving, error, onConfirm, onBack,
 }: {
   mealName: string
@@ -2659,10 +2474,6 @@ function ScreenConfirm({
   setPeakGlucose: (s: string) => void
   notes: string
   setNotes: (s: string) => void
-  saveAsTemplate: boolean
-  setSaveAsTemplate: (v: boolean) => void
-  templateName: string
-  setTemplateName: (s: string) => void
   saving: boolean
   error: string | null
   onConfirm: () => void
@@ -2781,36 +2592,6 @@ function ScreenConfirm({
             }}
           />
         </div>
-
-        {!isEstimate && (
-          <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={saveAsTemplate}
-                onChange={(e) => setSaveAsTemplate(e.target.checked)}
-                style={{ width: 18, height: 18, accentColor: 'var(--color-primary)' }}
-              />
-              <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>Save as template</span>
-            </label>
-            {saveAsTemplate && (
-              <input
-                type="text"
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                placeholder={mealName.trim() || 'Template name'}
-                style={{
-                  width: '100%', marginTop: 8,
-                  padding: '10px 12px', fontSize: 14,
-                  color: 'var(--color-text-primary)',
-                  background: 'var(--color-surface)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 8, outline: 'none',
-                }}
-              />
-            )}
-          </div>
-        )}
 
         {error && (
           <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{error}</div>
