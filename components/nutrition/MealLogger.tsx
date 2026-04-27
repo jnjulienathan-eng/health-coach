@@ -2060,6 +2060,23 @@ function ScreenRecipeBuilder({
   onSave: () => void
   onBack: () => void
 }) {
+  // When isRaw, auto-compute portion size = total ingredient weight / servings.
+  // Stop auto-computing once Julie manually edits the field; reset when isRaw
+  // is toggled or a new recipe is started (component remounts).
+  const [userEditedPortionSize, setUserEditedPortionSize] = useState(false)
+
+  useEffect(() => {
+    if (!recipeState.isRaw || userEditedPortionSize) return
+    const s = parseInt(recipeState.servings, 10)
+    if (!s || s < 1 || items.length === 0) return
+    const totalWeight = items.reduce((sum, it) => sum + it.weight_grams, 0)
+    const auto = Math.round(totalWeight / s)
+    if (auto > 0) setRecipeState({ ...recipeState, servingGrams: String(auto) })
+  // recipeState spread is intentional — only trigger on the fields that change
+  // the computed value, not on servingGrams itself (would loop).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipeState.isRaw, recipeState.servings, items, userEditedPortionSize])
+
   const batchTotals = useMemo(() => totalsFor(items), [items])
   const servings = parseInt(recipeState.servings, 10) || 0
   const cookedGrams = parseFloat(recipeState.cookedGrams) || 0
@@ -2143,7 +2160,10 @@ function ScreenRecipeBuilder({
               <input
                 type="number" inputMode="decimal" min={1}
                 value={recipeState.servingGrams}
-                onChange={(e) => setRecipeState({ ...recipeState, servingGrams: e.target.value })}
+                onChange={(e) => {
+                  setUserEditedPortionSize(true)
+                  setRecipeState({ ...recipeState, servingGrams: e.target.value })
+                }}
                 placeholder="—"
                 style={{
                   width: 80, padding: '10px 12px', fontSize: 14, fontFamily: 'var(--font-mono)',
@@ -2165,7 +2185,10 @@ function ScreenRecipeBuilder({
           <input
             type="checkbox"
             checked={recipeState.isRaw}
-            onChange={(e) => setRecipeState({ ...recipeState, isRaw: e.target.checked })}
+            onChange={(e) => {
+              setUserEditedPortionSize(false)
+              setRecipeState({ ...recipeState, isRaw: e.target.checked })
+            }}
             style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
           />
           <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>
