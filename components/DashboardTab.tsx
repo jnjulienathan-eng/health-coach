@@ -332,92 +332,6 @@ export default function DashboardTab({ today, currentDate }: Props) {
       {/* ── Trend charts ──────────────────────────────────────────── */}
       {hasEnoughData && (
         <>
-          {/* HRV */}
-          <ChartCard title="HRV — 30 days">
-            <ResponsiveContainer width="100%" height={CHART_H}>
-              <LineChart data={hrvData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <XAxis dataKey="date" tick={axisStyle} />
-                <YAxis tick={axisStyle} domain={['auto', 'auto']} />
-                <ReferenceLine y={88} stroke="#DCE8E0" strokeDasharray="4 2" />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}ms`, 'HRV']} />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#3D9A6B"
-                  strokeWidth={2}
-                  dot={{ fill: '#3D9A6B', r: 3 }}
-                  connectNulls={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
-              — baseline 88ms
-            </div>
-          </ChartCard>
-
-          {/* Sleep duration */}
-          <ChartCard title="Sleep — 30 days">
-            <ResponsiveContainer width="100%" height={CHART_H}>
-              <BarChart data={sleepData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <XAxis dataKey="date" tick={axisStyle} />
-                <YAxis tick={axisStyle} domain={[0, 10]} />
-                <ReferenceLine y={7.5} stroke="#DCE8E0" strokeDasharray="4 2" />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}h`, 'Sleep']} />
-                <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
-              — target 7h30
-            </div>
-          </ChartCard>
-
-          {/* Protein */}
-          <ChartCard title="Protein — 30 days">
-            <ResponsiveContainer width="100%" height={CHART_H}>
-              <BarChart data={proteinData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <XAxis dataKey="date" tick={axisStyle} />
-                <YAxis tick={axisStyle} />
-                <ReferenceLine y={130} stroke="#DCE8E0" strokeDasharray="4 2" />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}g`, 'Protein']} />
-                <Bar dataKey="value" radius={[3, 3, 0, 0]} fill="#3D9A6B" />
-              </BarChart>
-            </ResponsiveContainer>
-            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
-              — target 130g
-            </div>
-          </ChartCard>
-
-          {/* Fiber */}
-          <ChartCard title="Fiber — 30 days">
-            <ResponsiveContainer width="100%" height={CHART_H}>
-              <BarChart data={fiberData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <XAxis dataKey="date" tick={axisStyle} />
-                <YAxis tick={axisStyle} />
-                <ReferenceLine y={30} stroke="#DCE8E0" strokeDasharray="4 2" />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}g`, 'Fiber']} />
-                <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
-              — target 30g
-            </div>
-          </ChartCard>
-
-          {/* Training minutes */}
-          <ChartCard title="Training minutes — 30 days">
-            <ResponsiveContainer width="100%" height={CHART_H}>
-              <BarChart data={trainingData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <XAxis dataKey="date" tick={axisStyle} />
-                <YAxis tick={axisStyle} />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}min`, 'Training']} />
-                <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
-              Total training minutes per day
-            </div>
-          </ChartCard>
-
           {/* Training Load expandable card */}
           {(() => {
             const n = tlHistory.length
@@ -543,6 +457,93 @@ export default function DashboardTab({ today, currentDate }: Props) {
               </div>
             )
           })()}
+
+          {/* HRV */}
+          <ChartCard title="HRV — 30 days">
+            <ResponsiveContainer width="100%" height={CHART_H}>
+              <LineChart data={hrvData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <XAxis dataKey="date" tick={axisStyle} />
+                <YAxis tick={axisStyle} domain={['auto', 'auto']} />
+                <ReferenceLine y={88} stroke="#DCE8E0" strokeDasharray="4 2" />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}ms`, 'HRV']} />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#3D9A6B"
+                  strokeWidth={2}
+                  dot={{ fill: '#3D9A6B', r: 3 }}
+                  connectNulls={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
+              — baseline 88ms
+            </div>
+          </ChartCard>
+
+          {/* Sleep duration */}
+          <ChartCard title="Sleep — 30 days">
+            <ResponsiveContainer width="100%" height={CHART_H}>
+              <BarChart data={sleepData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <XAxis dataKey="date" tick={axisStyle} />
+                <YAxis tick={axisStyle} domain={[0, 10]} />
+                <ReferenceLine y={7.5} stroke="#DCE8E0" strokeDasharray="4 2" />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}h`, 'Sleep']} />
+                <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
+              — target 7h30
+            </div>
+          </ChartCard>
+
+          {/* Protein */}
+          <ChartCard title="Protein — 30 days">
+            <ResponsiveContainer width="100%" height={CHART_H}>
+              <BarChart data={proteinData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <XAxis dataKey="date" tick={axisStyle} />
+                <YAxis tick={axisStyle} />
+                <ReferenceLine y={130} stroke="#DCE8E0" strokeDasharray="4 2" />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}g`, 'Protein']} />
+                <Bar dataKey="value" radius={[3, 3, 0, 0]} fill="#3D9A6B" />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
+              — target 130g
+            </div>
+          </ChartCard>
+
+          {/* Fiber */}
+          <ChartCard title="Fiber — 30 days">
+            <ResponsiveContainer width="100%" height={CHART_H}>
+              <BarChart data={fiberData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <XAxis dataKey="date" tick={axisStyle} />
+                <YAxis tick={axisStyle} />
+                <ReferenceLine y={30} stroke="#DCE8E0" strokeDasharray="4 2" />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}g`, 'Fiber']} />
+                <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
+              — target 30g
+            </div>
+          </ChartCard>
+
+          {/* Training minutes */}
+          <ChartCard title="Training minutes — 30 days">
+            <ResponsiveContainer width="100%" height={CHART_H}>
+              <BarChart data={trainingData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <XAxis dataKey="date" tick={axisStyle} />
+                <YAxis tick={axisStyle} />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}min`, 'Training']} />
+                <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>
+              Total training minutes per day
+            </div>
+          </ChartCard>
+
         </>
       )}
     </div>
