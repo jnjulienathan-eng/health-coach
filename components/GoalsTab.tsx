@@ -25,7 +25,10 @@ function getTimeOfDay(): string {
 function addMonths(dateStr: string, months: number): string {
   const d = new Date(dateStr + 'T00:00:00')
   d.setMonth(d.getMonth() + months)
-  return d.toISOString().split('T')[0]
+  const y  = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const dy = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${dy}T00:00`
 }
 
 // Per spec: Optimal ≥75, Good 60–74, OK 45–59, Low <45
@@ -45,6 +48,16 @@ function nextDueDateFromLast(lastCompleted: string | null, intervalMonths: numbe
 
 function fmtMonthYear(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+// Shows "16 Jun 2026, 10:00" when rawStr contains a non-midnight time, otherwise "16 Jun 2026".
+function fmtDueDate(rawStr: string | null, d: Date): string {
+  const datePart = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  if (rawStr && rawStr.includes('T')) {
+    const timePart = rawStr.slice(11, 16)
+    if (timePart && timePart !== '00:00') return `${datePart}, ${timePart}`
+  }
+  return datePart
 }
 
 function fmtDate(s: string | null): string {
@@ -336,7 +349,8 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
   function startEdit(appt: HealthAppointment) {
     setEditingId(appt.id)
     setEditLastCompleted(appt.last_completed_date ?? '')
-    setEditNextDue(appt.next_due_date ?? '')
+    const nd = appt.next_due_date ?? ''
+    setEditNextDue(nd ? (nd.includes('T') ? nd.slice(0, 16) : nd + 'T00:00') : '')
     setEditNotes(appt.notes ?? '')
   }
 
@@ -1580,12 +1594,12 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
           const dimmed    = isApptDimmed(appt)
           const isEditing = editingId === appt.id
           const dueDate   = appt.next_due_date
-            ? new Date(appt.next_due_date + 'T00:00:00')
+            ? new Date(appt.next_due_date.includes('T') ? appt.next_due_date : appt.next_due_date + 'T00:00:00')
             : nextDueDateFromLast(appt.last_completed_date, appt.interval_months)
           const dueColor  = dueDate
             ? (dueDate <= fourMonthsOut ? 'var(--color-amber)' : 'var(--color-text-dim)')
             : 'var(--color-text-dim)'
-          const dueLabel  = dueDate ? `Due: ${fmtMonthYear(dueDate)}` : 'Not scheduled'
+          const dueLabel  = dueDate ? `Due: ${fmtDueDate(appt.next_due_date, dueDate)}` : 'Not scheduled'
 
           return (
             <div
@@ -1639,7 +1653,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
                   <div>
                     <div className="section-label" style={{ marginBottom: 4 }}>Next due (auto-computed, overridable)</div>
                     <input
-                      type="date"
+                      type="datetime-local"
                       value={editNextDue}
                       onChange={e => setEditNextDue(e.target.value)}
                       style={{ width: '100%', padding: '8px 10px', borderRadius: 8 }}
