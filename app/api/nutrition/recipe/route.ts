@@ -79,7 +79,7 @@ export async function GET() {
 
   const { data: recipes, error: rErr } = await supabase
     .from('recipes')
-    .select('id, name, total_servings, total_cooked_grams, default_serving_grams, is_raw, food_item_id, status, created_at, updated_at')
+    .select('id, name, total_servings, total_cooked_grams, default_serving_grams, is_raw, food_item_id, status, created_at, updated_at, food_items(id, name, fdc_id, source, nutrients_per_100g)')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
 
