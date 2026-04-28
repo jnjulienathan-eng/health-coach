@@ -393,6 +393,10 @@ All 7 known Coach bugs fixed in branch claude/coach-fix-1 (April 28, 2026):
 6. ✅ hrv_score was already removed from ContextSection.tsx — confirmed clean, no changes needed
 7. ✅ Refresh button added to Coach header (RefreshIcon, re-calls generateBriefing)
 
+Two follow-up bugs resolved (same branch, April 28, 2026):
+A. ✅ Mode computed client-side in CoachTab.tsx using new Date().getHours() — fixes UTC vs local time mismatch that showed "posttraining" at 13:05 Munich time. Mode sent in request body; server uses client mode if provided.
+B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV vs baseline and sleep quality). training remains null in afternoon mode by design.
+
 ### Features — next
 
 1. **Glucose Stability expanded card** — targeted edit to GoalsTab.tsx only. No migrations. No new routes. Design specced above under Goals Tab. 🔍 CHECK: Is this the agreed next task?

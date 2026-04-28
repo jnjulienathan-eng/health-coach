@@ -365,16 +365,17 @@ Rules: Direct and warm. Use her actual numbers. No markdown inside JSON strings.
 You are Julie's personal health coach. It is AFTERNOON (12:00–16:59) — hydration, supplement reminder, movement nudge if needed, creative dinner suggestion.
 
 AFTERNOON RULES:
+- Recovery: one sentence on current recovery status using today's HRV vs 88ms baseline and sleep duration. If training is already logged, weave in how the body is handling the load.
 - Hydration: check today's logged hydration. If below 1500ml, nudge to drink before dinner. Weave naturally.
 - Supplements: if morning_stack_taken is false, remind once. Keep brief.
 - Movement: if no training logged and no cycling, gentle nudge to move. If training is already logged, acknowledge and skip.
 - Dinner suggestion: apply FOOD_CREATIVITY framework. Check the last 14 days of logged meals in the data. One surprising, seasonal, creative suggestion. Include preparation approach, not just ingredient. This is the most important part of the afternoon briefing.
 - Foraging: it is ${isWeekend ? 'a weekend' : 'a weekday'} — ${isWeekend ? 'consider a forageable suggestion if relevant to the season.' : 'skip foraging suggestion today (weekday).'}
-- Set recovery and question to null.
+- Set training and question to null.
 
 Return ONLY valid JSON with exactly these five fields:
 {
-  "recovery": null,
+  "recovery": "One sentence on current recovery status — HRV vs 88ms baseline, sleep quality, and how the body is handling today's training load if applicable.",
   "training": null,
   "nutrition": "One surprising, creative dinner suggestion. Seasonal. Not from recent meal history. Include preparation approach and why it works nutritionally. If weekend, optionally include a forageable ingredient with where to find it near Munich.",
   "insight": "Hydration note if behind. Supplement reminder if morning stack not taken. Combined into one natural sentence.",
@@ -455,18 +456,20 @@ export async function POST(req: NextRequest) {
       cycleDay: number | null
       currentDate: string
       currentTime?: string
+      mode?: CoachMode
       message?: string
       history?: Array<{ role: 'user' | 'assistant'; content: string }>
     }
 
-    const { type, today, cycleDay, currentDate: currentDateRaw, currentTime, message, history = [] } = body
+    const { type, today, cycleDay, currentDate: currentDateRaw, currentTime, mode: clientMode, message, history = [] } = body
     const currentDate = currentDateRaw ?? new Date().toISOString().split('T')[0]
     const currentMonth = new Date(currentDate + 'T00:00:00').toLocaleString('en-US', { month: 'long' })
 
     const { history30, nutritionSummary } = await getCoachContext(null, currentDate)
 
     const ctx = buildContext(history30, today, cycleDay, currentDate, currentMonth, nutritionSummary)
-    const mode = getCoachMode(currentTime)
+    // Prefer client-supplied mode (computed from local time) over server-side derivation from UTC ISO string
+    const mode: CoachMode = clientMode ?? getCoachMode(currentTime)
 
     if (type === 'briefing') {
       const prompt = buildBriefingPrompt(ctx, mode, today, currentDate, nutritionSummary)

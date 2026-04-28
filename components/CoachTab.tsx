@@ -68,6 +68,15 @@ function SendIcon() {
 
 type CoachMode = 'wakeup' | 'posttraining' | 'afternoon' | 'earlyevening' | 'endofday'
 
+function getCoachMode(): CoachMode {
+  const hour = new Date().getHours()
+  if (hour < 9)  return 'wakeup'
+  if (hour < 12) return 'posttraining'
+  if (hour < 17) return 'afternoon'
+  if (hour < 20) return 'earlyevening'
+  return 'endofday'
+}
+
 const MODE_HEADERS: Record<CoachMode, string> = {
   wakeup:      'Wake-up briefing · sleep & recovery',
   posttraining: 'Post-training check-in · morning update',
@@ -104,8 +113,10 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
 
   // Generate morning briefing once on mount if sleep data exists
   const generateBriefing = useCallback(async () => {
+    const mode = getCoachMode()
     setBriefingLoading(true)
     setBriefingError(null)
+    setBriefingMode(mode)
     try {
       const res = await fetch('/api/coach', {
         method: 'POST',
@@ -116,6 +127,7 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
           cycleDay,
           currentDate,
           currentTime: new Date().toISOString(),
+          mode,
         }),
       })
       const json = await res.json()
