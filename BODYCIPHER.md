@@ -103,8 +103,9 @@ _Last updated: April 28, 2026_
 - Returns JSON: {recovery, training, nutrition, insight, question}. Null fields hidden.
 - Reactive chat below briefing cards.
 - Model: claude-sonnet-4-20250514 · max_tokens 2000
-- **Coach currently still reads daily_entries.nutrition (legacy JSONB) — switching to daily_nutrition_summary is backlog item #1.**
-- Known bugs: training override not working, calorie calc wrong, empty evening cards, "this afternoon" language in earlyevening mode. All deferred to Coach overhaul branch.
+- Coach reads from daily_nutrition_summary (service-role client). Legacy daily_entries.nutrition JSONB is not read.
+- Training sessions loaded via loadSessionsForDates() in getCoachContext so today's sessions are visible to the coach.
+- earlyevening mode populates recovery and training fields and uses "this evening" language.
 
 ---
 
@@ -381,15 +382,16 @@ See Nutrition section above. Eight tables: food_items, meal_logs, meal_log_items
 
 ## BACKLOG
 
-### Active bugs (Coach — all deferred to Coach overhaul branch)
+### Active bugs (Coach)
 
-1. Coach reads daily_entries.nutrition (legacy JSONB) — must switch to daily_nutrition_summary
-2. Coach training override not working — sessions logged but coach still recommends training
-3. Coach calorie calc showing over-target when under
-4. Recovery and Training cards empty in evening mode
-5. "This afternoon" language in earlyevening mode (CoachTab.tsx)
-6. hrv_score field still referenced in ContextSection.tsx — wrong field name, removal incomplete
-7. Coach refresh button — not built
+All 7 known Coach bugs fixed in branch claude/coach-fix-1 (April 28, 2026):
+1. ✅ Coach now reads from daily_nutrition_summary (service-role client) — legacy daily_entries.nutrition JSONB no longer read
+2. ✅ Training override fixed — getCoachContext now calls loadSessionsForDates() so sessions populate DailyEntry.training.sessions
+3. ✅ Calorie calc fixed — resolved as part of #1 (wrong data source was the cause)
+4. ✅ earlyevening mode now returns recovery and training fields (not null)
+5. ✅ earlyevening prompt now includes explicit LANGUAGE RULE: "this evening" not "this afternoon"
+6. ✅ hrv_score was already removed from ContextSection.tsx — confirmed clean, no changes needed
+7. ✅ Refresh button added to Coach header (RefreshIcon, re-calls generateBriefing)
 
 ### Features — next
 

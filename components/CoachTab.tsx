@@ -47,6 +47,16 @@ function MicIcon({ active }: { active: boolean }) {
   )
 }
 
+// ─── Refresh icon ────────────────────────────────────────────────
+function RefreshIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M13.5 2.5A6.5 6.5 0 1 1 8 1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M8 1.5L10.5 4 8 6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 // ─── Send icon ───────────────────────────────────────────────────
 function SendIcon() {
   return (
@@ -326,24 +336,55 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 32 }}>
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div style={{ paddingTop: 8 }}>
-        <h1
-          style={{
-            fontSize: 11,
-            fontWeight: 500,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            color: 'var(--color-text-secondary)',
-            marginBottom: 4,
-          }}
-        >
-          Coach
-        </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
-          {sleepLogged
-            ? (briefingMode ? MODE_HEADERS[briefingMode] : 'Generating briefing…')
-            : 'Log today\'s sleep data to receive your briefing.'}
-        </p>
+      <div style={{ paddingTop: 8, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h1
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--color-text-secondary)',
+              marginBottom: 4,
+            }}
+          >
+            Coach
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
+            {sleepLogged
+              ? (briefingMode ? MODE_HEADERS[briefingMode] : 'Generating briefing…')
+              : 'Log today\'s sleep data to receive your briefing.'}
+          </p>
+        </div>
+
+        {sleepLogged && (
+          <button
+            type="button"
+            onClick={() => {
+              hasFetched.current = false
+              setBriefing(null)
+              generateBriefing()
+            }}
+            disabled={briefingLoading}
+            aria-label="Refresh briefing"
+            style={{
+              width: 32,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8,
+              cursor: briefingLoading ? 'default' : 'pointer',
+              color: briefingLoading ? 'var(--color-text-dim)' : 'var(--color-text-secondary)',
+              flexShrink: 0,
+              marginTop: 2,
+            }}
+          >
+            <RefreshIcon />
+          </button>
+        )}
       </div>
 
       {/* ── Morning briefing ────────────────────────────────────── */}

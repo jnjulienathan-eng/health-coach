@@ -106,7 +106,7 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
 }
 
 // ─── Load training sessions for a set of dates ────────────────────
-async function loadSessionsForDates(dates: string[]): Promise<Record<string, TrainingSession[]>> {
+export async function loadSessionsForDates(dates: string[]): Promise<Record<string, TrainingSession[]>> {
   if (!dates.length) return {}
   const { data, error } = await supabase
     .from('training_sessions')

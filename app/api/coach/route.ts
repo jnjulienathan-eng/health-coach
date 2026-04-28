@@ -3,7 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import type { DailyEntry } from '@/lib/types'
 import { zone3Intensity } from '@/lib/types'
-import { rowToEntry } from '@/lib/db'
+import { rowToEntry, loadSessionsForDates } from '@/lib/db'
+import { supaAdmin, nutritionUserId } from '@/lib/nutrition'
 
 // ─── Julie's fixed health profile ─────────────────────────────────
 const JULIE_PROFILE = `
@@ -75,6 +76,16 @@ Year-round: Löwenzahn (dandelion, young leaves, flowers, roots), Wacholder (jun
 // ─── Coach mode type ──────────────────────────────────────────────
 type CoachMode = 'wakeup' | 'posttraining' | 'afternoon' | 'earlyevening' | 'endofday'
 
+interface NutritionSummary {
+  calories: number | null
+  protein: number | null
+  carbs: number | null
+  fat: number | null
+  fiber: number | null
+  meal_count: number | null
+  logged_via_summary: Record<string, number> | null
+}
+
 // ─── Determine time-of-day mode ───────────────────────────────────
 function parseHour(currentTime: string | undefined): number {
   if (!currentTime) return NaN
@@ -96,7 +107,7 @@ function getCoachMode(currentTime: string | undefined): CoachMode {
 }
 
 // ─── Format a single day's entry compactly ────────────────────────
-function formatEntry(entry: DailyEntry, cd?: number | null): string {
+function formatEntry(entry: DailyEntry, cd?: number | null, nutritionSummary?: NutritionSummary | null): string {
   const s = entry.sleep
   const t = entry.training
   const n = entry.nutrition
@@ -148,7 +159,9 @@ function formatEntry(entry: DailyEntry, cd?: number | null): string {
     `Date: ${entry.date}`,
     `Sleep: ${durationH} | HRV ${s.hrv ?? '?'}ms | RHR ${s.rhr ?? '?'}bpm | Rested ${s.rested ?? '?'}/5 | Bedtime ${s.bedtime ?? '?'}${fastingGlucose}`,
     `Training: ${sessions}${t.cycled_today ? ` | Cycled${t.cycling_minutes ? ` ${t.cycling_minutes}min` : ''}` : ''}`,
-    `Nutrition: protein ${n.total_protein ?? '?'}g | fiber ${n.total_fiber ?? '?'}g | fat ${n.total_fat ?? '?'}g | carbs ${n.total_carbs ?? '?'}g | ${n.total_calories ?? '?'}kcal`,
+    nutritionSummary != null
+      ? `Nutrition (from daily_nutrition_summary): protein ${nutritionSummary.protein ?? '?'}g | fiber ${nutritionSummary.fiber ?? '?'}g | fat ${nutritionSummary.fat ?? '?'}g | carbs ${nutritionSummary.carbs ?? '?'}g | ${nutritionSummary.calories ?? '?'}kcal | meals logged: ${nutritionSummary.meal_count ?? 0}${nutritionSummary.logged_via_summary ? ` (${Object.entries(nutritionSummary.logged_via_summary).map(([k, v]) => `${k}:${v}`).join(', ')})` : ''}`
+      : `Nutrition: protein ${n.total_protein ?? '?'}g | fiber ${n.total_fiber ?? '?'}g | fat ${n.total_fat ?? '?'}g | carbs ${n.total_carbs ?? '?'}g | ${n.total_calories ?? '?'}kcal`,
     meals.length ? `Meals: ${meals.join(' / ')}` : null,
     `Supplements: morning ${sup.morning_stack_taken ? '✓' : '✗'}${sup.morning_exceptions.length ? ` (skipped: ${sup.morning_exceptions.join(', ')})` : ''} | evening ${sup.evening_stack_taken ? '✓' : '✗'} | progesterone ${sup.progesterone_taken ? '✓' : '✗'} | estradiol ${sup.estradiol_taken ? '✓' : '✗'}`,
     `Context: cycle day ${effectiveCd ?? '?'}${c.symptoms.length ? ` | symptoms: ${c.symptoms.join(', ')}` : ''}${c.travelling ? ' | travelling' : ''}${c.notes ? ` | "${c.notes}"` : ''}`,
@@ -176,6 +189,7 @@ function buildContext(
   cycleDay: number | null,
   currentDate: string,
   currentMonth: string,
+  nutritionSummary?: NutritionSummary | null,
 ): string {
   const BAVARIA_FORAGING = BAVARIA_FORAGING_TEMPLATE.replace('{currentMonth}', currentMonth)
 
@@ -202,7 +216,7 @@ function buildContext(
     `Current symptoms: ${today.context.symptoms.length ? today.context.symptoms.join(', ') : 'none'}`,
     '',
     `TODAY'S DATA`,
-    formatEntry(today, cycleDay),
+    formatEntry(today, cycleDay, nutritionSummary),
     '',
     `LAST 30 DAYS`,
     historyStr || '(no prior entries)',
@@ -213,7 +227,7 @@ function buildContext(
 async function getCoachContext(
   userId: string | null,
   currentDate: string,
-): Promise<{ history30: DailyEntry[]; todayEntry: DailyEntry | null }> {
+): Promise<{ history30: DailyEntry[]; todayEntry: DailyEntry | null; nutritionSummary: NutritionSummary | null }> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -223,23 +237,55 @@ async function getCoachContext(
   since.setDate(since.getDate() - 30)
   const sinceStr = since.toISOString().split('T')[0]
 
-  const { data, error } = await supabase
-    .from('daily_entries')
-    .select('*')
-    .gte('date', sinceStr)
-    .order('date', { ascending: false })
+  const adminClient = supaAdmin()
+  const nutUserId = nutritionUserId()
 
-  if (error) throw error
+  const [entriesResult, nutritionResult] = await Promise.all([
+    supabase
+      .from('daily_entries')
+      .select('*')
+      .gte('date', sinceStr)
+      .order('date', { ascending: false }),
+    adminClient
+      .from('daily_nutrition_summary')
+      .select('calories, protein, carbs, fat, fiber, meal_count, logged_via_summary')
+      .eq('user_id', nutUserId)
+      .eq('date', currentDate)
+      .maybeSingle(),
+  ])
 
-  const history30: DailyEntry[] = (data || []).map((row) =>
-    rowToEntry(row as Record<string, unknown>)
+  if (entriesResult.error) throw entriesResult.error
+
+  const rows = entriesResult.data || []
+  const dates = rows.map(r => (r as Record<string, unknown>).date as string)
+  const sessionsMap = await loadSessionsForDates(dates)
+
+  const history30: DailyEntry[] = rows.map((row) =>
+    rowToEntry(
+      row as Record<string, unknown>,
+      sessionsMap[(row as Record<string, unknown>).date as string] ?? [],
+    )
   )
 
   const todayEntry = history30.find(e => e.date === currentDate) ?? null
 
   void userId
 
-  return { history30, todayEntry }
+  let nutritionSummary: NutritionSummary | null = null
+  if (!nutritionResult.error && nutritionResult.data) {
+    const nr = nutritionResult.data as Record<string, unknown>
+    nutritionSummary = {
+      calories:           (nr.calories            as number | null) ?? null,
+      protein:            (nr.protein             as number | null) ?? null,
+      carbs:              (nr.carbs               as number | null) ?? null,
+      fat:                (nr.fat                 as number | null) ?? null,
+      fiber:              (nr.fiber               as number | null) ?? null,
+      meal_count:         (nr.meal_count          as number | null) ?? null,
+      logged_via_summary: (nr.logged_via_summary  as Record<string, number> | null) ?? null,
+    }
+  }
+
+  return { history30, todayEntry, nutritionSummary }
 }
 
 // ─── Build mode-specific briefing prompt ─────────────────────────
@@ -248,6 +294,7 @@ function buildBriefingPrompt(
   mode: CoachMode,
   today: DailyEntry,
   currentDate: string,
+  nutritionSummary?: NutritionSummary | null,
 ): string {
   if (mode === 'wakeup') {
     return `${ctx}
@@ -277,7 +324,9 @@ Rules: Direct and warm. Never generic. Use her actual numbers. No markdown insid
 
   if (mode === 'posttraining') {
     const hasTrainingLogged = today.training.sessions.length > 0
-    const hasNutritionLogged = !!(today.nutrition.breakfast.description || today.nutrition.pre_workout_snack.description)
+    const hasNutritionLogged = nutritionSummary
+      ? (nutritionSummary.meal_count ?? 0) > 0
+      : !!(today.nutrition.breakfast.description || today.nutrition.pre_workout_snack.description)
 
     return `${ctx}
 
@@ -340,19 +389,20 @@ Rules: Dinner suggestion must feel genuinely creative — not obvious. Use her a
 
 ---
 
-You are Julie's personal health coach. It is EARLY EVENING (17:00–19:59) — supplement and hormone check, hydration close-out.
+You are Julie's personal health coach. It is EARLY EVENING (17:00–19:59).
+LANGUAGE RULE: It is evening, not afternoon. Always say "this evening", "tonight", "this evening's training", etc. Never say "this afternoon".
 
 EARLYEVENING RULES:
-- Check progesterone and estradiol logged. If not, remind.
-- Check evening stack logged. If not, remind.
-- Check hydration. If below 2000ml on rest day or 2500ml on training day (check today's sessions), flag.
-- Maximum 3 sentences total. No nutrition advice. No training advice.
-- Set recovery, training, question to null.
+- Recovery: brief 1-sentence note on today's sleep quality using actual HRV and duration numbers.
+- Training: acknowledge what was trained today (if anything) in one sentence. If no training logged, one sentence noting it was a rest day or training is still possible this evening.
+- Supplement and hormone check: check progesterone and estradiol logged. If not, remind. Check evening stack logged. If not, remind.
+- Hydration: if below 2000ml on rest day or 2500ml on training day (check today's sessions), flag.
+- Set nutrition and question to null.
 
 Return ONLY valid JSON with exactly these five fields:
 {
-  "recovery": null,
-  "training": null,
+  "recovery": "One sentence on today's sleep — HRV vs 88ms baseline, duration vs target. Keep brief.",
+  "training": "One sentence acknowledging today's training sessions or rest. Use 'this evening' not 'this afternoon'.",
   "nutrition": null,
   "insight": "Supplement check (progesterone, estradiol, evening stack) and hydration close-out. Max 3 sentences combined.",
   "question": null
@@ -413,13 +463,13 @@ export async function POST(req: NextRequest) {
     const currentDate = currentDateRaw ?? new Date().toISOString().split('T')[0]
     const currentMonth = new Date(currentDate + 'T00:00:00').toLocaleString('en-US', { month: 'long' })
 
-    const { history30 } = await getCoachContext(null, currentDate)
+    const { history30, nutritionSummary } = await getCoachContext(null, currentDate)
 
-    const ctx = buildContext(history30, today, cycleDay, currentDate, currentMonth)
+    const ctx = buildContext(history30, today, cycleDay, currentDate, currentMonth, nutritionSummary)
     const mode = getCoachMode(currentTime)
 
     if (type === 'briefing') {
-      const prompt = buildBriefingPrompt(ctx, mode, today, currentDate)
+      const prompt = buildBriefingPrompt(ctx, mode, today, currentDate, nutritionSummary)
 
       const msg = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
