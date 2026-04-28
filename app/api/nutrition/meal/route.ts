@@ -6,6 +6,7 @@
 // DELETE — remove meal (cascades items), recompute summary
 
 import { supaAdmin, nutritionUserId, dayKeyFromTimestamp, defaultMealName, recomputeDailySummary } from '@/lib/nutrition'
+import { recomputeScores } from '@/lib/scores-server'
 
 type LoggedVia = 'ingredients' | 'barcode' | 'photo_estimate' | 'manual_macros'
 
@@ -124,9 +125,10 @@ export async function POST(req: Request) {
     if (tplItemsErr) return Response.json({ error: tplItemsErr.message }, { status: 500 })
   }
 
-  // ── Recompute daily_nutrition_summary ──────────────────────────────────
+  // ── Recompute daily_nutrition_summary and behavior scores ─────────────
   const date = dayKeyFromTimestamp(loggedAt)
   await recomputeDailySummary(date)
+  await recomputeScores(date)
 
   return Response.json({ meal_log: log, template_id: templateId, date })
 }
@@ -189,9 +191,10 @@ export async function PUT(req: Request) {
     }
   }
 
-  // ── Recompute summary ──────────────────────────────────────────────────
+  // ── Recompute daily_nutrition_summary and behavior scores ─────────────
   const date = dayKeyFromTimestamp(existing.logged_at as string)
   await recomputeDailySummary(date)
+  await recomputeScores(date)
 
   return Response.json({ ok: true, date })
 }
@@ -224,6 +227,7 @@ export async function DELETE(req: Request) {
 
   const date = dayKeyFromTimestamp(existing.logged_at as string)
   await recomputeDailySummary(date)
+  await recomputeScores(date)
   return Response.json({ ok: true, date })
 }
 

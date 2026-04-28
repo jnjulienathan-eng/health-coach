@@ -302,6 +302,8 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 
 **Critical rule:** Empty or missing fields = N/A, not zero. Weight redistributes to other components. Never penalise for unlogged optional data.
 
+**Nutrition component source (updated April 28, 2026):** Behavior Score now reads nutrition from `daily_nutrition_summary` (not the legacy `daily_entries.nutrition` JSONB). A day counts as nutrition-logged if `meal_count > 0`. Score is recomputed server-side via `lib/scores-server.ts → recomputeScores(date)` which is called after every meal operation (POST/PUT/DELETE to `/api/nutrition/meal`) and after every `saveEntry()` save (fires `/api/scores` in the background). Key files: `lib/scores.ts` (`behaviorScore()` accepts optional `NutritionSummaryForScore`), `lib/scores-server.ts` (server-only recompute helper), `app/api/scores/route.ts` (POST endpoint).
+
 **HRV training logic:**
 - HRV >100 → hard (zone3+ ≥16 min or 2 sessions) = full | moderate = partial | easy/rest = low
 - HRV 80–100 → moderate = full | easy/rest = partial (not penalised) | hard = partial penalty

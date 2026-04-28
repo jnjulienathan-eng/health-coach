@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData } from './types'
 import { emptyEntry } from './types'
-import { behaviorScore, outcomeScore } from './scores'
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -220,9 +219,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     // Hydration
     hydration_ml: entry.hydration_ml ?? null,
 
-    // Computed scores
-    behavior_score: behaviorScore(entry),
-    outcome_score:  outcomeScore(entry),
+    // Scores are recomputed server-side via /api/scores after this save.
   }
 
   const { error: upsertError } = await supabase

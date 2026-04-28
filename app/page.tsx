@@ -172,6 +172,12 @@ export default function App() {
         } as DailyEntry['context'],
       }
       await saveEntry(entryToSave)
+      // Recompute scores server-side (reads daily_nutrition_summary via service-role).
+      fetch('/api/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: entryToSave.date }),
+      }).catch(console.error)
       setSavedSection(sectionName)
       setTimeout(() => setSavedSection(null), 2000)
     } catch (e) {

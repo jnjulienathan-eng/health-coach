@@ -1,18 +1,41 @@
 import type { DailyEntry, TrainingSession } from './types'
 
+export interface NutritionSummaryForScore {
+  protein:    number | null
+  fiber:      number | null
+  meal_count: number | null
+}
+
 // ─── Behavior Score (0–100) ───────────────────────────────────────
 // What you controlled: nutrition, supplements, bedtime, training vs HRV, active calories
-export function behaviorScore(entry: DailyEntry): number {
+export function behaviorScore(entry: DailyEntry, nutritionSummary?: NutritionSummaryForScore | null): number {
   const components: { score: number; weight: number }[] = []
 
   // 1. Nutrition — 30%: protein target 130g, fiber 30g
-  const protein = entry.nutrition.total_protein
-  const fiber   = entry.nutrition.total_fiber
-  if (protein != null || fiber != null) {
-    const parts: number[] = []
-    if (protein != null) parts.push(Math.min(100, (protein / 130) * 100))
-    if (fiber   != null) parts.push(Math.min(100, (fiber   / 30)  * 100))
-    components.push({ score: parts.reduce((a, b) => a + b) / parts.length, weight: 30 })
+  // When nutritionSummary is provided, use daily_nutrition_summary data.
+  // A day counts as logged if meal_count > 0. Falls back to legacy entry fields if
+  // nutritionSummary is not provided (those fields are always null for new data).
+  if (nutritionSummary != null) {
+    if ((nutritionSummary.meal_count ?? 0) > 0) {
+      const protein = nutritionSummary.protein
+      const fiber   = nutritionSummary.fiber
+      const parts: number[] = []
+      if (protein != null) parts.push(Math.min(100, (protein / 130) * 100))
+      if (fiber   != null) parts.push(Math.min(100, (fiber   / 30)  * 100))
+      if (parts.length > 0) {
+        components.push({ score: parts.reduce((a, b) => a + b) / parts.length, weight: 30 })
+      }
+    }
+    // meal_count === 0 → nutrition N/A, weight redistributes to other components
+  } else {
+    const protein = entry.nutrition.total_protein
+    const fiber   = entry.nutrition.total_fiber
+    if (protein != null || fiber != null) {
+      const parts: number[] = []
+      if (protein != null) parts.push(Math.min(100, (protein / 130) * 100))
+      if (fiber   != null) parts.push(Math.min(100, (fiber   / 30)  * 100))
+      components.push({ score: parts.reduce((a, b) => a + b) / parts.length, weight: 30 })
+    }
   }
 
   // 2. Supplements — 20%: morning 40%, evening 30%, progesterone 15%, estradiol 15%
