@@ -5,6 +5,7 @@ import { useState, useId } from 'react'
 interface SectionProps {
   title: string
   isComplete?: boolean
+  isPartial?: boolean           // meals logged but targets not met — amber indicator
   defaultOpen?: boolean
   rightSlot?: React.ReactNode   // e.g. macro bars shown in header when collapsed
   children: React.ReactNode
@@ -13,6 +14,7 @@ interface SectionProps {
 export default function Section({
   title,
   isComplete = false,
+  isPartial = false,
   defaultOpen = false,
   rightSlot,
   children,
@@ -32,6 +34,7 @@ export default function Section({
         <div className="flex items-center gap-2">
           <span className="section-label">{title}</span>
           {isComplete && <CheckIcon />}
+          {!isComplete && isPartial && <PartialIcon />}
         </div>
 
         <div className="flex items-center gap-2">
@@ -60,6 +63,15 @@ function CheckIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+function PartialIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label="In progress">
+      <circle cx="7" cy="7" r="7" fill="var(--color-amber)" opacity="0.2" />
+      <circle cx="7" cy="7" r="5" stroke="var(--color-amber)" strokeWidth="1.5" fill="none" />
     </svg>
   )
 }

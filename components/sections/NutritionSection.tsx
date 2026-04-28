@@ -484,7 +484,11 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
     calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, meal_count: 0,
   }
 
-  const hasData = (day?.meals.length ?? 0) > 0
+  const hasData    = (day?.meals.length ?? 0) > 0
+  // Green checkmark only when both primary targets are hit; amber circle when logged but short.
+  const targetsHit = hasData
+    && (totals.protein ?? 0) >= MACRO_TARGETS.protein.min
+    && (totals.fiber   ?? 0) >= MACRO_TARGETS.fiber.min
   const calorieTargetRange = { min: Math.round(calorieTarget * 0.9), max: calorieTarget }
 
   // Compact summary used in the collapsed Section header
@@ -523,7 +527,7 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
   }
 
   return (
-    <Section title="Nutrition" isComplete={hasData} rightSlot={summaryBars}>
+    <Section title="Nutrition" isComplete={targetsHit} isPartial={hasData && !targetsHit} rightSlot={summaryBars}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {/* Macro summary bar */}

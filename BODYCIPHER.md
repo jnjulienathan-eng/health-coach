@@ -74,6 +74,8 @@ _Last updated: April 28, 2026_
 - Peak glucose: inline editable field on each meal card. PATCH /api/nutrition/meal. Not on any logging screen.
 - Macro override: pencil icon on local library results. PATCH /api/nutrition/food-item.
 - daily_nutrition_summary upserted after every meal save/edit/delete. Coach and Dashboard read from this.
+- **Photo estimate meals are included in the summary:** `recomputeDailySummary` sums ingredient-based macros from `meal_log_items` then adds top-level macro fields (`calories`, `protein_g`, etc.) from `meal_logs` where `logged_via = 'photo_estimate'`. Both paths confirmed correct.
+- **Nutrition accordion checkmark logic (updated April 28, 2026):** Green checkmark = protein ≥ 130g AND fiber ≥ 30g (both primary targets hit). Amber circle = meals logged but targets not fully met. No indicator = nothing logged. Reads from `daily_nutrition_summary` via the existing `day.summary` fetch. Implemented via `isPartial` prop on `components/ui/Section.tsx`.
 - Legacy daily_entries.nutrition JSONB fields are dead — do not read or write from any new code.
 
 **Hydration section**
