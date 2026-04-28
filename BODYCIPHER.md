@@ -113,6 +113,8 @@ _Last updated: April 28, 2026_
 
 - Behavior Score + Outcome Score + Training Load — three equal-width cards in a single row.
 - Scores: green ≥75, amber 50–74, red <50.
+- **Score values are read from `daily_entries.behavior_score` and `outcome_score` (stored server-side by `recomputeScores()`), not computed client-side.** Dashboard fetches these on mount via GET `/api/scores?date=`. Client-side computation has been removed.
+- Score breakdown bullets use the same stored data: supplements/bedtime derive from the `today` entry prop; nutrition bullet reads from `daily_nutrition_summary` (returned by the same GET `/api/scores` response).
 - Training Load card: status label + colour dot. Tap → no destination yet (🔍 CHECK).
 - 30-day trend charts throughout.
 - Training Load expandable card at top above HRV chart:

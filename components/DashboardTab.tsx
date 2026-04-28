@@ -10,10 +10,15 @@ import {
   Tooltip,
 } from 'recharts'
 import { loadRecentEntries } from '@/lib/db'
-import { behaviorScore, outcomeScore } from '@/lib/scores'
 import { scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
+
+interface TodayScored {
+  behavior_score: number | null
+  outcome_score:  number | null
+  nutrition: { protein: number | null; fiber: number | null; meal_count: number | null } | null
+}
 
 interface Props {
   today: DailyEntry
@@ -21,7 +26,10 @@ interface Props {
 }
 
 // ─── Score bullet helpers ──────────────────────────────────────────
-function getBehaviorBullets(entry: DailyEntry): { text: string; ok: boolean }[] {
+function getBehaviorBullets(
+  entry: DailyEntry,
+  nutrition?: TodayScored['nutrition'],
+): { text: string; ok: boolean }[] {
   const bullets: { text: string; ok: boolean }[] = []
   const sup = entry.supplements
 
@@ -52,16 +60,16 @@ function getBehaviorBullets(entry: DailyEntry): { text: string; ok: boolean }[] 
     bullets.push({ text: 'Bedtime not logged', ok: false })
   }
 
-  // Nutrition
-  const p = entry.nutrition.total_protein
-  const f = entry.nutrition.total_fiber
-  if (p != null || f != null) {
+  // Nutrition — read from daily_nutrition_summary (via /api/scores GET response)
+  if (nutrition != null && (nutrition.meal_count ?? 0) > 0) {
+    const p = nutrition.protein
+    const f = nutrition.fiber
     const parts = [
       p != null && `${Math.round(p)}g protein`,
       f != null && `${Math.round(f)}g fiber`,
     ].filter(Boolean).join(', ')
     const ok = (p == null || p >= 130) && (f == null || f >= 30)
-    bullets.push({ text: `Nutrition: ${parts}`, ok })
+    bullets.push({ text: `Nutrition: ${parts || 'logged'}`, ok })
   } else {
     bullets.push({ text: 'Nutrition not logged', ok: false })
   }
@@ -226,13 +234,21 @@ export default function DashboardTab({ today, currentDate }: Props) {
   const [entries,     setEntries]     = useState<DailyEntry[]>([])
   const [loading,     setLoading]     = useState(true)
   const [tlExpanded,  setTlExpanded]  = useState(false)
+  const [todayScored, setTodayScored] = useState<TodayScored | null>(null)
 
   useEffect(() => {
-    loadRecentEntries(30)
-      .then(setEntries)
+    setLoading(true)
+    Promise.all([
+      loadRecentEntries(30),
+      fetch(`/api/scores?date=${currentDate}`).then(r => r.json() as Promise<TodayScored>),
+    ])
+      .then(([recent, scored]) => {
+        setEntries(recent)
+        setTodayScored(scored)
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }, [currentDate])
 
   // Merge today's live entry into history, replacing stale version if present
   const allEntries = (() => {
@@ -245,8 +261,9 @@ export default function DashboardTab({ today, currentDate }: Props) {
     e => e.sleep.hrv != null || e.sleep.duration_min != null || e.sleep.rested != null
   )
 
-  const todayBehavior = behaviorScore(today)
-  const todayOutcome  = outcomeScore(today)
+  // Use stored scores — authoritative values written server-side by recomputeScores()
+  const todayBehavior = todayScored?.behavior_score ?? 0
+  const todayOutcome  = todayScored?.outcome_score  ?? 0
 
   // 30 most recent days for charts (oldest→newest for left→right display)
   const chart30 = allEntries.slice(0, 30).reverse()
@@ -324,7 +341,7 @@ export default function DashboardTab({ today, currentDate }: Props) {
 
       {/* ── Score cards — 3-col ───────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-        <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(today)} />
+        <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(today, todayScored?.nutrition)} />
         <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(today)} />
         <TrainingLoadCard
           status={tlResult.status}
