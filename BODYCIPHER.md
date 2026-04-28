@@ -123,7 +123,7 @@ _Last updated: April 28, 2026_
 ### Goals Tab (BodyCipher Tab)
 
 **Hero section**
-- Dynamic greeting via Anthropic API (`/api/goals/greeting`). Passes 8 fields: timeOfDay, hrvBand, trainedToday, proteinLogged, proteinTarget, lastBedtime, sleepDuration, rested. Hard 30-word limit. Dry wit, no cheerleading, no cycle day. Falls back to static greeting on error.
+- Static rotating greeting. Client-side only — no API call. Picks randomly from a time-banded array (wakeup/midmorning/afternoon/earlyevening/endofday) matching the Coach tab's mode logic. Initialized once per session via `useState(() => getGreeting())`. API route `/api/goals/greeting` deleted.
 - Three score cards in single row: Behavior, Outcome, Training Load — equal width, equal height, top-aligned. All tap → Dashboard.
 
 **Long-term goals section**
@@ -407,9 +407,9 @@ See Nutrition section above. Eight tables: food_items, meal_logs, meal_log_items
 6. Apple Health XML import — deferred indefinitely
 7. Regression analysis — revisit July 2026
 
-### Greeting — rethink (deferred)
+### Greeting — resolved (April 28, 2026)
 
-Current greeting calls Anthropic API on every Goals tab load (cost: ~1–2 cents per open). Alternative: deterministic client-side template using the 8 data fields already available locally — free, instant, less variable. Design decision pending.
+Replaced Anthropic API greeting with static rotating list. Client-side only, instant, zero cost. 50 greetings across 5 time bands. API route deleted.
 
 ### Removed / will not do
 

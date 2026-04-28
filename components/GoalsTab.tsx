@@ -3,23 +3,84 @@
 import { useState, useEffect } from 'react'
 import { getGoalsData, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, getVo2SparklineData, saveVo2Reading, saveCardioReading, fetch30DayHistory } from '@/lib/db'
 import type { GoalsData, HealthAppointment, BiomarkerReading, DailyEntry } from '@/lib/types'
-import { scoreColor, hrvZone } from '@/lib/types'
+import { scoreColor } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory, computeDailyTSU } from '@/lib/trainingLoad'
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-function getFallbackGreeting(): string {
-  const h = new Date().getHours()
-  if (h < 12) return 'Good morning, Julie'
-  if (h < 17) return 'Good afternoon, Julie'
-  return 'Good evening, Julie'
+const GREETINGS = {
+  wakeup: [
+    "Morning. The data's ready when you are.",
+    "Another day to collect evidence about yourself.",
+    "Sleep's done. Now the interesting part.",
+    "Good morning. The body kept score overnight — time to check.",
+    "Early. Good. The day hasn't made any demands yet.",
+    "Morning, Julie. The goals don't move. Neither do you, apparently. Time to fix that.",
+    "The metrics are fresh. So are you, theoretically.",
+    "Up before most of Munich. Noted.",
+    "Morning. Let's see what last night's sleep bought you.",
+    "Another loop around the sun begins. Make it count.",
+  ],
+  midmorning: [
+    "The hard part of the day is either done or ahead of you. Either way, you're here.",
+    "Mid-morning. Prime time for protein and decisions.",
+    "The morning session is in the books, or it isn't. No judgment — there's still afternoon.",
+    "Somewhere between the first coffee and lunch lies your best window. Use it.",
+    "Your body is warm. Your options are open.",
+    "The morning has happened. What did you make of it?",
+    "Still before noon. The day is cooperative.",
+    "Post-training window. Feed the work you did, or the work you're about to do.",
+    "The muscle doesn't build itself. But you knew that.",
+    "Mid-morning check-in. Everything on track, or are we course-correcting?",
+  ],
+  afternoon: [
+    "Afternoon. The day is half-spent and entirely salvageable.",
+    "Halfway through. The second half is where most people stop paying attention.",
+    "Good afternoon. The boring middle of the day is where habits live.",
+    "You've made it to afternoon without catastrophe. Respectable.",
+    "The day is longer than it feels. There's still time.",
+    "Afternoon slump is a myth you're not buying into.",
+    "Mid-afternoon. The decisions you make now are the ones you'll be glad about tonight.",
+    "Still plenty of day left. Don't coast.",
+    "Afternoon. The goals are the same as this morning. The execution window is smaller.",
+    "The day hasn't decided how it ends yet. You have some influence over that.",
+  ],
+  earlyevening: [
+    "The active part of the day is winding down. Time to be deliberate about the rest.",
+    "Evening approaching. What you do now sets up how tomorrow starts.",
+    "The data for today is mostly written. A few chapters left.",
+    "Early evening. The difference between a good day and a great one is often the last few hours.",
+    "Getting close to the finish line. Don't trip at the end.",
+    "Evening. Protein logged? Sleep coming? Good. Almost there.",
+    "The day is entering its final stretch. Make the landing clean.",
+    "The hard work is done. Now it's about protecting the recovery.",
+    "Almost. Keep the consistency going through to the end.",
+    "Evening wind-down. The choices in the next two hours matter more than they look.",
+  ],
+  endofday: [
+    "Late. The day is essentially done. How did it go?",
+    "Evening. The score is nearly final.",
+    "The logs are mostly in. Rest is the next performance variable.",
+    "Wind down well. Tomorrow is already being shaped.",
+    "Almost time. Sleep is where the work gets processed.",
+    "The day is closing. What it meant depends on what you did with it.",
+    "Late evening. The only thing left to optimize is sleep.",
+    "You made it to the end of another day. That's the minimum. What else?",
+    "The body has been asked a lot today. Time to give it what it needs.",
+    "Nearly done. The goal isn't perfection — it's consistency. One more day of it.",
+  ],
 }
 
-function getTimeOfDay(): string {
-  const h = new Date().getHours()
-  if (h < 12) return 'morning'
-  if (h < 17) return 'afternoon'
-  return 'evening'
+function getGreeting(): string {
+  const hour = new Date().getHours()
+  let band: keyof typeof GREETINGS
+  if (hour < 9) band = 'wakeup'
+  else if (hour < 12) band = 'midmorning'
+  else if (hour < 17) band = 'afternoon'
+  else if (hour < 20) band = 'earlyevening'
+  else band = 'endofday'
+  const options = GREETINGS[band]
+  return options[Math.floor(Math.random() * options.length)]
 }
 
 function addMonths(dateStr: string, months: number): string {
@@ -220,8 +281,7 @@ interface Props {
 export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Props) {
   const [data,              setData]              = useState<GoalsData | null>(null)
   const [loading,           setLoading]           = useState(true)
-  const [greeting,          setGreeting]          = useState<string | null>(null)
-  const [greetingLoading,   setGreetingLoading]   = useState(true)
+  const [greeting] = useState(() => getGreeting())
   const [editingId,         setEditingId]         = useState<string | null>(null)
   const [editLastCompleted, setEditLastCompleted] = useState('')
   const [editNextDue,       setEditNextDue]       = useState('')
@@ -272,26 +332,6 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
       })
       .catch(e => { console.error('GoalsTab getGoalsData error:', JSON.stringify(e)); setLoading(false) })
   }, [])
-
-  // Fetch dynamic greeting from API
-  useEffect(() => {
-    const hrv = today.sleep.hrv
-    const hrvBand = hrv != null ? hrvZone(hrv) : 'Unknown'
-    const trainedToday = today.training.sessions.length > 0
-
-    fetch('/api/goals/greeting', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timeOfDay: getTimeOfDay(), hrvBand, trainedToday }),
-    })
-      .then(r => r.json())
-      .then(({ greeting: g }) => {
-        if (g) setGreeting(g)
-        else setGreeting(getFallbackGreeting())
-      })
-      .catch(() => setGreeting(getFallbackGreeting()))
-      .finally(() => setGreetingLoading(false))
-  }, [currentDate, today.sleep.hrv, today.training.sessions.length])
 
   // Load 30-day history for Training Load computation
   useEffect(() => {
@@ -501,27 +541,16 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
       {/* ── SECTION 1: Hero ──────────────────────────────────────── */}
       <div className="card" style={{ padding: '20px 16px' }}>
 
-        {/* Dynamic greeting */}
-        {greetingLoading ? (
-          <div style={{
-            height: 28,
-            background: 'var(--color-border)',
-            borderRadius: 6,
-            marginBottom: 16,
-            width: '70%',
-            opacity: 0.6,
-          }} />
-        ) : (
-          <div style={{
-            fontSize: 16,
-            fontWeight: 600,
-            color: 'var(--color-text-primary)',
-            marginBottom: 16,
-            lineHeight: 1.45,
-          }}>
-            {greeting ?? getFallbackGreeting()}
-          </div>
-        )}
+        {/* Greeting */}
+        <div style={{
+          fontSize: 16,
+          fontWeight: 600,
+          color: 'var(--color-text-primary)',
+          marginBottom: 16,
+          lineHeight: 1.45,
+        }}>
+          {greeting}
+        </div>
 
         {/* Score cards — 3-col */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
