@@ -9,12 +9,12 @@ _Companion to BODYCIPHER.md — that file covers what the app does. This file co
 1. Read BODYCIPHER.md in the project root in full.
 2. Read every file you plan to edit before writing a single line.
 3. Never assume you know the current state of a file — always read it first.
-4. If working on the nutrition section: the design lives in
-   /docs/NUTRITION_DATA_MODEL.md and /docs/NUTRITION_UX_FLOW.md, the
-   shipped code lives in components/nutrition/MealLogger.tsx,
+4. If working on the nutrition section: the full data model, UX flow, and
+   locked decisions are documented in BODYCIPHER.md under the NUTRITION
+   section. The shipped code lives in components/nutrition/MealLogger.tsx,
    components/sections/NutritionSection.tsx, lib/nutrition.ts,
-   lib/usda.ts, and app/api/nutrition/*. Read both the docs and the
-   current code — the docs describe intent, the code is the truth.
+   lib/usda.ts, and app/api/nutrition/*. Read BODYCIPHER.md and the
+   current code — the code is the truth.
 
 ---
 
@@ -29,9 +29,9 @@ _Companion to BODYCIPHER.md — that file covers what the app does. This file co
 6. DB migrations always run in Supabase SQL editor BEFORE any code
    changes deploy. Never do them yourself. Flag if a migration is needed
    and wait.
-7. Update BODYCIPHER.md, NUTRITION_DATA_MODEL.md, and NUTRITION_UX_FLOW.md
-   to reflect any changes made — new fields, removed features, backlog
-   updates, decisions taken. Do this before the plain-English summary.
+7. Update BODYCIPHER.md to reflect any changes made — new fields, removed
+   features, backlog updates, decisions taken. Do this before the
+   plain-English summary.
 
 ---
 
@@ -93,8 +93,15 @@ pasting. Do not attempt HTTPS auth.
 - `hrv` — lives in daily_entries (sleep section).
   hrv_score in ContextSection was removed. Do not re-add it.
 - `fasting_glucose_mmol` — lives in daily_entries (sleep section).
-- `sessions` — JSONB array in daily_entries.
-  Each item: {activity_type, duration_min, zone3_plus_minutes, active_calories}
+- `training_sessions` — separate normalised Supabase table, NOT JSONB in
+  daily_entries. Columns: id, user_id, date, activity_type, duration_min,
+  zone3_plus_minutes, active_calories, notes, created_at.
+  avg_heart_rate column exists in DB but is unused — do not read, write,
+  or remove it. Sessions joined at read time via loadSessionsForDates()
+  in lib/db.ts.
+- `health_appointments` — separate table. Date columns (next_due_date,
+  last_completed_date) are text type, not date/timestamptz. Stores
+  datetime-local strings directly. RLS disabled.
 
 ### Nutrition tables — eight live tables in Supabase
 
@@ -118,9 +125,8 @@ pasting. Do not attempt HTTPS auth.
 
 - The old daily_entries.nutrition JSONB columns (pre_workout_snack, breakfast, lunch, dinner,
   incidentals + their macro fields) are legacy. Don't read or write them from new code.
-- Coach **should** read from daily_nutrition_summary but **currently still reads
-  daily_entries.nutrition** in app/api/coach/route.ts. This is backlog item #1.
-  **Do not touch Coach at all until Goals tab / Training Load branch is merged to main.**
+- Coach should read from daily_nutrition_summary but currently still reads
+  daily_entries.nutrition in app/api/coach/route.ts. This is backlog item #1.
 - RLS on the eight nutrition tables uses `auth.uid() = user_id`. We bypass it
   server-side with the service-role client in lib/nutrition.ts → supaAdmin().
 - New nutrition rows use `user_id = process.env.NUTRITION_USER_ID`. Never hardcode.
@@ -147,4 +153,3 @@ pasting. Do not attempt HTTPS auth.
 - Never call the USDA API from client-side code — always go through /api/nutrition/search
 - Never call the Anthropic API from client-side code — always go through /api/nutrition/estimate
 - Never re-add the Templates section to My Library — meal_templates and meal_template_items exist in DB and API but the UI was removed by design
-- Never touch app/api/coach/route.ts or any coach component until Goals tab / Training Load branch is merged to main
