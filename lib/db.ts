@@ -129,6 +129,7 @@ export async function loadSessionsForDates(dates: string[]): Promise<Record<stri
       duration_min:      row.duration_min      as number,
       zone3_plus_minutes: (row.zone3_plus_minutes as number | null) ?? null,
       active_calories:   (row.active_calories  as number | null) ?? null,
+      start_time:        (row.start_time       as string | null) ?? null,
     })
   }
   return map

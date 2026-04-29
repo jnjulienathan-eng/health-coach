@@ -23,12 +23,42 @@ function formatDate(dateStr: string): string {
 }
 
 function activityEmoji(type: string): string {
-  switch (type) {
-    case 'swim': return '🏊'
-    case 'egym': return '💪'
-    case 'run':  return '🏃'
-    case 'walk': return '🚶'
-    default:     return '🏋️'
+  switch (type.toLowerCase()) {
+    case 'run':
+    case 'running':
+    case 'outdoor run':
+    case 'indoor run':
+      return '🏃'
+    case 'walk':
+    case 'outdoor walk':
+      return '🚶'
+    case 'cycling':
+    case 'outdoor cycling':
+    case 'indoor cycling':
+      return '🚴'
+    case 'swim':
+    case 'swimming':
+    case 'pool swimming':
+    case 'open water swimming':
+      return '🏊'
+    case 'strength':
+    case 'egym':
+    case 'strength training':
+    case 'functional strength training':
+      return '🏋️'
+    case 'rowing':
+      return '🚣'
+    case 'elliptical':
+      return '〇'
+    case 'yoga':
+    case 'pilates':
+      return '🧘'
+    case 'hiking':
+      return '🥾'
+    case 'hiit':
+      return '⚡'
+    default:
+      return '🏅'
   }
 }
 

@@ -18,6 +18,7 @@ export interface TrainingSession {
   duration_min: number
   zone3_plus_minutes: number | null  // minutes above ~135 bpm
   active_calories: number | null
+  start_time?: string | null        // timestamptz, populated from Health Auto Export
 }
 
 export interface TrainingData {
