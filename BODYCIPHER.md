@@ -356,9 +356,9 @@ Confirmed columns (verified April 28, 2026):
 - activity_type (text), duration_min (integer), zone3_plus_minutes (integer)
 - active_calories (integer), notes (text)
 - avg_heart_rate (integer) — **column exists in DB but is unused. Do not read or write. Do not remove from DB (would require migration). Do not re-add to UI or types.**
-- **source** (text, nullable) — set to 'health_auto_export' by /api/health-import. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
-- **start_time** (timestamptz, nullable) — populated from workout `start` field by /api/health-import. Column already exists in DB. Displayed on session cards as local HH:MM. Present in `saveEntry` insert payload as `s.start_time ?? null` (lib/db.ts line 258 — verified April 29, 2026). Read back via `loadSessionsForDates` which uses `.select('*')` and maps `start_time` explicitly (lib/db.ts line 131).
-- **external_id** (text, nullable) — the UUID from Apple Health / Health Auto Export (workout `id` field). Used as the sole duplicate-detection key by /api/health-import; the old duration-based check has been removed. Requires column to exist in DB: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS external_id text;`
+- **source** (text, nullable) — set to 'health_auto_export' by /api/health-import. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
+- **start_time** (timestamptz, nullable) — populated from workout `start` field by /api/health-import. Displayed on session cards as local HH:MM. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle.
+- **external_id** (text, nullable) — Apple Health workout UUID. Sole duplicate-detection key used by /api/health-import. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle. Requires column in DB: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS external_id text;`
 
 ### Activity icons (canonical mapping)
 
@@ -415,10 +415,6 @@ Two follow-up bugs resolved (same branch, April 28, 2026):
 A. ✅ Mode computed client-side in CoachTab.tsx using new Date().getHours() — fixes UTC vs local time mismatch that showed "posttraining" at 13:05 Munich time. Mode sent in request body; server uses client mode if provided.
 B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV vs baseline and sleep quality). training remains null in afternoon mode by design.
 
-### Layout fixes
-
-- **Tab bar safe-area padding (April 29, 2026):** outer div in `app/page.tsx` uses `paddingBottom: 'calc(72px + env(safe-area-inset-bottom))'` to ensure content clears the tab bar on iPhones with a home indicator. Tab bar is `height: 72` with its own `paddingBottom: env(safe-area-inset-bottom)` — both must match.
-
 ### Features — next
 
 1. **Glucose Stability expanded card** — targeted edit to GoalsTab.tsx only. No migrations. No new routes. Design specced above under Goals Tab. 🔍 CHECK: Is this the agreed next task?
@@ -449,6 +445,14 @@ Replaced Anthropic API greeting with static rotating list. Client-side only, ins
 - USDA name deduplication
 - Calorie warnings or penalties
 - "Cycled today (transport)" UI toggle (removed April 29, 2026 — Cycling is now a regular quick-add session type)
+
+---
+
+## HOW JULIE USES THIS APP
+
+Julie receives workouts auto-imported from Apple Health via the webhook, and then manually augments them — for example, adding Zone 3+ minutes. This means training session rows contain a mix of machine-written fields and human-written fields. Any code that touches training sessions must preserve both. It cannot assume that what the UI displays is everything the row contains.
+
+Any save logic that deletes and rewrites session rows must carry forward every field the webhook can write — currently external_id, source, active_calories, and start_time — not just the fields the UI controls. If a new webhook field is added in future, this list must be updated and the save logic must be checked.
 
 ---
 
