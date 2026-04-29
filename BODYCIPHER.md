@@ -415,6 +415,15 @@ Two follow-up bugs resolved (same branch, April 28, 2026):
 A. ✅ Mode computed client-side in CoachTab.tsx using new Date().getHours() — fixes UTC vs local time mismatch that showed "posttraining" at 13:05 Munich time. Mode sent in request body; server uses client mode if provided.
 B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV vs baseline and sleep quality). training remains null in afternoon mode by design.
 
+### Layout / safe-area fixes
+
+- **Tab bar (April 29, 2026):** outer div in `app/page.tsx` uses `paddingBottom: calc(72px + env(safe-area-inset-bottom))`. Tab bar itself has `height: 72` + `paddingBottom: env(safe-area-inset-bottom)`.
+- **MealLogger bottom sheets (April 29, 2026):** four targeted fixes in `components/nutrition/MealLogger.tsx`:
+  - ScreenMenu content div: `paddingBottom: calc(32px + env(safe-area-inset-bottom))`
+  - Footer component (used by ScreenWeight, ScreenBuilding, ScreenRecipeBuilder, ScreenPhotoEstimate, ScreenConfirm): `padding: 16px 16px calc(16px + env(safe-area-inset-bottom))`
+  - ScreenSearch scroll container: `padding-bottom: calc(16px + env(safe-area-inset-bottom))`
+  - ScreenLibrary scroll container: `padding-bottom: calc(24px + env(safe-area-inset-bottom))`
+
 ### Features — next
 
 1. **Glucose Stability expanded card** — targeted edit to GoalsTab.tsx only. No migrations. No new routes. Design specced above under Goals Tab. 🔍 CHECK: Is this the agreed next task?

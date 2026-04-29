@@ -729,7 +729,7 @@ function ScreenMenu({
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ padding: 20, paddingBottom: 32, display: 'flex', flexDirection: 'column', gap: 14 }}
+      style={{ padding: 20, paddingBottom: 'calc(32px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 14 }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--color-text-primary)' }}>Log a meal</span>
@@ -1072,7 +1072,7 @@ function ScreenSearch({
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px calc(16px + env(safe-area-inset-bottom))' }}>
         {error && (
           <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 8 }}>{error}</div>
         )}
@@ -1974,7 +1974,7 @@ const pickRecipeFoodItem = (recipe: RecipeRow): FoodItem | null => {
     >
       <Header title="My Library" onBack={onBack} backLabel="Back" />
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 24px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px calc(24px + env(safe-area-inset-bottom))' }}>
         {error && (
           <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 8 }}>{error}</div>
         )}
@@ -2696,7 +2696,7 @@ function Header({ title, onBack, backLabel = 'Back' }: { title: string; onBack: 
 function Footer({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      padding: 16, borderTop: '1px solid var(--color-border)',
+      padding: '16px 16px calc(16px + env(safe-area-inset-bottom))', borderTop: '1px solid var(--color-border)',
       background: 'var(--color-surface)',
     }}>
       {children}
