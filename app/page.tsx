@@ -223,7 +223,7 @@ export default function App() {
   return (
     <div
       className="min-h-screen"
-      style={{ background: 'var(--color-bg)', paddingBottom: '72px' }}
+      style={{ background: 'var(--color-bg)', paddingBottom: 'calc(72px + env(safe-area-inset-bottom))' }}
     >
       {/* ── Content ────────────────────────────────────────────── */}
       <main
