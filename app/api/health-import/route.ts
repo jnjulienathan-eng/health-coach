@@ -216,6 +216,7 @@ export async function POST(req: NextRequest) {
           zone3_plus_minutes: 0,
           active_calories:    calories,
           source:             'health_auto_export',
+          start_time:         workout.start,
         })
 
       if (error) {

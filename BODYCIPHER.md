@@ -58,7 +58,10 @@ _Last updated: April 28, 2026_
 - Multiple sessions per day. Per session: activity type, duration (min), zone3+ minutes, active calories.
 - Sessions stored in the `training_sessions` table (separate normalised table — NOT JSONB in daily_entries).
 - Zone3+ intensity: 0–5 min = Easy, 6–15 = Moderate, 16+ = Hard
-- Cycling logged separately (transport only): toggle + minutes + calories → daily_entries
+- Quick-add buttons: Swim, eGym, Run, Walk, Cycling. Cycling is a regular session type (for no-watch days) — no longer a separate transport toggle.
+- "Cycled today (transport)" UI removed. `cycled_today`, `cycling_minutes`, `cycling_calories` columns remain in `daily_entries` and `TrainingData` for historical data compatibility — do not read or write from new code.
+- Session cards show `start_time` as local "HH:MM" when present (populated by /api/health-import).
+- Activity icons standardised across TrainingSection and HistoryTab (see ACTIVITY ICONS below).
 - `avg_heart_rate` is permanently removed. Do not re-add.
 
 **Nutrition section**
@@ -354,6 +357,12 @@ Confirmed columns (verified April 28, 2026):
 - active_calories (integer), notes (text)
 - avg_heart_rate (integer) — **column exists in DB but is unused. Do not read or write. Do not remove from DB (would require migration). Do not re-add to UI or types.**
 - **source** (text, nullable) — set to 'health_auto_export' by /api/health-import. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
+- **start_time** (timestamptz, nullable) — populated from workout `start` field by /api/health-import. Column already exists in DB. Displayed on session cards as local HH:MM.
+
+### Activity icons (canonical mapping)
+
+Used consistently in `TrainingSection.tsx` and `HistoryTab.tsx`:
+Run / Outdoor Run / Indoor Run → 🏃 | Walk / Outdoor Walk → 🚶 | Cycling → 🚴 | Swim → 🏊 | Strength / eGym → 🏋️ | Rowing → 🚣 | Elliptical → 〇 | Yoga / Pilates → 🧘 | Hiking → 🥾 | HIIT → ⚡ | anything else → 🏅
 
 Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
 
@@ -434,6 +443,7 @@ Replaced Anthropic API greeting with static rotating list. Client-side only, ins
 - Template UI in My Library (tables and API routes preserved in DB)
 - USDA name deduplication
 - Calorie warnings or penalties
+- "Cycled today (transport)" UI toggle (removed April 29, 2026 — Cycling is now a regular quick-add session type)
 
 ---
 

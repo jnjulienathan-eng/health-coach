@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { TrainingData, TrainingSession, ActivityType } from '@/lib/types'
+import type { TrainingData, TrainingSession } from '@/lib/types'
 import { zone3Intensity } from '@/lib/types'
 import Section from '@/components/ui/Section'
 
@@ -13,15 +13,16 @@ interface Props {
 }
 
 const ACTIVITIES: {
-  type: ActivityType
+  type: string
   label: string
   emoji: string
   defaultMin: number
 }[] = [
-  { type: 'swim', label: 'Swim',  emoji: '🏊', defaultMin: 50 },
-  { type: 'egym', label: 'eGym',  emoji: '💪', defaultMin: 35 },
-  { type: 'run',  label: 'Run',   emoji: '🏃', defaultMin: 35 },
-  { type: 'walk', label: 'Walk',  emoji: '🚶', defaultMin: 75 },
+  { type: 'swim',    label: 'Swim',    emoji: '🏊', defaultMin: 50 },
+  { type: 'egym',    label: 'eGym',    emoji: '🏋️', defaultMin: 35 },
+  { type: 'run',     label: 'Run',     emoji: '🏃', defaultMin: 35 },
+  { type: 'walk',    label: 'Walk',    emoji: '🚶', defaultMin: 75 },
+  { type: 'Cycling', label: 'Cycling', emoji: '🚴', defaultMin: 45 },
 ]
 
 const INTENSITY_COLORS: Record<string, string> = {
@@ -33,8 +34,58 @@ const INTENSITY_COLORS: Record<string, string> = {
 function activityLabel(type: string) {
   return ACTIVITIES.find((a) => a.type === type)?.label ?? type
 }
-function activityEmoji(type: string) {
-  return ACTIVITIES.find((a) => a.type === type)?.emoji ?? '🏋️'
+
+function activityEmoji(type: string): string {
+  switch (type.toLowerCase()) {
+    case 'run':
+    case 'running':
+    case 'outdoor run':
+    case 'indoor run':
+      return '🏃'
+    case 'walk':
+    case 'outdoor walk':
+      return '🚶'
+    case 'cycling':
+    case 'outdoor cycling':
+    case 'indoor cycling':
+      return '🚴'
+    case 'swim':
+    case 'swimming':
+    case 'pool swimming':
+    case 'open water swimming':
+      return '🏊'
+    case 'strength':
+    case 'egym':
+    case 'strength training':
+    case 'functional strength training':
+      return '🏋️'
+    case 'rowing':
+      return '🚣'
+    case 'elliptical':
+      return '〇'
+    case 'yoga':
+    case 'pilates':
+      return '🧘'
+    case 'hiking':
+      return '🥾'
+    case 'hiit':
+      return '⚡'
+    default:
+      return '🏅'
+  }
+}
+
+function formatStartTime(startTime: string | null | undefined): string | null {
+  if (!startTime) return null
+  try {
+    // "2026-04-29 07:15:00 +0200" → ISO → local HH:MM
+    const iso = startTime.replace(' ', 'T').replace(' ', '')
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return null
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+  } catch {
+    return null
+  }
 }
 
 export default function TrainingSection({ data, onChange, onSave, saving }: Props) {
@@ -46,11 +97,11 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
   const [customZone3, setCustomZone3] = useState<number | null>(null)
   const [customCal, setCustomCal] = useState<number | null>(null)
 
-  const isComplete = data.sessions.length > 0 || data.cycled_today
+  const isComplete = data.sessions.length > 0
 
   const change = (d: TrainingData) => { setLocalSaved(false); setSaveError(false); onChange(d) }
 
-  const addSession = (type: ActivityType, defaultMin: number) => {
+  const addSession = (type: string, defaultMin: number) => {
     const session: TrainingSession = {
       id: crypto.randomUUID(),
       activity_type: type,
@@ -91,8 +142,6 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
       }}
     >
       {data.sessions.map((s) => activityEmoji(s.activity_type)).join(' ')}
-      {data.sessions.length > 0 && data.cycled_today && ' · '}
-      {data.cycled_today && '🚴'}
     </div>
   ) : null
 
@@ -267,16 +316,6 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
           </div>
         )}
 
-        {/* Cycling toggle */}
-        <CyclingRow
-          cycled={data.cycled_today}
-          minutes={data.cycling_minutes}
-          calories={data.cycling_calories}
-          onCycledChange={(v) => change({ ...data, cycled_today: v })}
-          onMinutesChange={(v) => change({ ...data, cycling_minutes: v })}
-          onCaloriesChange={(v) => change({ ...data, cycling_calories: v })}
-        />
-
         {/* Save */}
         <button
           type="button"
@@ -330,15 +369,22 @@ function SessionCard({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 22 }}>{activityEmoji(session.activity_type)}</span>
-          <span
-            style={{
-              fontSize: 15,
-              fontWeight: 500,
-              color: 'var(--color-text-primary)',
-            }}
-          >
-            {activityLabel(session.activity_type)}
-          </span>
+          <div>
+            <span
+              style={{
+                fontSize: 15,
+                fontWeight: 500,
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              {activityLabel(session.activity_type)}
+            </span>
+            {formatStartTime(session.start_time) && (
+              <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 1 }}>
+                {formatStartTime(session.start_time)}
+              </div>
+            )}
+          </div>
         </div>
         <button
           type="button"
@@ -508,109 +554,6 @@ function SessionCard({
           )}
         </div>
       </div>
-    </div>
-  )
-}
-
-// ─── Cycling row ──────────────────────────────────────────────────
-function CyclingRow({
-  cycled,
-  minutes,
-  calories,
-  onCycledChange,
-  onMinutesChange,
-  onCaloriesChange,
-}: {
-  cycled: boolean
-  minutes: number | null
-  calories: number | null
-  onCycledChange: (v: boolean) => void
-  onMinutesChange: (v: number | null) => void
-  onCaloriesChange: (v: number | null) => void
-}) {
-  return (
-    <div
-      style={{
-        padding: '12px 14px',
-        background: 'var(--color-surface)',
-        border: '1px solid var(--color-border)',
-        borderRadius: 10,
-      }}
-    >
-      {/* Toggle row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20 }}>🚴</span>
-          <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>Cycled today</span>
-          <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>(transport)</span>
-        </div>
-        <input
-          type="checkbox"
-          checked={cycled}
-          onChange={(e) => onCycledChange(e.target.checked)}
-          className="toggle"
-          aria-label="Cycled today"
-        />
-      </div>
-
-      {/* Expanded fields when cycled */}
-      {cycled && (
-        <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              type="number"
-              inputMode="numeric"
-              value={minutes ?? ''}
-              onChange={(e) =>
-                onMinutesChange(e.target.value === '' ? null : parseInt(e.target.value))
-              }
-              placeholder="—"
-              aria-label="Cycling minutes"
-              style={{
-                width: 56,
-                height: 44,
-                padding: '0 8px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 18,
-                color: 'var(--color-text-primary)',
-                background: 'var(--color-bg)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 6,
-                outline: 'none',
-                textAlign: 'center',
-              }}
-            />
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>min</span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              type="number"
-              inputMode="numeric"
-              value={calories ?? ''}
-              onChange={(e) =>
-                onCaloriesChange(e.target.value === '' ? null : parseInt(e.target.value))
-              }
-              placeholder="—"
-              aria-label="Cycling calories"
-              style={{
-                width: 64,
-                height: 44,
-                padding: '0 8px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 18,
-                color: 'var(--color-text-primary)',
-                background: 'var(--color-bg)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 6,
-                outline: 'none',
-                textAlign: 'center',
-              }}
-            />
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>kcal</span>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
