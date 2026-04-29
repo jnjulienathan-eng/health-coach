@@ -357,7 +357,7 @@ Confirmed columns (verified April 28, 2026):
 - active_calories (integer), notes (text)
 - avg_heart_rate (integer) — **column exists in DB but is unused. Do not read or write. Do not remove from DB (would require migration). Do not re-add to UI or types.**
 - **source** (text, nullable) — set to 'health_auto_export' by /api/health-import. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
-- **start_time** (timestamptz, nullable) — populated from workout `start` field by /api/health-import. Column already exists in DB. Displayed on session cards as local HH:MM. Must be included in the `saveEntry` insert payload (lib/db.ts) so it is preserved when the user saves training.
+- **start_time** (timestamptz, nullable) — populated from workout `start` field by /api/health-import. Column already exists in DB. Displayed on session cards as local HH:MM. Present in `saveEntry` insert payload as `s.start_time ?? null` (lib/db.ts line 258 — verified April 29, 2026). Read back via `loadSessionsForDates` which uses `.select('*')` and maps `start_time` explicitly (lib/db.ts line 131).
 - **external_id** (text, nullable) — the UUID from Apple Health / Health Auto Export (workout `id` field). Used as the sole duplicate-detection key by /api/health-import; the old duration-based check has been removed. Requires column to exist in DB: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS external_id text;`
 
 ### Activity icons (canonical mapping)
