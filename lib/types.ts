@@ -19,6 +19,8 @@ export interface TrainingSession {
   zone3_plus_minutes: number | null  // minutes above ~135 bpm
   active_calories: number | null
   start_time?: string | null        // timestamptz, populated from Health Auto Export
+  external_id?: string | null       // Apple Health workout UUID, used for dedup by webhook
+  source?: string | null            // 'health_auto_export' when written by webhook
 }
 
 export interface TrainingData {

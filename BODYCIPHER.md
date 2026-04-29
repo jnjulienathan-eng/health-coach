@@ -356,9 +356,9 @@ Confirmed columns (verified April 28, 2026):
 - activity_type (text), duration_min (integer), zone3_plus_minutes (integer)
 - active_calories (integer), notes (text)
 - avg_heart_rate (integer) — **column exists in DB but is unused. Do not read or write. Do not remove from DB (would require migration). Do not re-add to UI or types.**
-- **source** (text, nullable) — set to 'health_auto_export' by /api/health-import. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
-- **start_time** (timestamptz, nullable) — populated from workout `start` field by /api/health-import. Column already exists in DB. Displayed on session cards as local HH:MM. Must be included in the `saveEntry` insert payload (lib/db.ts) so it is preserved when the user saves training.
-- **external_id** (text, nullable) — the UUID from Apple Health / Health Auto Export (workout `id` field). Used as the sole duplicate-detection key by /api/health-import; the old duration-based check has been removed. Requires column to exist in DB: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS external_id text;`
+- **source** (text, nullable) — set to 'health_auto_export' by /api/health-import. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
+- **start_time** (timestamptz, nullable) — populated from workout `start` field by /api/health-import. Displayed on session cards as local HH:MM. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle.
+- **external_id** (text, nullable) — Apple Health workout UUID. Sole duplicate-detection key used by /api/health-import. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle. Requires column in DB: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS external_id text;`
 
 ### Activity icons (canonical mapping)
 
@@ -445,6 +445,14 @@ Replaced Anthropic API greeting with static rotating list. Client-side only, ins
 - USDA name deduplication
 - Calorie warnings or penalties
 - "Cycled today (transport)" UI toggle (removed April 29, 2026 — Cycling is now a regular quick-add session type)
+
+---
+
+## HOW JULIE USES THIS APP
+
+Julie receives workouts auto-imported from Apple Health via the webhook, and then manually augments them — for example, adding Zone 3+ minutes. This means training session rows contain a mix of machine-written fields and human-written fields. Any code that touches training sessions must preserve both. It cannot assume that what the UI displays is everything the row contains.
+
+Any save logic that deletes and rewrites session rows must carry forward every field the webhook can write — currently external_id, source, active_calories, and start_time — not just the fields the UI controls. If a new webhook field is added in future, this list must be updated and the save logic must be checked.
 
 ---
 

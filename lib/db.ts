@@ -129,6 +129,8 @@ export async function loadSessionsForDates(dates: string[]): Promise<Record<stri
       zone3_plus_minutes: (row.zone3_plus_minutes as number | null) ?? null,
       active_calories:   (row.active_calories  as number | null) ?? null,
       start_time:        (row.start_time       as string | null) ?? null,
+      external_id:       (row.external_id      as string | null) ?? null,
+      source:            (row.source           as string | null) ?? null,
     })
   }
   return map
@@ -256,6 +258,8 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
           zone3_plus_minutes: s.zone3_plus_minutes ?? null,
           active_calories:    s.active_calories ?? null,
           start_time:         s.start_time ?? null,
+          external_id:        s.external_id ?? null,
+          source:             s.source ?? null,
         }))
       )
 
