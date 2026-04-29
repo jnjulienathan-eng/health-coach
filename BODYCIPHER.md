@@ -207,6 +207,7 @@ Glucose stability expanded state design (not yet built):
 - `SUPABASE_SERVICE_ROLE_KEY` — server-side only
 - `NUTRITION_USER_ID` — UUID for all nutrition rows, read via `nutritionUserId()` in lib/nutrition.ts
 - `ANTHROPIC_API_KEY` — used by /api/nutrition/estimate and /api/goals/greeting, server-side only
+- `HEALTH_IMPORT_SECRET` — API key checked against `x-api-key` header on /api/health-import. Server-side only.
 
 ### Recipe builder — locked decisions
 
@@ -338,7 +339,7 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 ### `daily_entries`
 
 Sleep: sleep_duration_min, hrv, rhr, bedtime, rested, nap_minutes, fasting_glucose_mmol
-Training: cycled_today, cycling_minutes, cycling_calories (cycling transport only — training sessions in separate table)
+Training: cycled_today, cycling_minutes, cycling_calories (cycling transport only — training sessions in separate table), **active_calories** (integer, nullable — written by /api/health-import from Health Auto Export active_energy metric; migration: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS active_calories integer`)
 Nutrition columns: **LEGACY — do not read or write from new code**
 Hydration: hydration_ml
 Supplements: morning_stack_taken, morning_exceptions, evening_stack_taken, evening_exceptions, progesterone_taken, progesterone_mg, estradiol_taken, estradiol_sprays
@@ -352,6 +353,7 @@ Confirmed columns (verified April 28, 2026):
 - activity_type (text), duration_min (integer), zone3_plus_minutes (integer)
 - active_calories (integer), notes (text)
 - avg_heart_rate (integer) — **column exists in DB but is unused. Do not read or write. Do not remove from DB (would require migration). Do not re-add to UI or types.**
+- **source** (text, nullable) — set to 'health_auto_export' by /api/health-import. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
 
 Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
 
