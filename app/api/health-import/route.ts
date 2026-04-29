@@ -55,6 +55,7 @@ interface EnergyField {
 }
 
 interface Workout {
+  id: string
   name: string
   start: string
   end: string
@@ -188,21 +189,15 @@ export async function POST(req: NextRequest) {
         calories = units === 'kJ' ? kjToKcal(qty) : Math.round(qty)
       }
 
-      // Duplicate check: same date + activity_type + duration within ±2 min.
+      // Duplicate check: skip if external_id already exists.
       const { data: existing } = await supabase
         .from('training_sessions')
-        .select('id, duration_min')
-        .eq('user_id', 'julie')
-        .eq('date', date)
-        .eq('activity_type', activityType)
+        .select('id')
+        .eq('external_id', workout.id)
+        .maybeSingle()
 
-      const duplicate = (existing ?? []).some((row: Record<string, unknown>) => {
-        const diff = Math.abs((row.duration_min as number) - durationMin)
-        return diff <= 2
-      })
-
-      if (duplicate) {
-        console.log(`[health-import] workout ${date} ${activityType} ${durationMin}min: duplicate found — skipped`)
+      if (existing) {
+        console.log(`[health-import] Skipped duplicate: external_id already exists (${workout.id})`)
         continue
       }
 
@@ -217,6 +212,7 @@ export async function POST(req: NextRequest) {
           active_calories:    calories,
           source:             'health_auto_export',
           start_time:         workout.start,
+          external_id:        workout.id,
         })
 
       if (error) {

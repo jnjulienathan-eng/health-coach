@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay } from '@/lib/db'
 import { emptyEntry } from '@/lib/types'
 import type { DailyEntry } from '@/lib/types'
@@ -122,12 +122,17 @@ export default function App() {
   const [cycleDay,      setCycleDay]      = useState<number | null>(null)
   const [showYesterday, setShowYesterday] = useState(false)
   const [skipYesterday, setSkipYesterday] = useState(false)
+  const loadedDateRef = useRef<string | null>(null)
 
   const isToday = currentDate === todayStr()
 
-  // Load entry for the current date
+  // Load entry for the current date.
+  // Shows the loading spinner only when switching to a date not yet loaded —
+  // silent re-fetches (same date, on focus, on tab re-select) keep existing
+  // session data visible until the fresh data arrives.
   const loadDay = useCallback(async (date: string) => {
-    setLoading(true)
+    const isNewDate = loadedDateRef.current !== date
+    if (isNewDate) setLoading(true)
     try {
       const data = await loadEntry(date)
       // Auto-derive cycle day for today if not stored yet
@@ -138,16 +143,27 @@ export default function App() {
         const cd = (data.context as unknown as Record<string, unknown>).cycle_day
         if (typeof cd === 'number') setCycleDay(cd)
       }
+      loadedDateRef.current = date
       setEntry(data)
     } catch (e) {
       console.error('Failed to load entry:', e)
     } finally {
-      setLoading(false)
+      if (isNewDate) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     loadDay(currentDate)
+  }, [currentDate, loadDay])
+
+  // Silent re-fetch when the browser tab / app regains focus.
+  // loadDay is a no-op loader (no spinner) when currentDate is already loaded.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadDay(currentDate)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [currentDate, loadDay])
 
   // Check if yesterday's sleep needs completing
@@ -212,7 +228,7 @@ export default function App() {
       {/* ── Content ────────────────────────────────────────────── */}
       <main
         className="mx-auto w-full"
-        style={{ maxWidth: '480px', padding: '20px 20px 0' }}
+        style={{ maxWidth: '480px', padding: '20px 20px 0', isolation: 'isolate' }}
       >
 
         {/* ── GOALS TAB (BodyCipher home) ───────────────────────── */}
@@ -468,7 +484,10 @@ export default function App() {
             <button
               key={id}
               type="button"
-              onClick={() => setActiveTab(id)}
+              onClick={() => {
+                if (id === 'today' && activeTab === 'today') loadDay(currentDate)
+                setActiveTab(id)
+              }}
               style={{
                 flex: 1,
                 display: 'flex',

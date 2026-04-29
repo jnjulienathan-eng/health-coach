@@ -44,6 +44,7 @@ function activityEmoji(type: string): string {
       return '🏃'
     case 'walk':
     case 'outdoor walk':
+    case 'indoor walk':
       return '🚶'
     case 'cycling':
     case 'outdoor cycling':
@@ -304,7 +305,7 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
 
         {/* Session cards */}
         {data.sessions.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', zIndex: 0 }}>
             {data.sessions.map((session) => (
               <SessionCard
                 key={session.id}

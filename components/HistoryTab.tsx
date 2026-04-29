@@ -31,6 +31,7 @@ function activityEmoji(type: string): string {
       return '🏃'
     case 'walk':
     case 'outdoor walk':
+    case 'indoor walk':
       return '🚶'
     case 'cycling':
     case 'outdoor cycling':

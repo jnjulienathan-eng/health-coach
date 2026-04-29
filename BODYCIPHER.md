@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: April 28, 2026_
+_Last updated: April 29, 2026_
 
 ---
 
@@ -358,11 +358,12 @@ Confirmed columns (verified April 28, 2026):
 - avg_heart_rate (integer) — **column exists in DB but is unused. Do not read or write. Do not remove from DB (would require migration). Do not re-add to UI or types.**
 - **source** (text, nullable) — set to 'health_auto_export' by /api/health-import. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
 - **start_time** (timestamptz, nullable) — populated from workout `start` field by /api/health-import. Column already exists in DB. Displayed on session cards as local HH:MM.
+- **external_id** (text, nullable) — the UUID from Apple Health / Health Auto Export (workout `id` field). Used as the sole duplicate-detection key by /api/health-import; the old duration-based check has been removed. Requires column to exist in DB: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS external_id text;`
 
 ### Activity icons (canonical mapping)
 
 Used consistently in `TrainingSection.tsx` and `HistoryTab.tsx`:
-Run / Outdoor Run / Indoor Run → 🏃 | Walk / Outdoor Walk → 🚶 | Cycling → 🚴 | Swim → 🏊 | Strength / eGym → 🏋️ | Rowing → 🚣 | Elliptical → 〇 | Yoga / Pilates → 🧘 | Hiking → 🥾 | HIIT → ⚡ | anything else → 🏅
+Run / Outdoor Run / Indoor Run → 🏃 | Walk / Outdoor Walk / Indoor Walk → 🚶 | Cycling / Outdoor Cycling / Indoor Cycling → 🚴 | Swim → 🏊 | Strength / eGym → 🏋️ | Rowing → 🚣 | Elliptical → 〇 | Yoga / Pilates → 🧘 | Hiking → 🥾 | HIIT → ⚡ | anything else → 🏅
 
 Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
 
