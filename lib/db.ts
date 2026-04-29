@@ -255,6 +255,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
           duration_min:       s.duration_min,
           zone3_plus_minutes: s.zone3_plus_minutes ?? null,
           active_calories:    s.active_calories ?? null,
+          start_time:         s.start_time ?? null,
         }))
       )
 
