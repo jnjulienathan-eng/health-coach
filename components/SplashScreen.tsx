@@ -97,7 +97,7 @@ export default function SplashScreen({ onDismiss }: Props) {
       `}</style>
 
       <div ref={overlayRef} className="splash-overlay">
-        <svg width="320" viewBox="0 0 680 345" xmlns="http://www.w3.org/2000/svg">
+        <svg width="85vw" style={{ maxWidth: '420px' }} viewBox="220 36 220 250" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <clipPath id="body-clip">
               <rect x="220" y="0" width="120" height="0"/>
