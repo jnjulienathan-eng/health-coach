@@ -53,7 +53,7 @@ _Last updated: April 29, 2026_
 | Index | Label | Component | Status |
 |---|---|---|---|
 | 0 | Today | Daily logging accordions (inline in app/page.tsx) | Live |
-| 1 | Health Calendar | Placeholder "coming soon" div | Placeholder |
+| 1 | Health Calendar | Health appointments list (copied from GoalsTab) | Live |
 | 2 | Coach | `CoachTab` | Live |
 | 3 | Dashboard | `DashboardTab` | Live |
 

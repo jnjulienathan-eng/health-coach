@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading } from '@/lib/db'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
-import type { DailyEntry, GoalsData, BiomarkerReading } from '@/lib/types'
+import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment } from '@/lib/types'
 import { computeTrainingLoad } from '@/lib/trainingLoad'
 import SleepSection from '@/components/sections/SleepSection'
 import TrainingSection from '@/components/sections/TrainingSection'
@@ -321,6 +321,50 @@ function fmtMonthYear(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
+// ─── Health Calendar helpers (copied from GoalsTab) ──────────────
+
+const APPT_LABELS: Record<string, string> = {
+  dentist:          'Dentist',
+  dermatologist:    'Dermatologist',
+  gynaecologist:    'Gynaecologist',
+  full_bloodwork:   'Full Bloodwork',
+  breast_scan:      'Breast Scan',
+  thyroid_scan:     'Thyroid Scan',
+  bone_density_scan: 'Bone Density Scan',
+  colonoscopy:      'Colonoscopy',
+  eye_optometrist:  'Eye & Optometrist',
+}
+
+function addMonths(dateStr: string, months: number): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setMonth(d.getMonth() + months)
+  const y  = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const dy = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${dy}T00:00`
+}
+
+function nextDueDateFromLast(lastCompleted: string | null, intervalMonths: number): Date | null {
+  if (!lastCompleted) return null
+  const d = new Date(lastCompleted + 'T00:00:00')
+  d.setMonth(d.getMonth() + intervalMonths)
+  return d
+}
+
+function fmtDueDate(rawStr: string | null, d: Date): string {
+  const datePart = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  if (rawStr && rawStr.includes('T')) {
+    const timePart = rawStr.slice(11, 16)
+    if (timePart && timePart !== '00:00') return `${datePart}, ${timePart}`
+  }
+  return datePart
+}
+
+function fmtDate(s: string | null): string {
+  if (!s) return 'Not set'
+  return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 // ─── Score card helpers (copied from DashboardTab) ────────────────
 
 interface TodayScored {
@@ -513,6 +557,13 @@ export default function App() {
   const [cardioEntryDate, setCardioEntryDate] = useState('')
   const [cardioSaving,    setCardioSaving]    = useState(false)
 
+  // ── Health Calendar state (from GoalsTab) ─────────────────────────
+  const [editingId,         setEditingId]         = useState<string | null>(null)
+  const [editLastCompleted, setEditLastCompleted] = useState('')
+  const [editNextDue,       setEditNextDue]       = useState('')
+  const [editNotes,         setEditNotes]         = useState('')
+  const [apptSaving,        setApptSaving]        = useState(false)
+
   const isToday = currentDate === todayStr()
 
   // Load entry for the current date.
@@ -577,10 +628,21 @@ export default function App() {
       .catch(console.error)
   }, [currentDate])
 
-  // Load goals data for Today tab long-term goals (from GoalsTab)
+  // Load goals data for long-term goals + health calendar (from GoalsTab)
   useEffect(() => {
     getGoalsData()
-      .then(d => setGoalsData(d))
+      .then(async d => {
+        if (d.appointments.length === 0) {
+          try {
+            await seedDefaultAppointments()
+            const fresh = await fetchHealthAppointments()
+            d = { ...d, appointments: fresh }
+          } catch (e) {
+            console.error('Seed/fetch appointments error:', JSON.stringify(e))
+          }
+        }
+        setGoalsData(d)
+      })
       .catch(e => console.error('Goals data load error:', e))
   }, [])
 
@@ -718,6 +780,70 @@ export default function App() {
       console.error('Save cardio reading error:', err)
     } finally {
       setCardioSaving(false)
+    }
+  }
+
+  // ── Health Calendar derived values (from GoalsTab) ───────────────
+  const now = new Date()
+  const fourMonthsOut = new Date(now)
+  fourMonthsOut.setMonth(fourMonthsOut.getMonth() + 4)
+
+  const allAppts = [...(goalsData?.appointments ?? [])].sort((a, b) => {
+    if (!a.next_due_date && !b.next_due_date) return 0
+    if (!a.next_due_date) return 1
+    if (!b.next_due_date) return -1
+    return a.next_due_date < b.next_due_date ? -1 : 1
+  })
+
+  function isApptDimmed(appt: HealthAppointment): boolean {
+    if (appt.interval_months <= 6) return false
+    if (!appt.last_completed_date) return false
+    if (!appt.next_due_date) return true
+    return new Date(appt.next_due_date + 'T00:00:00') > fourMonthsOut
+  }
+
+  // ── Health Calendar handlers (from GoalsTab) ──────────────────────
+  function startEdit(appt: HealthAppointment) {
+    setEditingId(appt.id)
+    setEditLastCompleted(appt.last_completed_date ?? '')
+    const nd = appt.next_due_date ?? ''
+    setEditNextDue(nd ? (nd.includes('T') ? nd.slice(0, 16) : nd + 'T00:00') : '')
+    setEditNotes(appt.notes ?? '')
+  }
+
+  async function handleMarkDone(appt: HealthAppointment) {
+    const today = new Date().toISOString().split('T')[0]
+    const nextDue = addMonths(today, appt.interval_months)
+    setApptSaving(true)
+    try {
+      await saveHealthAppointment({ id: appt.id, last_completed_date: today, next_due_date: nextDue })
+      const fresh = await fetchHealthAppointments()
+      setGoalsData(prev => prev ? { ...prev, appointments: fresh } : prev)
+      setEditingId(null)
+    } catch (e) {
+      console.error('Mark done error:', e)
+    } finally {
+      setApptSaving(false)
+    }
+  }
+
+  async function handleSaveAppt(appt: HealthAppointment) {
+    setApptSaving(true)
+    try {
+      const nextDue = editNextDue || (editLastCompleted ? addMonths(editLastCompleted, appt.interval_months) : null)
+      await saveHealthAppointment({
+        id: appt.id,
+        last_completed_date: editLastCompleted || null,
+        next_due_date: nextDue,
+        notes: editNotes || null,
+      })
+      const fresh = await fetchHealthAppointments()
+      setGoalsData(prev => prev ? { ...prev, appointments: fresh } : prev)
+      setEditingId(null)
+    } catch (e) {
+      console.error('Save appointment error:', e)
+    } finally {
+      setApptSaving(false)
     }
   }
 
@@ -1659,17 +1785,132 @@ export default function App() {
 
         {/* ── HEALTH CALENDAR TAB ──────────────────────────────── */}
         {activeTab === 'calendar' && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: 'calc(100vh - 72px)',
-              color: 'var(--color-text-secondary)',
-              fontSize: 15,
-            }}
-          >
-            Health Calendar — coming soon
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0, paddingBottom: 16 }}>
+
+            <div className="section-label" style={{ paddingLeft: 4, marginTop: 4, marginBottom: 8 }}>
+              Health Calendar
+            </div>
+
+            {allAppts.length === 0 ? (
+              <div className="card" style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>
+                No appointments — loading…
+              </div>
+            ) : (
+              allAppts.map(appt => {
+                const dimmed    = isApptDimmed(appt)
+                const isEditing = editingId === appt.id
+                const dueDate   = appt.next_due_date
+                  ? new Date(appt.next_due_date.includes('T') ? appt.next_due_date : appt.next_due_date + 'T00:00:00')
+                  : nextDueDateFromLast(appt.last_completed_date, appt.interval_months)
+                const dueColor  = dueDate
+                  ? (dueDate <= fourMonthsOut ? 'var(--color-amber)' : 'var(--color-text-dim)')
+                  : 'var(--color-text-dim)'
+                const dueLabel  = dueDate ? `Due: ${fmtDueDate(appt.next_due_date, dueDate)}` : 'Not scheduled'
+
+                return (
+                  <div
+                    key={appt.id}
+                    className="card"
+                    style={{
+                      opacity: dimmed ? 0.5 : 1,
+                      padding: dimmed ? '10px 14px' : '14px 16px',
+                      transition: 'opacity 200ms',
+                      marginBottom: 8,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => isEditing ? setEditingId(null) : startEdit(appt)}
+                      style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <span style={{ fontSize: dimmed ? 13 : 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                          {APPT_LABELS[appt.appointment_type] ?? appt.appointment_type}
+                        </span>
+                        <span style={{ fontSize: 12, color: dueColor, flexShrink: 0 }}>{dueLabel}</span>
+                      </div>
+                      {appt.last_completed_date && !isEditing && (
+                        <div style={{ marginTop: 3, fontSize: 11, color: 'var(--color-text-dim)' }}>
+                          Last done: {fmtDate(appt.last_completed_date)}
+                        </div>
+                      )}
+                    </button>
+
+                    {isEditing && (
+                      <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                          {APPT_LABELS[appt.appointment_type] ?? appt.appointment_type}
+                        </div>
+
+                        <div>
+                          <div className="section-label" style={{ marginBottom: 4 }}>Last completed</div>
+                          <input
+                            type="date"
+                            value={editLastCompleted}
+                            onChange={e => {
+                              setEditLastCompleted(e.target.value)
+                              if (e.target.value) {
+                                setEditNextDue(addMonths(e.target.value, appt.interval_months))
+                              }
+                            }}
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 8 }}
+                          />
+                        </div>
+                        <div>
+                          <div className="section-label" style={{ marginBottom: 4 }}>Next due (auto-computed, overridable)</div>
+                          <input
+                            type="datetime-local"
+                            value={editNextDue}
+                            onChange={e => setEditNextDue(e.target.value)}
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 8 }}
+                          />
+                        </div>
+                        <div>
+                          <div className="section-label" style={{ marginBottom: 4 }}>Notes</div>
+                          <textarea
+                            value={editNotes}
+                            onChange={e => setEditNotes(e.target.value)}
+                            rows={2}
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 8, resize: 'vertical' }}
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={() => handleMarkDone(appt)}
+                          disabled={apptSaving}
+                          style={{ height: 40, fontSize: 13 }}
+                        >
+                          {apptSaving ? 'Saving…' : 'Mark as done today'}
+                        </button>
+
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => handleSaveAppt(appt)}
+                            disabled={apptSaving}
+                            style={{ flex: 1, height: 40, fontSize: 13 }}
+                          >
+                            {apptSaving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => setEditingId(null)}
+                            style={{ flex: 1, height: 40, fontSize: 13 }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+
           </div>
         )}
 
