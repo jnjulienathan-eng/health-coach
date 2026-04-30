@@ -431,7 +431,7 @@ B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV v
 
 - **File:** `components/SplashScreen.tsx`
 - **Wired into:** `app/page.tsx` — rendered as first child of outermost div, above all content and tab bar. `showSplash` state controls mount/unmount.
-- **Timing:** 2000ms display → 400ms CSS fade-out → `onDismiss` called → component unmounts. Total visible duration ~2400ms. The 2000ms delay is intentional and easy to adjust by changing the `setTimeout` value in the `useEffect` inside `SplashScreen.tsx`.
+- **Timing:** 3000ms display → 400ms CSS fade-out → `onDismiss` called → component unmounts. Total visible duration ~3400ms. The 3000ms delay is intentional and easy to adjust by changing the `setTimeout` value in the `useEffect` inside `SplashScreen.tsx`.
 - **Animations:** CSS keyframes only (no JS animation library). Body form reveals top-to-bottom via `clip-path: inset()`. ECG line draws via `stroke-dashoffset`. Amber dots fade/pulse in. Wordmark and tagline rise from opacity 0.
 
 ### Layout / safe-area fixes

@@ -16,7 +16,7 @@ export default function SplashScreen({ onDismiss }: Props) {
       el.classList.add('splash-dismiss')
       const done = setTimeout(onDismiss, 400)
       return () => clearTimeout(done)
-    }, 2000)
+    }, 3000)
     return () => clearTimeout(timer)
   }, [onDismiss])
 
@@ -85,14 +85,14 @@ export default function SplashScreen({ onDismiss }: Props) {
         .splash-wordmark {
           opacity: 0;
           transform: translateY(8px);
-          animation: text-rise 400ms ease-out forwards;
-          animation-delay: 1350ms;
+          animation: text-rise 700ms ease-out forwards;
+          animation-delay: 1600ms;
         }
         .splash-tagline {
           opacity: 0;
           transform: translateY(8px);
-          animation: text-rise 400ms ease-out forwards;
-          animation-delay: 1350ms;
+          animation: text-rise 700ms ease-out forwards;
+          animation-delay: 1600ms;
         }
       `}</style>
 
