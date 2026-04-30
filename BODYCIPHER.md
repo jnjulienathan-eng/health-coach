@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: April 29, 2026_
+_Last updated: April 30, 2026_
 
 ---
 
@@ -27,7 +27,7 @@ _Last updated: April 29, 2026_
 **Stack:** Next.js (App Router) + Supabase (West EU, `cprcamywvhtcboprtkjp.supabase.co`) + Vercel + Anthropic API
 **Key files:** `app/api/coach/route.ts`, `lib/db.ts`, `lib/types.ts`, `lib/scores.ts`, `lib/trainingLoad.ts`
 **Sections:** `components/sections/` — SleepSection, TrainingSection, NutritionSection, HydrationSection, SupplementsSection, ContextSection
-**Other components:** `components/CoachTab.tsx`, `components/Dashboard.tsx`, `components/HistoryTab.tsx` (not in nav, preserved on disk), `components/GoalsTab.tsx` (not in nav, preserved on disk), `components/SplashScreen.tsx`
+**Other components:** `components/CoachTab.tsx`, `components/DashboardTab.tsx` (not imported, preserved on disk), `components/HistoryTab.tsx` (not imported, preserved on disk), `components/GoalsTab.tsx` (not imported, preserved on disk), `components/SplashScreen.tsx`
 
 ---
 
@@ -55,9 +55,9 @@ _Last updated: April 29, 2026_
 | 0 | Today | Daily logging accordions (inline in app/page.tsx) | Live |
 | 1 | Health Calendar | Health appointments list (copied from GoalsTab) | Live |
 | 2 | Coach | `CoachTab` | Live |
-| 3 | Dashboard | `DashboardTab` | Live |
+| 3 | Dashboard | Inline in app/page.tsx (charts + history list) | Live |
 
-Default active tab: 0 (Today). GoalsTab and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
+Default active tab: 0 (Today). GoalsTab, DashboardTab, and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
 
 ### Today Tab (updated April 30, 2026)
 
@@ -136,17 +136,18 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 
 ---
 
-### Dashboard
+### Dashboard (updated April 30, 2026 — inlined in app/page.tsx)
 
-- Behavior Score + Outcome Score + Training Load — three equal-width cards in a single row.
-- Scores: green ≥75, amber 50–74, red <50.
-- **Score values are read from `daily_entries.behavior_score` and `outcome_score` (stored server-side by `recomputeScores()`), not computed client-side.** Dashboard fetches these on mount via GET `/api/scores?date=`. Client-side computation has been removed.
-- Score breakdown bullets use the same stored data: supplements/bedtime derive from the `today` entry prop; nutrition bullet reads from `daily_nutrition_summary` (returned by the same GET `/api/scores` response).
-- Training Load card: status label + colour dot. Tap → no destination yet (🔍 CHECK).
-- 30-day trend charts throughout.
+**Score cards row removed** from Dashboard tab (April 30, 2026). Score cards remain on Today tab only.
+
+- No score cards in Dashboard tab.
+- 30-day trend charts: HRV, Sleep duration, Protein, Fiber, Training minutes.
 - Training Load expandable card at top above HRV chart:
   - Collapsed: status + colour dot + chevron
   - Expanded: Acute TSU + Chronic TSU values, ratio with spectrum bar, 30-day colour-coded trend line with shaded optimal band (0.8–1.3)
+- **History section appended below charts** (April 30, 2026): chronological entry list with expandable detail rows and "Edit this day →" link (navigates to Today tab for that date). Uses `loadAllEntries()` fetched once on mount via dedicated state (`historyEntries`, `historyLoading`, `historyError`).
+- Data source: `dashEntries` (already loaded by the Today tab's `loadRecentEntries(30)` effect) reused for chart computation. `loadAllEntries()` added separately for the history list.
+- DashboardTab.tsx no longer imported — content fully inlined in app/page.tsx. Component preserved on disk.
 
 ---
 
@@ -179,6 +180,7 @@ Glucose stability expanded state design (not yet built):
 ### History Tab — NOT IN NAV (removed April 30, 2026)
 
 - Chronological entries, expandable, color-coded scores. Component preserved on disk.
+- History content is now inlined at the bottom of the Dashboard tab in app/page.tsx. HistoryTab.tsx is the source but is not imported.
 
 ---
 

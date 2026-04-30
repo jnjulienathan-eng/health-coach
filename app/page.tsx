@@ -1,10 +1,19 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments } from '@/lib/db'
+import {
+  ResponsiveContainer,
+  LineChart, Line,
+  BarChart, Bar,
+  XAxis, YAxis,
+  ReferenceLine,
+  Tooltip,
+} from 'recharts'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment } from '@/lib/types'
-import { computeTrainingLoad } from '@/lib/trainingLoad'
+import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
+import { behaviorScore, outcomeScore } from '@/lib/scores'
 import SleepSection from '@/components/sections/SleepSection'
 import TrainingSection from '@/components/sections/TrainingSection'
 import NutritionSection from '@/components/sections/NutritionSection'
@@ -12,7 +21,6 @@ import HydrationSection from '@/components/sections/HydrationSection'
 import SupplementsSection from '@/components/sections/SupplementsSection'
 import ContextSection from '@/components/sections/ContextSection'
 import CoachTab from '@/components/CoachTab'
-import DashboardTab from '@/components/DashboardTab'
 import SplashScreen from '@/components/SplashScreen'
 
 // ─── Date utilities ───────────────────────────────────────────────
@@ -520,6 +528,234 @@ function TrainingLoadCard({ status, colour, acute, chronic, ratio, daysOfData }:
   )
 }
 
+// ─── Dashboard chart helpers (copied from DashboardTab) ──────────
+
+function chartDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
+}
+
+function durationToH(min: number | null): number | null {
+  if (min == null) return null
+  return Math.round((min / 60) * 10) / 10
+}
+
+const tooltipStyle = {
+  background: 'var(--color-surface)',
+  border: '1px solid #DCE8E0',
+  borderRadius: 8,
+  fontSize: 12,
+  fontFamily: 'DM Mono, monospace',
+  color: '#1A2E22',
+}
+const tooltipItemStyle  = { color: '#1A2E22' }
+const tooltipLabelStyle = { color: '#5A7A66', marginBottom: 2 }
+
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: '16px 16px 12px',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 12,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 500,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: 'var(--color-text-secondary)',
+          marginBottom: 12,
+        }}
+      >
+        {title}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// ─── History helpers (copied from HistoryTab) ─────────────────────
+
+function historyFormatDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  const isThisYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month:   'short',
+    day:     'numeric',
+    ...(isThisYear ? {} : { year: 'numeric' }),
+  })
+}
+
+function activityEmoji(type: string): string {
+  switch (type.toLowerCase()) {
+    case 'run': case 'running': case 'outdoor run': case 'indoor run':
+      return '🏃'
+    case 'walk': case 'outdoor walk': case 'indoor walk':
+      return '🚶'
+    case 'cycling': case 'outdoor cycling': case 'indoor cycling':
+      return '🚴'
+    case 'swim': case 'swimming': case 'pool swimming': case 'open water swimming':
+      return '🏊'
+    case 'strength': case 'egym': case 'strength training': case 'functional strength training':
+      return '🏋️'
+    case 'rowing':    return '🚣'
+    case 'elliptical': return '〇'
+    case 'yoga': case 'pilates': return '🧘'
+    case 'hiking':    return '🥾'
+    case 'hiit':      return '⚡'
+    default:          return '🏅'
+  }
+}
+
+function durationStr(min: number | null): string {
+  if (min == null) return '?'
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return h > 0 ? `${h}h${m > 0 ? `${m}m` : ''}` : `${m}m`
+}
+
+function ScorePill({ score, label }: { score: number; label: string }) {
+  const color = scoreColor(score)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 44 }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 400, color, lineHeight: 1 }}>
+        {score}
+      </span>
+      <span style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginTop: 2 }}>
+        {label}
+      </span>
+    </div>
+  )
+}
+
+function DetailRow({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null
+  return (
+    <div style={{ display: 'flex', gap: 8, fontSize: 13 }}>
+      <span style={{ minWidth: 90, fontSize: 10, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-dim)', paddingTop: 1 }}>
+        {label}
+      </span>
+      <span style={{ color: 'var(--color-text-primary)', lineHeight: 1.4 }}>{value}</span>
+    </div>
+  )
+}
+
+function EntryDetail({ entry }: { entry: DailyEntry }) {
+  const s   = entry.sleep
+  const t   = entry.training
+  const n   = entry.nutrition
+  const sup = entry.supplements
+  const c   = entry.context
+
+  const sleepParts = [
+    s.duration_min != null ? durationStr(s.duration_min) : null,
+    s.hrv    != null ? `HRV ${s.hrv}ms`        : null,
+    s.rhr    != null ? `RHR ${s.rhr}bpm`       : null,
+    s.rested != null ? `Rested ${s.rested}/5`  : null,
+    s.bedtime        ? `Bed ${s.bedtime}`       : null,
+  ].filter(Boolean).join(' · ')
+
+  const trainParts = t.sessions.length > 0
+    ? t.sessions.map(sess =>
+        `${activityEmoji(sess.activity_type)} ${sess.activity_type} ${sess.duration_min}min${sess.zone3_plus_minutes != null ? ` z3+:${sess.zone3_plus_minutes}m` : ''}`
+      ).join('  ')
+    : null
+
+  const nutParts = [
+    n.total_protein  != null ? `Protein ${Math.round(n.total_protein)}g`   : null,
+    n.total_fiber    != null ? `Fiber ${Math.round(n.total_fiber)}g`       : null,
+    n.total_fat      != null ? `Fat ${Math.round(n.total_fat)}g`           : null,
+    n.total_carbs    != null ? `Carbs ${Math.round(n.total_carbs)}g`       : null,
+    n.total_calories != null ? `${Math.round(n.total_calories)}kcal`       : null,
+  ].filter(Boolean).join(' · ')
+
+  const supParts = [
+    sup.morning_stack_taken ? 'AM ✓'   : null,
+    sup.evening_stack_taken ? 'PM ✓'   : null,
+    sup.progesterone_taken  ? 'Prog ✓' : null,
+    sup.estradiol_taken     ? 'E2 ✓'   : null,
+  ].filter(Boolean).join(' · ')
+
+  const ctxParts = [
+    (c as unknown as Record<string,unknown>).cycle_day != null
+      ? `Day ${(c as unknown as Record<string,unknown>).cycle_day}`
+      : null,
+    c.symptoms.length > 0 ? c.symptoms.join(', ') : null,
+    c.travelling           ? 'Travelling'          : null,
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 14px 14px', background: 'var(--color-bg)', borderTop: '1px solid var(--color-border)' }}>
+      <DetailRow label="Sleep"    value={sleepParts || null} />
+      <DetailRow label="Training" value={trainParts || (t.cycled_today ? '🚴 Cycled' : 'Rest day')} />
+      <DetailRow label="Nutrition"    value={nutParts || null} />
+      {supParts && <DetailRow label="Supplements" value={supParts} />}
+      {ctxParts && <DetailRow label="Context"     value={ctxParts} />}
+      {c.notes   && <DetailRow label="Notes"      value={`"${c.notes}"`} />}
+    </div>
+  )
+}
+
+function HistoryRow({ entry, onSelectDate }: { entry: DailyEntry; onSelectDate: (date: string) => void }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const bScore = behaviorScore(entry)
+  const oScore = outcomeScore(entry)
+  const hasSleep = entry.sleep.hrv != null || entry.sleep.duration_min != null
+
+  const sessionIcons = entry.training.sessions.map(s => activityEmoji(s.activity_type)).join(' ')
+
+  return (
+    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '14px 14px', background: 'none', border: 'none', cursor: 'pointer', gap: 12, textAlign: 'left' }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', lineHeight: 1.2 }}>
+            {historyFormatDate(entry.date)}
+          </div>
+          {(sessionIcons || entry.training.cycled_today) && (
+            <div style={{ fontSize: 15, marginTop: 4, letterSpacing: 2 }}>
+              {sessionIcons}
+              {entry.training.cycled_today && ' 🚴'}
+            </div>
+          )}
+        </div>
+        {hasSleep ? (
+          <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
+            <ScorePill score={bScore} label="Behav" />
+            <ScorePill score={oScore} label="Outc"  />
+          </div>
+        ) : (
+          <span style={{ fontSize: 11, color: 'var(--color-text-dim)', flexShrink: 0 }}>No sleep logged</span>
+        )}
+        <span style={{ fontSize: 16, color: 'var(--color-text-dim)', transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 200ms', flexShrink: 0 }}>
+          ›
+        </span>
+      </button>
+      {expanded && <EntryDetail entry={entry} />}
+      {expanded && (
+        <div style={{ padding: '8px 14px 12px', background: 'var(--color-bg)', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--color-border)' }}>
+          <button
+            type="button"
+            onClick={() => onSelectDate(entry.date)}
+            style={{ fontSize: 12, color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)', padding: 0 }}
+          >
+            Edit this day →
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main app ─────────────────────────────────────────────────────
 export default function App() {
   const [showSplash,    setShowSplash]    = useState(true)
@@ -563,6 +799,12 @@ export default function App() {
   const [editNextDue,       setEditNextDue]       = useState('')
   const [editNotes,         setEditNotes]         = useState('')
   const [apptSaving,        setApptSaving]        = useState(false)
+
+  // ── Dashboard + History state ──────────────────────────────────────
+  const [dashTlExpanded, setDashTlExpanded] = useState(false)
+  const [historyEntries, setHistoryEntries] = useState<DailyEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyError,   setHistoryError]   = useState<string | null>(null)
 
   const isToday = currentDate === todayStr()
 
@@ -644,6 +886,14 @@ export default function App() {
         setGoalsData(d)
       })
       .catch(e => console.error('Goals data load error:', e))
+  }, [])
+
+  // Load all entries for History section in Dashboard tab (from HistoryTab)
+  useEffect(() => {
+    loadAllEntries()
+      .then(setHistoryEntries)
+      .catch(e => setHistoryError(e instanceof Error ? e.message : 'Failed to load history'))
+      .finally(() => setHistoryLoading(false))
   }, [])
 
   // Save a section of the entry — always merges cycleDay into context JSONB
@@ -1920,7 +2170,308 @@ export default function App() {
         )}
 
         {/* ── DASHBOARD TAB ────────────────────────────────────── */}
-        {activeTab === 'dashboard' && <DashboardTab today={entry} currentDate={currentDate} />}
+        {activeTab === 'dashboard' && (() => {
+          const allEntries = (() => {
+            const without = dashEntries.filter(e => e.date !== currentDate)
+            return [entry, ...without].sort((a, b) => (a.date < b.date ? 1 : -1))
+          })()
+
+          const entriesWithData = allEntries.filter(
+            e => e.sleep.hrv != null || e.sleep.duration_min != null || e.sleep.rested != null
+          )
+
+          const chart30 = allEntries.slice(0, 30).reverse()
+          const hasEnoughData = entriesWithData.length >= 2
+
+          const tlResult  = computeTrainingLoad(allEntries)
+          const tlHistory = computeTrainingLoadHistory(chart30)
+
+          const CHART_H = 120
+          const axisStyle = { fontSize: 10, fill: '#8FAA98', fontFamily: 'DM Mono, monospace' }
+
+          const hrvData = chart30.map(e => ({ date: chartDate(e.date), value: e.sleep.hrv }))
+          const sleepData = chart30.map(e => ({ date: chartDate(e.date), value: durationToH(e.sleep.duration_min) }))
+          const proteinData = chart30.map(e => ({
+            date: chartDate(e.date),
+            value: e.nutrition.total_protein != null ? Math.round(e.nutrition.total_protein) : null,
+          }))
+          const fiberData = chart30.map(e => ({
+            date: chartDate(e.date),
+            value: e.nutrition.total_fiber != null ? Math.round(e.nutrition.total_fiber) : null,
+          }))
+          const trainingData = chart30.map(e => ({
+            date: chartDate(e.date),
+            value: e.training.sessions.length > 0
+              ? e.training.sessions.reduce((sum, s) => sum + s.duration_min, 0)
+              : null,
+          }))
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 32 }}>
+
+              {/* Header */}
+              <div style={{ paddingTop: 8 }}>
+                <h1 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 4 }}>
+                  Dashboard
+                </h1>
+                <p style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>
+                  Today · {new Date(currentDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                </p>
+              </div>
+
+              {/* No data message */}
+              {!hasEnoughData && (
+                <div style={{ padding: '20px 16px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, textAlign: 'center' }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📈</div>
+                  <p style={{ fontSize: 14, color: 'var(--color-text-primary)', fontWeight: 500, marginBottom: 4 }}>
+                    Keep logging — trends coming soon
+                  </p>
+                  <p style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                    Log sleep data on at least 2 days to see your 7-day trends.
+                  </p>
+                </div>
+              )}
+
+              {/* Trend charts */}
+              {hasEnoughData && (
+                <>
+                  {/* Training Load expandable card */}
+                  {(() => {
+                    const n = tlHistory.length
+                    const PAD_X = 8, PAD_Y = 8, CHART_W = 280, TL_H = 44
+                    const maxR = Math.max(...tlHistory.map(p => p.ratio ?? 0), 1.6)
+                    const xOf = (i: number) => n <= 1 ? PAD_X : PAD_X + (i / (n - 1)) * (CHART_W - 2 * PAD_X)
+                    const yOf = (v: number) => PAD_Y + TL_H * (1 - v / maxR)
+                    const opt_y1 = yOf(1.3), opt_y2 = yOf(0.8)
+
+                    const BAR_W = 280
+                    const ZONES = [
+                      { end: 0.6,  colour: 'var(--color-amber)' },
+                      { end: 0.8,  colour: 'var(--color-training-easy)' },
+                      { end: 1.3,  colour: 'var(--color-success)' },
+                      { end: 1.5,  colour: 'var(--color-amber)' },
+                      { end: 2.0,  colour: 'var(--color-danger)' },
+                    ]
+                    const SCALE_MAX = 2.0
+                    const ratioX = tlResult.ratio != null ? Math.min(tlResult.ratio, SCALE_MAX) / SCALE_MAX * BAR_W : null
+
+                    return (
+                      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12 }}>
+                        <button
+                          type="button"
+                          onClick={() => setDashTlExpanded(prev => !prev)}
+                          style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}
+                        >
+                          <div style={{ width: 10, height: 10, borderRadius: '50%', background: tlResult.colour, flexShrink: 0 }} />
+                          <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+                            Training Load
+                          </span>
+                          <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500, color: tlResult.colour }}>{tlResult.status}</span>
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${dashTlExpanded ? ' open' : ''}`} style={{ flexShrink: 0 }}>
+                            <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </button>
+
+                        {dashTlExpanded && (
+                          <div style={{ padding: '0 16px 16px' }}>
+                            {tlResult.status === 'Establishing baseline' ? (
+                              <div style={{ fontSize: 12, color: 'var(--color-text-dim)', marginBottom: 14 }}>
+                                Building baseline — check back in {Math.max(0, 28 - allEntries.length)} days
+                              </div>
+                            ) : (
+                              <>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                                  <div style={{ textAlign: 'center', padding: '8px', background: 'var(--color-bg)', borderRadius: 8 }}>
+                                    <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 2 }}>Acute (7d)</div>
+                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: 'var(--color-text-primary)' }}>{tlResult.acute}</div>
+                                    <div style={{ fontSize: 9, color: 'var(--color-text-dim)' }}>TSU</div>
+                                  </div>
+                                  <div style={{ textAlign: 'center', padding: '8px', background: 'var(--color-bg)', borderRadius: 8 }}>
+                                    <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 2 }}>Chronic (28d)</div>
+                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: 'var(--color-text-primary)' }}>{tlResult.chronic}</div>
+                                    <div style={{ fontSize: 9, color: 'var(--color-text-dim)' }}>TSU</div>
+                                  </div>
+                                </div>
+                                <div style={{ marginBottom: 4 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                                    <div style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>Ratio</div>
+                                    {tlResult.ratio != null && (
+                                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: tlResult.colour }}>
+                                        {tlResult.ratio.toFixed(2)}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <svg viewBox={`0 0 ${BAR_W} 30`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                                    {(() => {
+                                      let x = 0
+                                      return ZONES.map((z, i) => {
+                                        const prev = i === 0 ? 0 : ZONES[i - 1].end
+                                        const w = (z.end - prev) / SCALE_MAX * BAR_W
+                                        const rect = <rect key={z.end} x={x} y="14" width={w} height="10" fill={z.colour} opacity="0.5" />
+                                        x += w
+                                        return rect
+                                      })
+                                    })()}
+                                    {[0.6, 0.8, 1.3, 1.5].map(v => {
+                                      const cx = v / SCALE_MAX * BAR_W
+                                      return (
+                                        <g key={v}>
+                                          <line x1={cx} y1="12" x2={cx} y2="24" stroke="var(--color-surface)" strokeWidth="1.5" />
+                                          <text x={cx} y="29" textAnchor="middle" fontSize="7" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{v}</text>
+                                        </g>
+                                      )
+                                    })}
+                                    {ratioX != null && (
+                                      <>
+                                        <line x1={ratioX} y1="8" x2={ratioX} y2="14" stroke={tlResult.colour} strokeWidth="1.5" />
+                                        <circle cx={ratioX} cy="5" r="4" fill={tlResult.colour} />
+                                      </>
+                                    )}
+                                  </svg>
+                                </div>
+                                {n >= 2 && (
+                                  <div style={{ marginTop: 14 }}>
+                                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginBottom: 6 }}>30-day trend</div>
+                                    <svg viewBox={`0 0 ${CHART_W} ${PAD_Y * 2 + TL_H + 12}`} width="100%" style={{ display: 'block' }}>
+                                      <defs>
+                                        <clipPath id="dashTlClip">
+                                          <rect x={PAD_X} y={PAD_Y} width={CHART_W - 2 * PAD_X} height={TL_H} />
+                                        </clipPath>
+                                      </defs>
+                                      <rect x={PAD_X} y={opt_y1} width={CHART_W - 2 * PAD_X} height={Math.max(0, opt_y2 - opt_y1)} fill="var(--color-success)" opacity="0.08" clipPath="url(#dashTlClip)" />
+                                      {tlHistory.slice(1).map((pt, i) => {
+                                        const prev = tlHistory[i]
+                                        return (
+                                          <line key={pt.date}
+                                            x1={xOf(i).toFixed(1)} y1={yOf(prev.ratio ?? 0).toFixed(1)}
+                                            x2={xOf(i + 1).toFixed(1)} y2={yOf(pt.ratio ?? 0).toFixed(1)}
+                                            stroke={pt.colour} strokeWidth="1.5" strokeLinecap="round"
+                                          />
+                                        )
+                                      })}
+                                    </svg>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* HRV */}
+                  <ChartCard title="HRV — 30 days">
+                    <ResponsiveContainer width="100%" height={CHART_H}>
+                      <LineChart data={hrvData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                        <XAxis dataKey="date" tick={axisStyle} />
+                        <YAxis tick={axisStyle} domain={['auto', 'auto']} />
+                        <ReferenceLine y={88} stroke="#DCE8E0" strokeDasharray="4 2" />
+                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}ms`, 'HRV']} />
+                        <Line type="monotone" dataKey="value" stroke="#3D9A6B" strokeWidth={2} dot={{ fill: '#3D9A6B', r: 3 }} connectNulls={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>— baseline 88ms</div>
+                  </ChartCard>
+
+                  {/* Sleep duration */}
+                  <ChartCard title="Sleep — 30 days">
+                    <ResponsiveContainer width="100%" height={CHART_H}>
+                      <BarChart data={sleepData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                        <XAxis dataKey="date" tick={axisStyle} />
+                        <YAxis tick={axisStyle} domain={[0, 10]} />
+                        <ReferenceLine y={7.5} stroke="#DCE8E0" strokeDasharray="4 2" />
+                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}h`, 'Sleep']} />
+                        <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>— target 7h30</div>
+                  </ChartCard>
+
+                  {/* Protein */}
+                  <ChartCard title="Protein — 30 days">
+                    <ResponsiveContainer width="100%" height={CHART_H}>
+                      <BarChart data={proteinData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                        <XAxis dataKey="date" tick={axisStyle} />
+                        <YAxis tick={axisStyle} />
+                        <ReferenceLine y={130} stroke="#DCE8E0" strokeDasharray="4 2" />
+                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}g`, 'Protein']} />
+                        <Bar dataKey="value" radius={[3, 3, 0, 0]} fill="#3D9A6B" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>— target 130g</div>
+                  </ChartCard>
+
+                  {/* Fiber */}
+                  <ChartCard title="Fiber — 30 days">
+                    <ResponsiveContainer width="100%" height={CHART_H}>
+                      <BarChart data={fiberData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                        <XAxis dataKey="date" tick={axisStyle} />
+                        <YAxis tick={axisStyle} />
+                        <ReferenceLine y={30} stroke="#DCE8E0" strokeDasharray="4 2" />
+                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}g`, 'Fiber']} />
+                        <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>— target 30g</div>
+                  </ChartCard>
+
+                  {/* Training minutes */}
+                  <ChartCard title="Training minutes — 30 days">
+                    <ResponsiveContainer width="100%" height={CHART_H}>
+                      <BarChart data={trainingData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                        <XAxis dataKey="date" tick={axisStyle} />
+                        <YAxis tick={axisStyle} />
+                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}min`, 'Training']} />
+                        <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>Total training minutes per day</div>
+                  </ChartCard>
+                </>
+              )}
+
+              {/* History section */}
+              <div>
+                <div style={{ paddingTop: 8, paddingBottom: 8, borderTop: '1px solid var(--color-border)', marginTop: 8 }}>
+                  <h2 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 4 }}>
+                    History
+                  </h2>
+                  <p style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>
+                    {historyLoading ? 'Loading…' : `${historyEntries.length} ${historyEntries.length === 1 ? 'day' : 'days'} logged`}
+                  </p>
+                </div>
+
+                {historyError && (
+                  <p style={{ fontSize: 14, color: 'var(--color-danger)' }}>{historyError}</p>
+                )}
+
+                {historyLoading ? (
+                  <div style={{ paddingTop: 40, textAlign: 'center', fontSize: 10, letterSpacing: '0.2em', color: 'var(--color-text-dim)' }}>
+                    LOADING
+                  </div>
+                ) : historyEntries.length === 0 ? (
+                  <div style={{ padding: '40px 16px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, textAlign: 'center' }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>📓</div>
+                    <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', fontWeight: 500 }}>No entries yet</p>
+                    <p style={{ fontSize: 13, color: 'var(--color-text-dim)', marginTop: 4 }}>Start logging on the Today tab.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {historyEntries.map(e => (
+                      <HistoryRow
+                        key={e.date}
+                        entry={e}
+                        onSelectDate={(date) => { setCurrentDate(date); setActiveTab('today') }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )
+        })()}
 
 
       </main>
