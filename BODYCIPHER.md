@@ -420,6 +420,12 @@ Two follow-up bugs resolved (same branch, April 28, 2026):
 A. ✅ Mode computed client-side in CoachTab.tsx using new Date().getHours() — fixes UTC vs local time mismatch that showed "posttraining" at 13:05 Munich time. Mode sent in request body; server uses client mode if provided.
 B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV vs baseline and sleep quality). training remains null in afternoon mode by design.
 
+### Meal save — past-date fix (April 30, 2026)
+
+- **Branch:** `claude/meal-save-fix`
+- **Bug:** `handleConfirm` in `MealLogger.tsx` always sent `logged_at: new Date().toISOString()` (today's timestamp). When the user was viewing a past date, the meal was saved under today's date but `fetchDay()` refreshed the past date — the meal silently disappeared.
+- **Fix:** `logged_at` is now computed as `${currentDate}T${new Date().toISOString().slice(11)}` — preserving the current wall-clock time but using the date the user is actually viewing. `currentDate` added as a required prop to `MealLogger`; `NutritionSection` passes it through.
+
 ### Layout / safe-area fixes
 
 - **Tab bar (April 29, 2026):** outer div in `app/page.tsx` uses `paddingBottom: calc(72px + env(safe-area-inset-bottom))`. Tab bar itself has `height: 72` + `paddingBottom: env(safe-area-inset-bottom)`.
