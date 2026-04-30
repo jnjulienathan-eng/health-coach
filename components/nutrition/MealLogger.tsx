@@ -63,6 +63,7 @@ type Screen = 'menu' | 'search' | 'weight' | 'building' | 'confirm' | 'templates
 interface Props {
   onClose: () => void
   onSaved: () => void
+  currentDate: string
   initialScreen?: Screen
   editingMeal?: EditingMealProp
 }
@@ -240,7 +241,7 @@ function MacroLine({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────
-export default function MealLogger({ onClose, onSaved, initialScreen, editingMeal }: Props) {
+export default function MealLogger({ onClose, onSaved, currentDate, initialScreen, editingMeal }: Props) {
   const [screen, setScreen] = useState<Screen>(editingMeal ? 'building' : (initialScreen ?? 'menu'))
   const [mealName, setMealName] = useState(editingMeal?.name ?? '')
   const [items, setItems] = useState<BuildingItem[]>((editingMeal?.items ?? []) as BuildingItem[])
@@ -326,10 +327,15 @@ export default function MealLogger({ onClose, onSaved, initialScreen, editingMea
         return
       }
       const isEstimate = estimateResult !== null
+      // Use currentDate (the date the user is viewing) with the current
+      // wall-clock time. Without this, meals logged while viewing a past date
+      // are saved under today's date, then fetchDay() refreshes the past-date
+      // view and finds nothing — the meal silently disappears.
+      const loggedAt = `${currentDate}T${new Date().toISOString().slice(11)}`
       const body = isEstimate
         ? {
             name: mealName,
-            logged_at: new Date().toISOString(),
+            logged_at: loggedAt,
             logged_via: 'photo_estimate' as const,
             notes: notes.trim() || null,
             calories: estimateResult.calories,
@@ -341,7 +347,7 @@ export default function MealLogger({ onClose, onSaved, initialScreen, editingMea
           }
         : {
             name: mealName,
-            logged_at: new Date().toISOString(),
+            logged_at: loggedAt,
             logged_via: 'ingredients' as const,
             notes: notes.trim() || null,
             items: items.map(it => ({ food_item_id: it.food_item.id, weight_grams: it.weight_grams })),

@@ -658,6 +658,7 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
             <MealLogger
               onClose={() => { setShowLogger(false); setEditingMealId(null) }}
               onSaved={() => { setShowLogger(false); setEditingMealId(null); fetchDay() }}
+              currentDate={currentDate}
               initialScreen={loggerInitialScreen}
               editingMeal={editingMealProp}
             />
