@@ -527,11 +527,12 @@ const startNewTemplate = () => {
         position: 'fixed', inset: 0, background: 'rgba(20,40,30,0.4)',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
         zIndex: 100,
+        paddingBottom: 'calc(72px + env(safe-area-inset-bottom))',
       }}
     >
       <motion.div
         initial={{ y: 240 }}
-        animate={{ y: 0, height: fullSheet ? '92vh' : 'auto' }}
+        animate={{ y: 0, height: fullSheet ? 'calc(92vh - 72px - env(safe-area-inset-bottom))' : 'auto' }}
         transition={{ type: 'spring', damping: 26, stiffness: 240 }}
         onClick={e => e.stopPropagation()}
         style={{

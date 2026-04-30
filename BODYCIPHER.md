@@ -418,11 +418,7 @@ B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV v
 ### Layout / safe-area fixes
 
 - **Tab bar (April 29, 2026):** outer div in `app/page.tsx` uses `paddingBottom: calc(72px + env(safe-area-inset-bottom))`. Tab bar itself has `height: 72` + `paddingBottom: env(safe-area-inset-bottom)`.
-- **MealLogger bottom sheets (April 29, 2026):** four targeted fixes in `components/nutrition/MealLogger.tsx`:
-  - ScreenMenu content div: `paddingBottom: calc(32px + env(safe-area-inset-bottom))`
-  - Footer component (used by ScreenWeight, ScreenBuilding, ScreenRecipeBuilder, ScreenPhotoEstimate, ScreenConfirm): `padding: 16px 16px calc(16px + env(safe-area-inset-bottom))`
-  - ScreenSearch scroll container: `padding-bottom: calc(16px + env(safe-area-inset-bottom))`
-  - ScreenLibrary scroll container: `padding-bottom: calc(24px + env(safe-area-inset-bottom))`
+- **MealLogger bottom sheets (April 29, 2026, revised April 30, 2026):** The overlay backdrop `div` in `MealLogger.tsx` now has `paddingBottom: calc(72px + env(safe-area-inset-bottom))` so the sheet sits above the tab bar entirely. Full-sheet height reduced from `92vh` to `calc(92vh - 72px - env(safe-area-inset-bottom))` so it does not overflow above the viewport. Internal padding on ScreenMenu, Footer, ScreenSearch, and ScreenLibrary adds spacing within the sheet. Root cause: `isolation: isolate` on `<main>` creates a sandboxed stacking context — anything inside main (including the sheet at z-index 100) paints below the tab bar nav (z-index 50) in the outer context. The fix is layout, not z-index.
 
 ### Features — next
 
