@@ -12,8 +12,6 @@ import SupplementsSection from '@/components/sections/SupplementsSection'
 import ContextSection from '@/components/sections/ContextSection'
 import CoachTab from '@/components/CoachTab'
 import DashboardTab from '@/components/DashboardTab'
-import HistoryTab from '@/components/HistoryTab'
-import GoalsTab from '@/components/GoalsTab'
 import SplashScreen from '@/components/SplashScreen'
 
 // ─── Date utilities ───────────────────────────────────────────────
@@ -45,7 +43,7 @@ function formatDate(dateStr: string) {
 }
 
 // ─── Types ────────────────────────────────────────────────────────
-type Tab = 'goals' | 'today' | 'coach' | 'dashboard' | 'history'
+type Tab = 'today' | 'calendar' | 'coach' | 'dashboard'
 
 // ─── Icons ───────────────────────────────────────────────────────
 function IconBodyCipher({ active }: { active: boolean }) {
@@ -105,17 +103,16 @@ function IconHistory({ active }: { active: boolean }) {
 }
 
 const TABS: { id: Tab; label: string; Icon: React.FC<{ active: boolean }> }[] = [
-  { id: 'goals',     label: 'BodyCipher', Icon: IconBodyCipher },
-  { id: 'today',     label: 'Today',      Icon: IconToday },
-  { id: 'coach',     label: 'Coach',      Icon: IconCoach },
-  { id: 'dashboard', label: 'Dashboard',  Icon: IconDashboard },
-  { id: 'history',   label: 'History',    Icon: IconHistory },
+  { id: 'today',    label: 'Today',           Icon: IconToday },
+  { id: 'calendar', label: 'Health Calendar', Icon: IconToday },
+  { id: 'coach',    label: 'Coach',           Icon: IconCoach },
+  { id: 'dashboard',label: 'Dashboard',       Icon: IconDashboard },
 ]
 
 // ─── Main app ─────────────────────────────────────────────────────
 export default function App() {
   const [showSplash,    setShowSplash]    = useState(true)
-  const [activeTab,     setActiveTab]     = useState<Tab>('goals')
+  const [activeTab,     setActiveTab]     = useState<Tab>('today')
   const [currentDate,   setCurrentDate]   = useState(todayStr())
   const [entry,         setEntry]         = useState<DailyEntry>(emptyEntry(todayStr()))
   const [loading,       setLoading]       = useState(false)
@@ -234,15 +231,6 @@ export default function App() {
         className="mx-auto w-full"
         style={{ maxWidth: '480px', padding: '20px 20px 0', isolation: 'isolate' }}
       >
-
-        {/* ── GOALS TAB (BodyCipher home) ───────────────────────── */}
-        {activeTab === 'goals' && (
-          <GoalsTab
-            onNavigateDashboard={() => setActiveTab('dashboard')}
-            today={entry}
-            currentDate={currentDate}
-          />
-        )}
 
         {/* ── TODAY TAB ────────────────────────────────────────── */}
         {activeTab === 'today' && (
@@ -447,6 +435,22 @@ export default function App() {
           </>
         )}
 
+        {/* ── HEALTH CALENDAR TAB ──────────────────────────────── */}
+        {activeTab === 'calendar' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 'calc(100vh - 72px)',
+              color: 'var(--color-text-secondary)',
+              fontSize: 15,
+            }}
+          >
+            Health Calendar — coming soon
+          </div>
+        )}
+
         {/* ── COACH TAB ────────────────────────────────────────── */}
         {activeTab === 'coach' && (
           <CoachTab today={entry} cycleDay={cycleDay} currentDate={currentDate} />
@@ -455,15 +459,7 @@ export default function App() {
         {/* ── DASHBOARD TAB ────────────────────────────────────── */}
         {activeTab === 'dashboard' && <DashboardTab today={entry} currentDate={currentDate} />}
 
-        {/* ── HISTORY TAB ──────────────────────────────────────── */}
-        {activeTab === 'history' && (
-          <HistoryTab
-            onSelectDate={(date) => {
-              setCurrentDate(date)
-              setActiveTab('today')
-            }}
-          />
-        )}
+
       </main>
 
       {/* ── Bottom tab bar ───────────────────────────────────────── */}

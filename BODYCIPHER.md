@@ -27,7 +27,7 @@ _Last updated: April 29, 2026_
 **Stack:** Next.js (App Router) + Supabase (West EU, `cprcamywvhtcboprtkjp.supabase.co`) + Vercel + Anthropic API
 **Key files:** `app/api/coach/route.ts`, `lib/db.ts`, `lib/types.ts`, `lib/scores.ts`, `lib/trainingLoad.ts`
 **Sections:** `components/sections/` — SleepSection, TrainingSection, NutritionSection, HydrationSection, SupplementsSection, ContextSection
-**Other components:** `components/CoachTab.tsx`, `components/Dashboard.tsx`, `components/HistoryTab.tsx`, `components/GoalsTab.tsx`, `components/SplashScreen.tsx`
+**Other components:** `components/CoachTab.tsx`, `components/Dashboard.tsx`, `components/HistoryTab.tsx` (not in nav, preserved on disk), `components/GoalsTab.tsx` (not in nav, preserved on disk), `components/SplashScreen.tsx`
 
 ---
 
@@ -47,6 +47,17 @@ _Last updated: April 29, 2026_
 ---
 
 ## CURRENT STATE — WHAT IS BUILT
+
+### Navigation (4 tabs — restructured April 30, 2026)
+
+| Index | Label | Component | Status |
+|---|---|---|---|
+| 0 | Today | Daily logging accordions (inline in app/page.tsx) | Live |
+| 1 | Health Calendar | Placeholder "coming soon" div | Placeholder |
+| 2 | Coach | `CoachTab` | Live |
+| 3 | Dashboard | `DashboardTab` | Live |
+
+Default active tab: 0 (Today). GoalsTab and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
 
 ### Today Tab
 
@@ -128,7 +139,7 @@ _Last updated: April 29, 2026_
 
 ---
 
-### Goals Tab (BodyCipher Tab)
+### Goals Tab (BodyCipher Tab) — NOT IN NAV (removed April 30, 2026)
 
 **Hero section**
 - Static rotating greeting. Client-side only — no API call. Picks randomly from a time-banded array (wakeup/midmorning/afternoon/earlyevening/endofday) matching the Coach tab's mode logic. Initialized once per session via `useState(() => getGreeting())`. API route `/api/goals/greeting` deleted.
@@ -154,9 +165,9 @@ Glucose stability expanded state design (not yet built):
 
 ---
 
-### History Tab
+### History Tab — NOT IN NAV (removed April 30, 2026)
 
-- Chronological entries, expandable, color-coded scores.
+- Chronological entries, expandable, color-coded scores. Component preserved on disk.
 
 ---
 
