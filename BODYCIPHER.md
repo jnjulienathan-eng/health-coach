@@ -27,7 +27,7 @@ _Last updated: April 29, 2026_
 **Stack:** Next.js (App Router) + Supabase (West EU, `cprcamywvhtcboprtkjp.supabase.co`) + Vercel + Anthropic API
 **Key files:** `app/api/coach/route.ts`, `lib/db.ts`, `lib/types.ts`, `lib/scores.ts`, `lib/trainingLoad.ts`
 **Sections:** `components/sections/` — SleepSection, TrainingSection, NutritionSection, HydrationSection, SupplementsSection, ContextSection
-**Other components:** `components/CoachTab.tsx`, `components/Dashboard.tsx`, `components/HistoryTab.tsx`, `components/GoalsTab.tsx`
+**Other components:** `components/CoachTab.tsx`, `components/Dashboard.tsx`, `components/HistoryTab.tsx`, `components/GoalsTab.tsx`, `components/SplashScreen.tsx`
 
 ---
 
@@ -426,6 +426,13 @@ B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV v
 - **Bug:** `handleConfirm` in `MealLogger.tsx` always sent `logged_at: new Date().toISOString()` (today's wall-clock time). When the user was viewing a past date, the meal was saved under today's date but `fetchDay()` refreshed the past-date view — the meal silently disappeared.
 - **Root cause of delay:** A previous fix attempt was committed to a feature branch (`claude/focused-bassi-ca8605`) that was never merged to `main`. The deployed app continued to run the unfixed code.
 - **Fix:** `MealLogger` now accepts a required `currentDate: string` prop. `logged_at` is computed as `${currentDate}T${new Date().toISOString().slice(11)}` — the user-viewed date with the current wall-clock UTC time. `NutritionSection` passes `currentDate` through to `MealLogger`.
+
+### SplashScreen (branch: feature/splash-screen, April 30, 2026)
+
+- **File:** `components/SplashScreen.tsx`
+- **Wired into:** `app/page.tsx` — rendered as first child of outermost div, above all content and tab bar. `showSplash` state controls mount/unmount.
+- **Timing:** 2000ms display → 400ms CSS fade-out → `onDismiss` called → component unmounts. Total visible duration ~2400ms. The 2000ms delay is intentional and easy to adjust by changing the `setTimeout` value in the `useEffect` inside `SplashScreen.tsx`.
+- **Animations:** CSS keyframes only (no JS animation library). Body form reveals top-to-bottom via `clip-path: inset()`. ECG line draws via `stroke-dashoffset`. Amber dots fade/pulse in. Wordmark and tagline rise from opacity 0.
 
 ### Layout / safe-area fixes
 

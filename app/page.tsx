@@ -14,6 +14,7 @@ import CoachTab from '@/components/CoachTab'
 import DashboardTab from '@/components/DashboardTab'
 import HistoryTab from '@/components/HistoryTab'
 import GoalsTab from '@/components/GoalsTab'
+import SplashScreen from '@/components/SplashScreen'
 
 // ─── Date utilities ───────────────────────────────────────────────
 function todayStr() {
@@ -113,6 +114,7 @@ const TABS: { id: Tab; label: string; Icon: React.FC<{ active: boolean }> }[] = 
 
 // ─── Main app ─────────────────────────────────────────────────────
 export default function App() {
+  const [showSplash,    setShowSplash]    = useState(true)
   const [activeTab,     setActiveTab]     = useState<Tab>('goals')
   const [currentDate,   setCurrentDate]   = useState(todayStr())
   const [entry,         setEntry]         = useState<DailyEntry>(emptyEntry(todayStr()))
@@ -225,6 +227,8 @@ export default function App() {
       className="min-h-screen"
       style={{ background: 'var(--color-bg)', paddingBottom: 'calc(72px + env(safe-area-inset-bottom))' }}
     >
+      {showSplash && <SplashScreen onDismiss={() => setShowSplash(false)} />}
+
       {/* ── Content ────────────────────────────────────────────── */}
       <main
         className="mx-auto w-full"
