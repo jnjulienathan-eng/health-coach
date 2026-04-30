@@ -18,6 +18,9 @@ const dmMono = DM_Mono({
 export const metadata: Metadata = {
   title: "BodyCipher",
   description: "decode your body",
+  icons: {
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export default function RootLayout({
