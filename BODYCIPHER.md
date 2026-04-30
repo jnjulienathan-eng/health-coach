@@ -59,7 +59,18 @@ _Last updated: April 29, 2026_
 
 Default active tab: 0 (Today). GoalsTab and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
 
-### Today Tab
+### Today Tab (updated April 30, 2026)
+
+**Structure (top to bottom):**
+1. Date navigator
+2. Yesterday sleep banner (conditional)
+3. **Greeting** — time-aware rotating message (logic copied from GoalsTab, no API call, initialised once per session)
+4. **Score cards row** — Behavior Score, Outcome Score, Training Load (detailed versions with bullet points; copied from DashboardTab; data fetched via `GET /api/scores` + `loadRecentEntries(30)`)
+5. Daily logging accordions (Sleep, Training, Nutrition, Hydration, Supplements, Context) — unchanged
+6. **Long-term Goals section** — VO2 Max (spectrum bar + sparkline), Cardiovascular Health (LDL/HDL spectrums + ratio trend), Glucose Stability (7-day fasting avg + HbA1c); copied from GoalsTab
+7. Saved confirmation toast
+
+All new state, effects, and handlers for the above sections live in `app/page.tsx` (`App` component). GoalsTab.tsx and DashboardTab.tsx are unchanged — copy only.
 
 **Sleep section**
 - Fields: duration (min), HRV (ms), RHR (bpm), bedtime, rested score (1–5), nap duration (min), fasting glucose (mmol/L, optional)
