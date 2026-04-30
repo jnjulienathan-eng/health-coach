@@ -343,6 +343,11 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 
 Sleep: sleep_duration_min, hrv, rhr, bedtime, rested, nap_minutes, fasting_glucose_mmol
 Training: cycled_today, cycling_minutes, cycling_calories (cycling transport only — training sessions in separate table), **active_calories** (integer, nullable — written by /api/health-import from Health Auto Export active_energy metric; migration: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS active_calories integer`)
+**Health Auto Export → daily_entries mapping (as of April 29, 2026):**
+- `resting_heart_rate` → `rhr` (integer, bpm)
+- `sleep_analysis` → `sleep_duration_min` (integer, minutes; HAE exports in `hr` units so webhook multiplies qty × 60) and `bedtime` (text "HH:MM" extracted from the data point's start timestamp substring 11–16)
+- `active_energy` → `active_calories` (integer, kcal; converts kJ if needed)
+All three fields use COALESCE — only written if the DB value is currently null (manual entries always win).
 Nutrition columns: **LEGACY — do not read or write from new code**
 Hydration: hydration_ml
 Supplements: morning_stack_taken, morning_exceptions, evening_stack_taken, evening_exceptions, progesterone_taken, progesterone_mg, estradiol_taken, estradiol_sprays
