@@ -147,9 +147,11 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
 
     // Sleep
     bedtime:              entry.sleep.bedtime,
-    sleep_duration_min:   entry.sleep.duration_min,
+    // Webhook-owned fields: omit if null so saveEntry() never overwrites a
+    // webhook-written value with null from stale in-memory state.
+    ...(entry.sleep.duration_min != null ? { sleep_duration_min: entry.sleep.duration_min } : {}),
     hrv:                  entry.sleep.hrv,
-    rhr:                  entry.sleep.rhr,
+    ...(entry.sleep.rhr != null ? { rhr: entry.sleep.rhr } : {}),
     rested:               entry.sleep.rested,
     nap_minutes:          entry.sleep.nap_minutes ?? null,
     fasting_glucose_mmol: entry.sleep.fasting_glucose_mmol ?? null,

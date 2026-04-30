@@ -343,9 +343,9 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 
 Sleep: sleep_duration_min, hrv, rhr, bedtime, rested, nap_minutes, fasting_glucose_mmol
 Training: cycled_today, cycling_minutes, cycling_calories (cycling transport only — training sessions in separate table), **active_calories** (integer, nullable — written by /api/health-import from Health Auto Export active_energy metric; migration: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS active_calories integer`)
-**Health Auto Export → daily_entries mapping (as of April 29, 2026):**
+**Health Auto Export → daily_entries mapping (as of April 30, 2026):**
 - `resting_heart_rate` → `rhr` (integer, bpm)
-- `sleep_analysis` → `sleep_duration_min` (integer, minutes; HAE exports in `hr` units so webhook multiplies qty × 60) and `bedtime` (text "HH:MM" extracted from the data point's start timestamp substring 11–16)
+- `sleep_analysis` → `sleep_duration_min` (integer, minutes; HAE exports in `hr` units so webhook multiplies qty × 60). Bedtime is NOT extracted from this metric — the data point timestamp is midnight of the recording date, not the actual sleep start time. Bedtime is manual-entry only.
 - `active_energy` → `active_calories` (integer, kcal; converts kJ if needed)
 All three fields use COALESCE — only written if the DB value is currently null (manual entries always win).
 Nutrition columns: **LEGACY — do not read or write from new code**
@@ -463,6 +463,8 @@ Replaced Anthropic API greeting with static rotating list. Client-side only, ins
 Julie receives workouts auto-imported from Apple Health via the webhook, and then manually augments them — for example, adding Zone 3+ minutes. This means training session rows contain a mix of machine-written fields and human-written fields. Any code that touches training sessions must preserve both. It cannot assume that what the UI displays is everything the row contains.
 
 Any save logic that deletes and rewrites session rows must carry forward every field the webhook can write — currently external_id, source, active_calories, and start_time — not just the fields the UI controls. If a new webhook field is added in future, this list must be updated and the save logic must be checked.
+
+The same overwrite risk exists for daily_entries fields. Any field that the webhook can write — currently sleep_duration_min and rhr — must not be blindly overwritten by saveEntry() if the in-memory value is null. The fix is to omit null webhook-owned fields from the upsert payload rather than writing null over a real value. In lib/db.ts saveEntry(), sleep_duration_min and rhr use conditional spread: they are only included in the flat upsert object if the in-memory value is non-null.
 
 ---
 

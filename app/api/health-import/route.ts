@@ -94,7 +94,6 @@ export async function POST(req: NextRequest) {
     type DayMetrics = {
       rhr?: number
       sleep_duration_min?: number
-      bedtime?: string           // "HH:MM" 24h, extracted from sleep session start
       active_calories?: number
     }
     const byDate: Record<string, DayMetrics> = {}
@@ -108,15 +107,9 @@ export async function POST(req: NextRequest) {
           byDate[date].rhr = Math.round(point.qty)
         } else if (metric.name === 'sleep_analysis') {
           // HAE exports sleep_analysis with units 'hr' — convert to minutes
-          const durationMin = metric.units === 'hr'
+          byDate[date].sleep_duration_min = metric.units === 'hr'
             ? Math.round(point.qty * 60)
             : Math.round(point.qty)
-          byDate[date].sleep_duration_min = durationMin
-          // Extract bedtime (HH:MM) from the session start timestamp
-          const timePart = point.date.substring(11, 16)
-          if (timePart && timePart.includes(':')) {
-            byDate[date].bedtime = timePart
-          }
         } else if (metric.name === 'active_energy') {
           const kcal = metric.units === 'kJ' ? kjToKcal(point.qty) : Math.round(point.qty)
           byDate[date].active_calories = kcal
@@ -130,7 +123,7 @@ export async function POST(req: NextRequest) {
       // Fetch existing row to apply COALESCE: manual entries always win.
       const { data: existing } = await supabase
         .from('daily_entries')
-        .select('rhr, sleep_duration_min, bedtime, active_calories')
+        .select('rhr, sleep_duration_min, active_calories')
         .eq('user_id', 'julie')
         .eq('date', date)
         .maybeSingle()
@@ -157,15 +150,6 @@ export async function POST(req: NextRequest) {
           written.push('sleep_duration_min')
         } else {
           skipped.push('sleep_duration_min (manual value exists)')
-        }
-      }
-
-      if (incoming.bedtime !== undefined) {
-        if (row?.bedtime == null) {
-          upsert.bedtime = incoming.bedtime
-          written.push('bedtime')
-        } else {
-          skipped.push('bedtime (manual value exists)')
         }
       }
 
