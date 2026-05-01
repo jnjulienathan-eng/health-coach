@@ -200,6 +200,7 @@ Glucose stability expanded state design (not yet built):
 - Five macros everywhere: calories, protein, carbs, fat, fiber. That order. Never four.
 - No micronutrient UI in phase 1. Data preserved in nutrients_per_100g JSONB for future use.
 - Clean break from legacy daily_entries.nutrition JSONB. Historical data not migrated. New data in new tables only.
+- **Migration boundary — April 26, 2026:** Pre-April-26 meal data was migrated from the flat `daily_entries` columns (`breakfast_*`, `lunch_*`, `dinner_*`, `pre_workout_snack_*`, `incidentals_*`) into `meal_logs` with `logged_via = 'photo_estimate'` and `logged_at` set to noon UTC on each respective date. No ingredient-level breakdown exists before this date. The flat columns in `daily_entries` are preserved and untouched — do not read or write them from new code.
 
 ### Tables
 
@@ -487,6 +488,7 @@ B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV v
 5. Responsive design / mobile layout
 6. Apple Health XML import — deferred indefinitely
 7. Regression analysis — revisit July 2026
+8. **Meal eaten-at time field** — `logged_at` captures the save time, not the time the meal was eaten. Add an optional user-facing time field to the meal logger for future chrononutrition analysis.
 
 ### Greeting — resolved (April 28, 2026)
 
