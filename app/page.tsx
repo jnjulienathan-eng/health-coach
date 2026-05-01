@@ -801,10 +801,13 @@ export default function App() {
   const [apptSaving,        setApptSaving]        = useState(false)
 
   // ── Dashboard + History state ──────────────────────────────────────
-  const [dashTlExpanded, setDashTlExpanded] = useState(false)
-  const [historyEntries, setHistoryEntries] = useState<DailyEntry[]>([])
-  const [historyLoading, setHistoryLoading] = useState(true)
-  const [historyError,   setHistoryError]   = useState<string | null>(null)
+  const [dashTlExpanded,      setDashTlExpanded]      = useState(false)
+  const [historyEntries,      setHistoryEntries]      = useState<DailyEntry[]>([])
+  const [historyLoading,      setHistoryLoading]      = useState(true)
+  const [historyError,        setHistoryError]        = useState<string | null>(null)
+  // Keyed by YYYY-MM-DD — sourced from daily_nutrition_summary via /api/nutrition/chart.
+  // Never derived from legacy daily_entries nutrition columns.
+  const [nutritionSummaries,  setNutritionSummaries]  = useState<Record<string, { protein: number | null; fiber: number | null }>>({})
 
   const isToday = currentDate === todayStr()
 
@@ -862,10 +865,18 @@ export default function App() {
     Promise.all([
       loadRecentEntries(30),
       fetch(`/api/scores?date=${currentDate}`).then(r => r.json() as Promise<TodayScored>),
+      fetch('/api/nutrition/chart?days=31').then(r => r.json() as Promise<Array<{ date: string; protein: number | null; fiber: number | null }>>),
     ])
-      .then(([recent, scored]) => {
+      .then(([recent, scored, nutRows]) => {
         setDashEntries(recent)
         setTodayScored(scored)
+        // Build a map keyed by plain YYYY-MM-DD string — no new Date() conversion so
+        // there is no UTC-vs-Berlin timezone shift on the most-recent entries.
+        const nutMap: Record<string, { protein: number | null; fiber: number | null }> = {}
+        for (const row of nutRows) {
+          nutMap[row.date.slice(0, 10)] = { protein: row.protein, fiber: row.fiber }
+        }
+        setNutritionSummaries(nutMap)
       })
       .catch(console.error)
   }, [currentDate])
@@ -2191,13 +2202,21 @@ export default function App() {
 
           const hrvData = chart30.map(e => ({ date: chartDate(e.date), value: e.sleep.hrv }))
           const sleepData = chart30.map(e => ({ date: chartDate(e.date), value: durationToH(e.sleep.duration_min) }))
+          // Use daily_nutrition_summary (via nutritionSummaries map) so the charts
+          // reflect the new ingredient-level logging system, not legacy daily_entries columns.
+          // e.date is already a YYYY-MM-DD string from Supabase — looked up directly with
+          // no new Date() conversion to avoid UTC-vs-Berlin timezone shift on recent entries.
           const proteinData = chart30.map(e => ({
             date: chartDate(e.date),
-            value: e.nutrition.total_protein != null ? Math.round(e.nutrition.total_protein) : null,
+            value: nutritionSummaries[e.date]?.protein != null
+              ? Math.round(nutritionSummaries[e.date].protein as number)
+              : null,
           }))
           const fiberData = chart30.map(e => ({
             date: chartDate(e.date),
-            value: e.nutrition.total_fiber != null ? Math.round(e.nutrition.total_fiber) : null,
+            value: nutritionSummaries[e.date]?.fiber != null
+              ? Math.round(nutritionSummaries[e.date].fiber as number)
+              : null,
           }))
           const trainingData = chart30.map(e => ({
             date: chartDate(e.date),
