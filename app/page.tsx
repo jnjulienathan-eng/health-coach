@@ -2202,20 +2202,30 @@ export default function App() {
 
           const hrvData = chart30.map(e => ({ date: chartDate(e.date), value: e.sleep.hrv }))
           const sleepData = chart30.map(e => ({ date: chartDate(e.date), value: durationToH(e.sleep.duration_min) }))
-          // Use daily_nutrition_summary (via nutritionSummaries map) so the charts
-          // reflect the new ingredient-level logging system, not legacy daily_entries columns.
-          // e.date is already a YYYY-MM-DD string from Supabase — looked up directly with
-          // no new Date() conversion to avoid UTC-vs-Berlin timezone shift on recent entries.
-          const proteinData = chart30.map(e => ({
-            date: chartDate(e.date),
-            value: nutritionSummaries[e.date]?.protein != null
-              ? Math.round(nutritionSummaries[e.date].protein as number)
+          // Independent 30-day date range for nutrition charts — not derived from
+          // dashEntries/chart30 so bars appear even when daily_entries has no row for
+          // that date (all new nutrition data lives in daily_nutrition_summary only).
+          // Dates generated via Date.UTC arithmetic + .slice(0,10): purely UTC, no
+          // local-timezone shift. currentDate is already a UTC YYYY-MM-DD string so
+          // the arithmetic is consistent end-to-end with no round-trip through new Date().
+          const nutritionChart30 = (() => {
+            const [y, m, d] = currentDate.split('-').map(Number)
+            const dates: string[] = []
+            for (let i = 29; i >= 0; i--) {
+              dates.push(new Date(Date.UTC(y, m - 1, d - i)).toISOString().slice(0, 10))
+            }
+            return dates
+          })()
+          const proteinData = nutritionChart30.map(date => ({
+            date: chartDate(date),
+            value: nutritionSummaries[date]?.protein != null
+              ? Math.round(nutritionSummaries[date].protein as number)
               : null,
           }))
-          const fiberData = chart30.map(e => ({
-            date: chartDate(e.date),
-            value: nutritionSummaries[e.date]?.fiber != null
-              ? Math.round(nutritionSummaries[e.date].fiber as number)
+          const fiberData = nutritionChart30.map(date => ({
+            date: chartDate(date),
+            value: nutritionSummaries[date]?.fiber != null
+              ? Math.round(nutritionSummaries[date].fiber as number)
               : null,
           }))
           const trainingData = chart30.map(e => ({
