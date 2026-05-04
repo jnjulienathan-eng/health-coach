@@ -503,7 +503,7 @@ B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV v
 PWA foundation laid. Files created/changed:
 - `public/manifest.json` — PWA manifest (standalone display, dark bg, green theme)
 - `public/sw.js` — Service Worker: push event → showNotification; notificationclick → confirm POSTs /api/notifications/supplement-confirm, snooze closes notification
-- `components/SwRegister.tsx` — client component: registers SW, requests Notification permission on first load, subscribes via pushManager, POSTs to /api/notifications/subscribe
+- `components/SwRegister.tsx` — client component: registers SW on load; if already granted, calls subscribeAndSend. Exports `enableNotifications()` named function — must be called from a user gesture (iOS requirement). `app/page.tsx` calls it from the Enable Notifications button.
 - `app/layout.tsx` — manifest wired into metadata; SwRegister rendered in body
 - `app/api/notifications/subscribe/route.ts` — POST handler, upserts into push_subscriptions
 - `package.json` — web-push ^3.6.7 added

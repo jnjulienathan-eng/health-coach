@@ -22,6 +22,7 @@ import SupplementsSection from '@/components/sections/SupplementsSection'
 import ContextSection from '@/components/sections/ContextSection'
 import CoachTab from '@/components/CoachTab'
 import SplashScreen from '@/components/SplashScreen'
+import { enableNotifications } from '@/components/SwRegister'
 
 // ─── Date utilities ───────────────────────────────────────────────
 function todayStr() {
@@ -809,6 +810,12 @@ export default function App() {
   // Keyed by YYYY-MM-DD — sourced from daily_nutrition_summary via /api/nutrition/chart.
   // Never derived from legacy daily_entries nutrition columns.
   const [nutritionSummaries,  setNutritionSummaries]  = useState<Record<string, { protein: number | null; fiber: number | null }>>({})
+
+  // null = not yet determined (SSR / before mount). Checked client-side only.
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission | null>(null)
+  useEffect(() => {
+    if ('Notification' in window) setNotifPerm(Notification.permission)
+  }, [])
 
   const isToday = currentDate === todayStr()
 
@@ -2025,6 +2032,31 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* Enable notifications prompt — hidden once permission granted or denied */}
+            {notifPerm === 'default' && (
+              <div style={{ textAlign: 'center', marginTop: 24, marginBottom: 8 }}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const result = await enableNotifications()
+                    setNotifPerm(result)
+                  }}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 20,
+                    padding: '6px 16px',
+                    fontSize: 12,
+                    color: 'var(--color-text-secondary)',
+                    cursor: 'pointer',
+                    letterSpacing: '0.01em',
+                  }}
+                >
+                  Enable notifications
+                </button>
+              </div>
+            )}
 
             {/* Saved confirmation */}
             {savedSection && (
