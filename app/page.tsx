@@ -215,7 +215,7 @@ function vo2NextTier(value: number): string | null {
 }
 
 function fmtSparkDate(s: string): string {
-  return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function buildVo2Sparkline(readings: BiomarkerReading[]): {
@@ -1505,13 +1505,7 @@ export default function App() {
                       {vo2Max && (() => {
                         const cx = Math.min(vo2Max.value, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
                         return (
-                          <>
-                            <line x1={cx} y1="16" x2={cx} y2="22" stroke="var(--color-primary)" strokeWidth="1.5" />
-                            <circle cx={cx} cy="9" r="8" fill="var(--color-surface)" stroke="var(--color-primary)" strokeWidth="1.5" />
-                            <text x={cx} y="12.5" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: 'var(--color-primary)', fontFamily: 'var(--font-mono)' }}>
-                              {vo2Max.value}
-                            </text>
-                          </>
+                          <line x1={cx} y1="14" x2={cx} y2="32" stroke="var(--color-primary)" strokeWidth="2" />
                         )
                       })()}
                     </svg>
