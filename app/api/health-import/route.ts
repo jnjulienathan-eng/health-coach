@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
     for (const [date, value] of Object.entries(vo2MaxByDate)) {
       const { error } = await supabase
         .from('biomarker_readings')
-        .insert({ user_id: 'julie', marker: 'vo2_max', value, unit: 'ml/kg/min', date })
+        .insert({ user_id: 'julie', marker: 'vo2_max', value, unit: 'ml/kg/min', recorded_on: date })
 
       if (error) {
         const code = (error as { code?: string }).code
