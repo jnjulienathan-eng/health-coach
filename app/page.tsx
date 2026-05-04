@@ -1505,7 +1505,12 @@ export default function App() {
                       {vo2Max && (() => {
                         const cx = Math.min(vo2Max.value, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
                         return (
-                          <line x1={cx} y1="14" x2={cx} y2="32" stroke="var(--color-primary)" strokeWidth="2" />
+                          <>
+                            <text x={cx} y="11" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: 'var(--color-primary)', fontFamily: 'var(--font-mono)' }}>
+                              {vo2Max.value}
+                            </text>
+                            <line x1={cx} y1="14" x2={cx} y2="32" stroke="var(--color-primary)" strokeWidth="2" />
+                          </>
                         )
                       })()}
                     </svg>
