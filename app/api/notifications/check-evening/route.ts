@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
   const payload = JSON.stringify({
     title: 'BodyCipher',
     body: 'Evening check — have you taken your evening supplements?',
+    tag: 'evening-supplements',
     actions: [
       { action: 'confirm', title: 'Yes, taken' },
       { action: 'snooze', title: 'Remind me later' },

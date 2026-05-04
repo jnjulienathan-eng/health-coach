@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 4, 2026 (Session 2 — notifications cron)_
+_Last updated: May 4, 2026 (Session 3 — notifications complete)_
 
 ---
 
@@ -531,8 +531,26 @@ Cron jobs and push-sending logic built. Files created/changed:
 
 **Authentication:** Vercel automatically injects `CRON_SECRET` into the environment and sends it as `Authorization: Bearer <secret>` on every cron request. No manual setup required — Vercel manages the secret.
 
-**Session 3 remaining:**
-- `app/api/notifications/supplement-confirm/route.ts` — POST handler (called by sw.js on 'confirm' action tap): marks the correct stack taken (`morning_stack_taken` or `evening_stack_taken`) in `daily_entries` for today in Berlin time. Snooze is handled entirely client-side in sw.js (closes notification, no API call).
+### Push notifications — Session 3 complete (May 4, 2026, branch: claude/musing-knuth-cdd141)
+
+Supplement confirm route built. All three sessions complete — push notification feature is fully live.
+
+**Files created/changed:**
+- `public/sw.js` — `confirm` action handler updated to send `{ tag: event.notification.tag }` as JSON body in the POST to `/api/notifications/supplement-confirm`. Previously sent no body.
+- `app/api/notifications/check-morning/route.ts` — added `tag: 'morning-supplements'` to notification payload so sw.js can identify the source.
+- `app/api/notifications/check-evening/route.ts` — added `tag: 'evening-supplements'` to notification payload.
+- `app/api/notifications/supplement-confirm/route.ts` — POST handler: reads `tag` from request body, maps `'morning-supplements'` → `morning_stack_taken` and `'evening-supplements'` → `evening_stack_taken`, upserts `daily_entries` row for today in Europe/Berlin time with the correct field set to `true` (onConflict: `user_id,date` so it merges rather than replaces). Returns 400 for unknown tags, 500 on DB failure, 200 + `{ ok, field, date }` on success.
+
+**Snooze behaviour:** entirely client-side — sw.js closes the notification and takes no further action. No server call on snooze.
+
+**Full notifications API surface (all three sessions):**
+
+| Route | Method | Purpose |
+|---|---|---|
+| /api/notifications/subscribe | POST | Upsert device push subscription into push_subscriptions |
+| /api/notifications/check-morning | GET (cron) | 07:55 UTC — send morning push if morning_stack_taken not true |
+| /api/notifications/check-evening | GET (cron) | 19:00 UTC — send evening push if evening_stack_taken not true |
+| /api/notifications/supplement-confirm | POST (SW) | Mark morning or evening stack taken in daily_entries |
 
 ### Features — next
 

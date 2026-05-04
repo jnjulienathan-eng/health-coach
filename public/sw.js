@@ -16,8 +16,13 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
   if (event.action === 'confirm') {
+    const tag = event.notification.tag
     event.waitUntil(
-      fetch('/api/notifications/supplement-confirm', { method: 'POST' })
+      fetch('/api/notifications/supplement-confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag }),
+      })
     )
   }
   // 'snooze' action: notification is already closed above — logic in a later session
