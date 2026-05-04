@@ -82,6 +82,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const body: ImportPayload = await req.json()
+    // TEMPORARY DIAGNOSTIC - remove once metric names confirmed
+    console.log('[health-import] ALL METRIC NAMES:', JSON.stringify((body?.data?.metrics || []).map((m: any) => m.name)))
     const metrics: Metric[] = body?.data?.metrics ?? []
     const workouts: Workout[] = body?.data?.workouts ?? []
 
