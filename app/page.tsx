@@ -802,6 +802,7 @@ export default function App() {
 
   // ── Dashboard + History state ──────────────────────────────────────
   const [dashTlExpanded,      setDashTlExpanded]      = useState(false)
+  const [trainingLoadExpanded, setTrainingLoadExpanded] = useState(false)
   const [historyEntries,      setHistoryEntries]      = useState<DailyEntry[]>([])
   const [historyLoading,      setHistoryLoading]      = useState(true)
   const [historyError,        setHistoryError]        = useState<string | null>(null)
@@ -1269,14 +1270,20 @@ export default function App() {
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 16 }}>
               <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(entry, todayScored?.nutrition)} />
               <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(entry)} />
-              <TrainingLoadCard
-                status={scoreTlResult.status}
-                colour={scoreTlResult.colour}
-                acute={scoreTlResult.acute}
-                chronic={scoreTlResult.chronic}
-                ratio={scoreTlResult.ratio}
-                daysOfData={scoreAllEntries.length}
-              />
+              <button
+                type="button"
+                onClick={() => { setActiveTab('dashboard'); setTrainingLoadExpanded(true) }}
+                style={{ flex: 1, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+              >
+                <TrainingLoadCard
+                  status={scoreTlResult.status}
+                  colour={scoreTlResult.colour}
+                  acute={scoreTlResult.acute}
+                  chronic={scoreTlResult.chronic}
+                  ratio={scoreTlResult.ratio}
+                  daysOfData={scoreAllEntries.length}
+                />
+              </button>
             </div>
 
             {/* Sections */}
@@ -2288,7 +2295,11 @@ export default function App() {
                       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12 }}>
                         <button
                           type="button"
-                          onClick={() => setDashTlExpanded(prev => !prev)}
+                          onClick={() => {
+                            const effectivelyExpanded = dashTlExpanded || trainingLoadExpanded
+                            setTrainingLoadExpanded(false)
+                            setDashTlExpanded(!effectivelyExpanded)
+                          }}
                           style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}
                         >
                           <div style={{ width: 10, height: 10, borderRadius: '50%', background: tlResult.colour, flexShrink: 0 }} />
@@ -2296,12 +2307,12 @@ export default function App() {
                             Training Load
                           </span>
                           <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500, color: tlResult.colour }}>{tlResult.status}</span>
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${dashTlExpanded ? ' open' : ''}`} style={{ flexShrink: 0 }}>
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${(dashTlExpanded || trainingLoadExpanded) ? ' open' : ''}`} style={{ flexShrink: 0 }}>
                             <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         </button>
 
-                        {dashTlExpanded && (
+                        {(dashTlExpanded || trainingLoadExpanded) && (
                           <div style={{ padding: '0 16px 16px' }}>
                             {tlResult.status === 'Establishing baseline' ? (
                               <div style={{ fontSize: 12, color: 'var(--color-text-dim)', marginBottom: 14 }}>
