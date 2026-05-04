@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: April 30, 2026_
+_Last updated: May 4, 2026_
 
 ---
 
@@ -238,6 +238,10 @@ Glucose stability expanded state design (not yet built):
 - `NUTRITION_USER_ID` — UUID for all nutrition rows, read via `nutritionUserId()` in lib/nutrition.ts
 - `ANTHROPIC_API_KEY` — used by /api/nutrition/estimate and /api/goals/greeting, server-side only
 - `HEALTH_IMPORT_SECRET` — API key checked against `x-api-key` header on /api/health-import. Server-side only.
+- `VAPID_PUBLIC_KEY` — server-side only. Used by web-push when sending notifications in Sessions 2–3.
+- `VAPID_PRIVATE_KEY` — server-side only. Paired with VAPID_PUBLIC_KEY. Never expose client-side.
+- `VAPID_EMAIL` — server-side only. Contact email passed to web-push setVapidDetails.
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` — client-side. Same value as VAPID_PUBLIC_KEY. Read by SwRegister.tsx when calling pushManager.subscribe().
 
 ### Recipe builder — locked decisions
 
@@ -414,6 +418,24 @@ Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
 - user_id, marker (text), value (numeric), unit (text), recorded_on (date)
 - markers in use: 'vo2_max', 'ldl', 'hdl', 'hba1c'
 
+### `push_subscriptions`
+
+Stores Web Push device subscriptions for server-initiated notifications.
+- id (uuid PK), user_id (text NOT NULL DEFAULT 'julie'), endpoint (text UNIQUE NOT NULL), p256dh (text NOT NULL), auth (text NOT NULL), created_at (timestamptz DEFAULT now())
+- One row per device. Upserted on `endpoint` — re-subscribing from the same device updates the row rather than creating a duplicate.
+- Written by `POST /api/notifications/subscribe` (service-role client, no RLS).
+- **DB migration required before testing (run in Supabase SQL editor):**
+  ```sql
+  CREATE TABLE push_subscriptions (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id text NOT NULL DEFAULT 'julie',
+    endpoint text UNIQUE NOT NULL,
+    p256dh text NOT NULL,
+    auth text NOT NULL,
+    created_at timestamptz DEFAULT now()
+  );
+  ```
+
 ### `user_profiles`
 
 Preferences, macro targets.
@@ -475,6 +497,22 @@ B. ✅ afternoon mode now returns non-null recovery field (one sentence on HRV v
 
 - **Tab bar (April 29, 2026):** outer div in `app/page.tsx` uses `paddingBottom: calc(72px + env(safe-area-inset-bottom))`. Tab bar itself has `height: 72` + `paddingBottom: env(safe-area-inset-bottom)`.
 - **MealLogger bottom sheets (April 29, 2026, revised April 30, 2026):** The overlay backdrop `div` in `MealLogger.tsx` now has `paddingBottom: calc(72px + env(safe-area-inset-bottom))` so the sheet sits above the tab bar entirely. Full-sheet height reduced from `92vh` to `calc(92vh - 72px - env(safe-area-inset-bottom))` so it does not overflow above the viewport. Internal padding on ScreenMenu, Footer, ScreenSearch, and ScreenLibrary adds spacing within the sheet. Root cause: `isolation: isolate` on `<main>` creates a sandboxed stacking context — anything inside main (including the sheet at z-index 100) paints below the tab bar nav (z-index 50) in the outer context. The fix is layout, not z-index.
+
+### Push notifications — Session 1 complete (May 4, 2026, branch: claude/nervous-jackson-862730)
+
+PWA foundation laid. Files created/changed:
+- `public/manifest.json` — PWA manifest (standalone display, dark bg, green theme)
+- `public/sw.js` — Service Worker: push event → showNotification; notificationclick → confirm POSTs /api/notifications/supplement-confirm, snooze closes notification
+- `components/SwRegister.tsx` — client component: registers SW, requests Notification permission on first load, subscribes via pushManager, POSTs to /api/notifications/subscribe
+- `app/layout.tsx` — manifest wired into metadata; SwRegister rendered in body
+- `app/api/notifications/subscribe/route.ts` — POST handler, upserts into push_subscriptions
+- `package.json` — web-push ^3.6.7 added
+
+**Before testing:** run the push_subscriptions CREATE TABLE migration in Supabase, and add the five VAPID env vars to Vercel (see push_subscriptions table entry above and Required environment variables section).
+
+**Sessions 2–3 remaining:**
+- Session 2: cron job or Vercel scheduled function that fires at 09:55 and 21:00 Berlin time, reads daily_entries for today, sends push if morning_stack_taken / evening_stack_taken is null
+- Session 3: supplement-confirm API route that marks the stack taken when the notification action is tapped; snooze logic
 
 ### Features — next
 
