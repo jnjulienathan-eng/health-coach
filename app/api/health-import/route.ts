@@ -100,6 +100,10 @@ export async function POST(req: NextRequest) {
     const vo2MaxByDate: Record<string, number> = {}
 
     for (const metric of metrics) {
+      if (metric.name === 'sleep_analysis') {
+        console.log('[health-import] SLEEP DATA SAMPLE:', JSON.stringify((metric.data || []).slice(0, 2), null, 2))
+        // TEMPORARY DIAGNOSTIC - remove once sleep format confirmed
+      }
       for (const point of metric.data ?? []) {
         const date = extractDate(point.date)
         if (!byDate[date]) byDate[date] = {}
