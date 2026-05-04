@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 4, 2026_
+_Last updated: May 4, 2026 (Session 2 — notifications cron)_
 
 ---
 
@@ -510,9 +510,29 @@ PWA foundation laid. Files created/changed:
 
 **Before testing:** run the push_subscriptions CREATE TABLE migration in Supabase, and add the five VAPID env vars to Vercel (see push_subscriptions table entry above and Required environment variables section).
 
-**Sessions 2–3 remaining:**
-- Session 2: cron job or Vercel scheduled function that fires at 09:55 and 21:00 Berlin time, reads daily_entries for today, sends push if morning_stack_taken / evening_stack_taken is null
-- Session 3: supplement-confirm API route that marks the stack taken when the notification action is tapped; snooze logic
+### Push notifications — Session 2 complete (May 4, 2026, branch: claude/musing-knuth-cdd141)
+
+Cron jobs and push-sending logic built. Files created/changed:
+- `vercel.json` — two Vercel cron entries: `55 7 * * *` (07:55 UTC = 09:55 Berlin summer) → `/api/notifications/check-morning`; `0 19 * * *` (19:00 UTC = 21:00 Berlin summer) → `/api/notifications/check-evening`
+- `app/api/notifications/check-morning/route.ts` — GET handler. Authenticated via `Authorization: Bearer {CRON_SECRET}` (Vercel auto-generates and auto-sends CRON_SECRET for cron requests). Gets today in Europe/Berlin timezone, queries `daily_entries.morning_stack_taken` for user_id='julie'. If already true → returns `{sent: false, reason: 'already logged'}`. Otherwise fetches all `push_subscriptions` rows and sends each a push notification via web-push with title "BodyCipher", body "Good morning — have you taken your morning supplements?", actions: confirm / snooze. Returns `{sent, failed}` counts.
+- `app/api/notifications/check-evening/route.ts` — Identical pattern, checks `evening_stack_taken`, body "Evening check — have you taken your evening supplements?".
+
+**Notification payload structure (both routes):**
+```json
+{
+  "title": "BodyCipher",
+  "body": "...",
+  "actions": [
+    { "action": "confirm", "title": "Yes, taken" },
+    { "action": "snooze", "title": "Remind me later" }
+  ]
+}
+```
+
+**Authentication:** Vercel automatically injects `CRON_SECRET` into the environment and sends it as `Authorization: Bearer <secret>` on every cron request. No manual setup required — Vercel manages the secret.
+
+**Session 3 remaining:**
+- `app/api/notifications/supplement-confirm/route.ts` — POST handler (called by sw.js on 'confirm' action tap): marks the correct stack taken (`morning_stack_taken` or `evening_stack_taken`) in `daily_entries` for today in Berlin time. Snooze is handled entirely client-side in sw.js (closes notification, no API call).
 
 ### Features — next
 
