@@ -375,6 +375,9 @@ Training: cycled_today, cycling_minutes, cycling_calories (cycling transport onl
 - `sleep_analysis` → `sleep_duration_min` (integer, minutes; HAE exports in `hr` units so webhook multiplies qty × 60). Bedtime is NOT extracted from this metric — the data point timestamp is midnight of the recording date, not the actual sleep start time. Bedtime is manual-entry only.
 - `active_energy` → `active_calories` (integer, kcal; converts kJ if needed)
 All three fields use COALESCE — only written if the DB value is currently null (manual entries always win).
+
+**Health Auto Export → biomarker_readings mapping (as of May 4, 2026):**
+- `cardioFitness` → `biomarker_readings` with marker = `'vo2_max'`, unit = `'ml/kg/min'`. Inserted only if no existing row for that user_id + marker + date (23505 unique-violation = skip). No overwrite of existing values.
 Nutrition columns: **LEGACY — do not read or write from new code**
 Hydration: hydration_ml
 Supplements: morning_stack_taken, morning_exceptions, evening_stack_taken, evening_exceptions, progesterone_taken, progesterone_mg, estradiol_taken, estradiol_sprays

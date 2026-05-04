@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
       active_calories?: number
     }
     const byDate: Record<string, DayMetrics> = {}
+    const vo2MaxByDate: Record<string, number> = {}
 
     for (const metric of metrics) {
       for (const point of metric.data ?? []) {
@@ -113,6 +114,8 @@ export async function POST(req: NextRequest) {
         } else if (metric.name === 'active_energy') {
           const kcal = metric.units === 'kJ' ? kjToKcal(point.qty) : Math.round(point.qty)
           byDate[date].active_calories = kcal
+        } else if (metric.name === 'cardioFitness') {
+          vo2MaxByDate[date] = point.qty
         }
       }
     }
@@ -180,6 +183,27 @@ export async function POST(req: NextRequest) {
       console.log(`[health-import] metrics ${date}: wrote [${written.join(', ')}]${skipped.length ? ` — skipped [${skipped.join(', ')}]` : ''}`)
     }
 
+    // ── VO2 MAX → biomarker_readings ─────────────────────────────────────────
+    let vo2MaxImported = 0
+    for (const [date, value] of Object.entries(vo2MaxByDate)) {
+      const { error } = await supabase
+        .from('biomarker_readings')
+        .insert({ user_id: 'julie', marker: 'vo2_max', value, unit: 'ml/kg/min', date })
+
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === '23505') {
+          console.log(`[health-import] vo2_max ${date}: already exists — skipped`)
+        } else {
+          console.error(`[health-import] vo2_max ${date}: insert failed —`, JSON.stringify(error))
+          throw new Error(`biomarker_readings insert failed for vo2_max ${date}: ${error.message ?? JSON.stringify(error)}`)
+        }
+      } else {
+        vo2MaxImported++
+        console.log(`[health-import] vo2_max ${date}: ${value} ml/kg/min — imported`)
+      }
+    }
+
     // ── WORKOUTS → training_sessions ────────────────────────────────────────
     for (const workout of workouts) {
       const date = extractDate(workout.start)
@@ -227,8 +251,8 @@ export async function POST(req: NextRequest) {
       console.log(`[health-import] workout ${date} ${activityType} ${durationMin}min ${calories != null ? calories + 'kcal' : 'no calories'}: imported`)
     }
 
-    console.log(`[health-import] done — metrics: ${metricsImported} written, workouts: ${workoutsImported} written`)
-    return NextResponse.json({ imported: { metrics: metricsImported, workouts: workoutsImported } })
+    console.log(`[health-import] done — metrics: ${metricsImported} written, vo2_max: ${vo2MaxImported} written, workouts: ${workoutsImported} written`)
+    return NextResponse.json({ imported: { metrics: metricsImported, vo2Max: vo2MaxImported, workouts: workoutsImported } })
 
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err)
