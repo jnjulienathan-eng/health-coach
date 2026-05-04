@@ -82,8 +82,6 @@ export async function POST(req: NextRequest) {
 
   try {
     const body: ImportPayload = await req.json()
-    // TEMPORARY DIAGNOSTIC - remove once metric names confirmed
-    console.log('[health-import] ALL METRIC NAMES:', JSON.stringify((body?.data?.metrics || []).map((m: any) => m.name)))
     const metrics: Metric[] = body?.data?.metrics ?? []
     const workouts: Workout[] = body?.data?.workouts ?? []
 
@@ -116,7 +114,7 @@ export async function POST(req: NextRequest) {
         } else if (metric.name === 'active_energy') {
           const kcal = metric.units === 'kJ' ? kjToKcal(point.qty) : Math.round(point.qty)
           byDate[date].active_calories = kcal
-        } else if (metric.name === 'cardioFitness') {
+        } else if (metric.name === 'vo2_max') {
           vo2MaxByDate[date] = point.qty
         }
       }
