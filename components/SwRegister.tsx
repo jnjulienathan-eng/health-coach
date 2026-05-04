@@ -23,6 +23,18 @@ async function subscribeAndSend(registration: ServiceWorkerRegistration) {
   })
 }
 
+// Called from a button tap — iOS requires a user gesture before requestPermission().
+// Returns the resulting permission so callers can update their UI state.
+export async function enableNotifications(): Promise<NotificationPermission> {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return 'denied'
+  const result = await Notification.requestPermission()
+  if (result === 'granted') {
+    const registration = await navigator.serviceWorker.ready
+    await subscribeAndSend(registration)
+  }
+  return result
+}
+
 export default function SwRegister() {
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return
@@ -33,13 +45,9 @@ export default function SwRegister() {
         if (Notification.permission === 'granted') {
           // Already granted — ensure we have a subscription stored.
           await subscribeAndSend(registration)
-        } else if (Notification.permission === 'default') {
-          const result = await Notification.requestPermission()
-          if (result === 'granted') {
-            await subscribeAndSend(registration)
-          }
         }
-        // 'denied' — do nothing
+        // 'default': wait for user gesture via enableNotifications()
+        // 'denied': do nothing
       })
       .catch(() => {})
   }, [])
