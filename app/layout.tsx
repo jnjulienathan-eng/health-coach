@@ -18,6 +18,7 @@ const dmMono = DM_Mono({
 export const metadata: Metadata = {
   title: "BodyCipher",
   description: "decode your body",
+  manifest: '/manifest.json',
   icons: {
     apple: '/apple-touch-icon.png',
   },
