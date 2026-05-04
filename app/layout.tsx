@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
+import SwRegister from "@/components/SwRegister";
 
 const dmSans = DM_Sans({
   variable: "--font-sans",
@@ -35,7 +36,10 @@ export default function RootLayout({
       className={`${dmSans.variable} ${dmMono.variable} h-full antialiased`}
       style={{ colorScheme: 'light' }}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <SwRegister />
+        {children}
+      </body>
     </html>
   );
 }
