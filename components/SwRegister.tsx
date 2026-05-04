@@ -2,21 +2,13 @@
 
 import { useEffect } from 'react'
 
-// Converts a base64url string to the Uint8Array that pushManager.subscribe expects.
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(base64)
-  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)))
-}
-
 async function subscribeAndSend(registration: ServiceWorkerRegistration) {
   const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
   if (!vapidKey) return
 
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidKey),
+    applicationServerKey: vapidKey,
   })
 
   const { endpoint, keys } = subscription.toJSON() as {
