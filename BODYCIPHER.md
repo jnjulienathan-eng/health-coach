@@ -372,7 +372,7 @@ Sleep: sleep_duration_min, hrv, rhr, bedtime, rested, nap_minutes, fasting_gluco
 Training: cycled_today, cycling_minutes, cycling_calories (cycling transport only — training sessions in separate table), **active_calories** (integer, nullable — written by /api/health-import from Health Auto Export active_energy metric; migration: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS active_calories integer`)
 **Health Auto Export → daily_entries mapping (as of April 30, 2026):**
 - `resting_heart_rate` → `rhr` (integer, bpm)
-- `sleep_analysis` → `sleep_duration_min` (integer, minutes; HAE exports in `hr` units so webhook multiplies qty × 60). Bedtime is NOT extracted from this metric — the data point timestamp is midnight of the recording date, not the actual sleep start time. Bedtime is manual-entry only.
+- `sleep_analysis` → `sleep_duration_min` (integer, minutes) and `bedtime` (HH:MM string). HAE sends aggregated format — `totalSleep` is decimal hours (multiply × 60, round to integer); `inBedStart` is the sleep onset datetime ("YYYY-MM-DD HH:MM:SS +offset"), HH:MM portion extracted as bedtime. Both fields use COALESCE — only written if DB value is currently null (manual entry wins). Updated May 4, 2026.
 - `active_energy` → `active_calories` (integer, kcal; converts kJ if needed)
 All three fields use COALESCE — only written if the DB value is currently null (manual entries always win).
 

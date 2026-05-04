@@ -38,7 +38,10 @@ function kjToKcal(kj: number): number {
 // ── Metric data point ────────────────────────────────────────────────────────
 interface MetricPoint {
   date: string
-  qty: number
+  qty?: number
+  // sleep_analysis aggregated fields
+  totalSleep?: number
+  inBedStart?: string
   source?: string
 }
 
@@ -94,31 +97,32 @@ export async function POST(req: NextRequest) {
     type DayMetrics = {
       rhr?: number
       sleep_duration_min?: number
+      bedtime?: string
       active_calories?: number
     }
     const byDate: Record<string, DayMetrics> = {}
     const vo2MaxByDate: Record<string, number> = {}
 
     for (const metric of metrics) {
-      if (metric.name === 'sleep_analysis') {
-        console.log('[health-import] SLEEP DATA SAMPLE:', JSON.stringify((metric.data || []).slice(0, 2), null, 2))
-        // TEMPORARY DIAGNOSTIC - remove once sleep format confirmed
-      }
       for (const point of metric.data ?? []) {
         const date = extractDate(point.date)
         if (!byDate[date]) byDate[date] = {}
 
         if (metric.name === 'resting_heart_rate') {
-          byDate[date].rhr = Math.round(point.qty)
+          byDate[date].rhr = Math.round(point.qty ?? 0)
         } else if (metric.name === 'sleep_analysis') {
-          // HAE exports sleep_analysis with units 'hr' — convert to minutes
-          byDate[date].sleep_duration_min = metric.units === 'hr'
-            ? Math.round(point.qty * 60)
-            : Math.round(point.qty)
-        } else if (metric.name === 'active_energy') {
+          // HAE sends aggregated sleep_analysis — totalSleep is decimal hours, inBedStart is the sleep onset datetime.
+          if (point.totalSleep !== undefined) {
+            byDate[date].sleep_duration_min = Math.round(point.totalSleep * 60)
+          }
+          if (point.inBedStart) {
+            // "2026-05-03 22:12:05 +0200" → "22:12"
+            byDate[date].bedtime = point.inBedStart.substring(11, 16)
+          }
+        } else if (metric.name === 'active_energy' && point.qty !== undefined) {
           const kcal = metric.units === 'kJ' ? kjToKcal(point.qty) : Math.round(point.qty)
           byDate[date].active_calories = kcal
-        } else if (metric.name === 'vo2_max') {
+        } else if (metric.name === 'vo2_max' && point.qty !== undefined) {
           vo2MaxByDate[date] = point.qty
         }
       }
@@ -130,7 +134,7 @@ export async function POST(req: NextRequest) {
       // Fetch existing row to apply COALESCE: manual entries always win.
       const { data: existing } = await supabase
         .from('daily_entries')
-        .select('rhr, sleep_duration_min, active_calories')
+        .select('rhr, sleep_duration_min, bedtime, active_calories')
         .eq('user_id', 'julie')
         .eq('date', date)
         .maybeSingle()
@@ -157,6 +161,15 @@ export async function POST(req: NextRequest) {
           written.push('sleep_duration_min')
         } else {
           skipped.push('sleep_duration_min (manual value exists)')
+        }
+      }
+
+      if (incoming.bedtime !== undefined) {
+        if (row?.bedtime == null) {
+          upsert.bedtime = incoming.bedtime
+          written.push('bedtime')
+        } else {
+          skipped.push('bedtime (manual value exists)')
         }
       }
 
