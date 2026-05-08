@@ -1386,7 +1386,7 @@ export default function App() {
                   VO₂ Max
                 </span>
                 <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
-                  {vo2Max ? `${vo2Max.value} ml/kg/min` : 'Not yet logged'}
+                  {vo2Max ? `${parseFloat(vo2Max.value.toFixed(1))} ml/kg/min` : 'Not yet logged'}
                 </span>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${vo2Expanded ? ' open' : ''}`} style={{ flexShrink: 0 }}>
                   <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -1416,7 +1416,7 @@ export default function App() {
                             color: vo2Max ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
                           }}
                         >
-                          {vo2Max ? vo2Max.value : 'Not yet logged'}
+                          {vo2Max ? parseFloat(vo2Max.value.toFixed(1)) : 'Not yet logged'}
                         </button>
                         {vo2Max && <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>ml/kg/min</span>}
                       </div>
@@ -1647,7 +1647,7 @@ export default function App() {
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--color-text-dim)', marginTop: 2 }}>
                           {(ldl && hdl)
-                            ? `LDL ${ldl.value} · HDL ${hdl.value} mg/dL`
+                            ? `LDL ${parseFloat(ldl.value.toFixed(1))} · HDL ${parseFloat(hdl.value.toFixed(1))} mg/dL`
                             : 'Not yet logged'}
                         </div>
                       </div>
@@ -1752,7 +1752,7 @@ export default function App() {
                         >
                           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>LDL</span>
                           <span style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>
-                            {ldl ? `${ldl.value} mg/dL · target <100` : 'Tap to log · target <100'}
+                            {ldl ? `${parseFloat(ldl.value.toFixed(1))} mg/dL · target <100` : 'Tap to log · target <100'}
                           </span>
                         </button>
                         <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
@@ -1772,7 +1772,7 @@ export default function App() {
                                 <line x1={cx} y1="16" x2={cx} y2="22" stroke={ldlMarker} strokeWidth="1.5" />
                                 <circle cx={cx} cy="9" r="8" fill="var(--color-surface)" stroke={ldlMarker} strokeWidth="1.5" />
                                 <text x={cx} y="12.5" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: ldlMarker, fontFamily: 'var(--font-mono)' }}>
-                                  {ldl.value}
+                                  {parseFloat(ldl.value.toFixed(1))}
                                 </text>
                               </>
                             )
@@ -1824,7 +1824,7 @@ export default function App() {
                         >
                           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>HDL</span>
                           <span style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>
-                            {hdl ? `${hdl.value} mg/dL · target >60` : 'Tap to log · target >60'}
+                            {hdl ? `${parseFloat(hdl.value.toFixed(1))} mg/dL · target >60` : 'Tap to log · target >60'}
                           </span>
                         </button>
                         <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
@@ -1844,7 +1844,7 @@ export default function App() {
                                 <line x1={cx} y1="16" x2={cx} y2="22" stroke={hdlMarker} strokeWidth="1.5" />
                                 <circle cx={cx} cy="9" r="8" fill="var(--color-surface)" stroke={hdlMarker} strokeWidth="1.5" />
                                 <text x={cx} y="12.5" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: hdlMarker, fontFamily: 'var(--font-mono)' }}>
-                                  {hdl.value}
+                                  {parseFloat(hdl.value.toFixed(1))}
                                 </text>
                               </>
                             )
@@ -2017,7 +2017,7 @@ export default function App() {
                       <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>HbA1c</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 15, color: 'var(--color-text-primary)' }}>
-                          {hba1c.value}
+                          {parseFloat(hba1c.value.toFixed(1))}
                         </span>
                         <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>
                           {hba1c.unit ?? '%'}
