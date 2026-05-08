@@ -483,6 +483,24 @@ export async function getVo2SparklineData(): Promise<BiomarkerReading[]> {
   return (data ?? []) as BiomarkerReading[]
 }
 
+// ─── getVo2Rolling30DayAvg ────────────────────────────────────────
+export async function getVo2Rolling30DayAvg(): Promise<number | null> {
+  const since = new Date()
+  since.setDate(since.getDate() - 30)
+  const sinceStr = since.toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .from('biomarker_readings')
+    .select('value')
+    .eq('user_id', 'julie')
+    .eq('marker', 'vo2_max')
+    .gte('recorded_on', sinceStr)
+  if (error) throw error
+  const rows = (data ?? []) as { value: number }[]
+  if (rows.length === 0) return null
+  const avg = rows.reduce((sum, r) => sum + r.value, 0) / rows.length
+  return parseFloat(avg.toFixed(1))
+}
+
 // ─── saveVo2Reading ───────────────────────────────────────────────
 export async function saveVo2Reading(value: number, date: string): Promise<void> {
   const { error } = await supabase

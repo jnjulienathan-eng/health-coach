@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getGoalsData, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, getVo2SparklineData, saveVo2Reading, saveCardioReading, fetch30DayHistory } from '@/lib/db'
+import { getGoalsData, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, getVo2SparklineData, saveVo2Reading, saveCardioReading, fetch30DayHistory, getVo2Rolling30DayAvg } from '@/lib/db'
 import type { GoalsData, HealthAppointment, BiomarkerReading, DailyEntry } from '@/lib/types'
 import { scoreColor } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory, computeDailyTSU } from '@/lib/trainingLoad'
@@ -294,6 +294,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
   const [tlExpanded,      setTlExpanded]      = useState(false)
 
   // VO2 Max card
+  const [vo2RollingAvg,      setVo2RollingAvg]      = useState<number | null>(null)
   const [vo2Expanded,        setVo2Expanded]        = useState(false)
   const [vo2Sparkline,       setVo2Sparkline]        = useState<BiomarkerReading[]>([])
   const [vo2SparklineLoaded, setVo2SparklineLoaded]  = useState(false)
@@ -311,6 +312,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
   const [cardioSaving,    setCardioSaving]    = useState(false)
 
   useEffect(() => {
+    getVo2Rolling30DayAvg().then(setVo2RollingAvg).catch(console.error)
     getGoalsData()
       .then(async d => {
         console.error('GoalsTab: getGoalsData returned, appointments.length=', d.appointments.length)
@@ -689,7 +691,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
             VO₂ Max
           </span>
           <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
-            {vo2Max ? `${parseFloat(vo2Max.value.toFixed(1))} ml/kg/min` : 'Not yet logged'}
+            {vo2RollingAvg !== null ? `${vo2RollingAvg} ml/kg/min` : 'Not yet logged'}
           </span>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${vo2Expanded ? ' open' : ''}`} style={{ flexShrink: 0 }}>
             <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -716,18 +718,18 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
                       cursor: 'pointer',
                       padding: 0,
                       fontFamily: 'var(--font-mono)',
-                      fontSize: vo2Max ? 36 : 15,
+                      fontSize: vo2RollingAvg !== null ? 36 : 15,
                       fontWeight: 700,
                       lineHeight: 1,
-                      color: vo2Max ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
+                      color: vo2RollingAvg !== null ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
                     }}
                   >
-                    {vo2Max ? parseFloat(vo2Max.value.toFixed(1)) : 'Not yet logged'}
+                    {vo2RollingAvg !== null ? vo2RollingAvg : 'Not yet logged'}
                   </button>
-                  {vo2Max && <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>ml/kg/min</span>}
+                  {vo2RollingAvg !== null && <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>ml/kg/min</span>}
                 </div>
               </div>
-              {vo2Max && vo2NextTier(vo2Max.value) && (
+              {vo2RollingAvg !== null && vo2NextTier(vo2RollingAvg) && (
                 <div style={{
                   background: 'var(--color-primary-light)',
                   color: 'var(--color-primary-dark)',
@@ -739,7 +741,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
                   marginTop: 4,
                   flexShrink: 0,
                 }}>
-                  {vo2NextTier(vo2Max.value)} →
+                  {vo2NextTier(vo2RollingAvg)} →
                 </div>
               )}
             </div>
@@ -823,14 +825,14 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
                 })()}
 
                 {/* Current value marker — circle with value above */}
-                {vo2Max && (() => {
-                  const cx = Math.min(vo2Max.value, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
+                {vo2RollingAvg !== null && (() => {
+                  const cx = Math.min(vo2RollingAvg, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
                   return (
                     <>
                       <line x1={cx} y1="16" x2={cx} y2="22" stroke="var(--color-primary)" strokeWidth="1.5" />
                       <circle cx={cx} cy="9" r="8" fill="var(--color-surface)" stroke="var(--color-primary)" strokeWidth="1.5" />
                       <text x={cx} y="12.5" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: 'var(--color-primary)', fontFamily: 'var(--font-mono)' }}>
-                        {vo2Max.value}
+                        {vo2RollingAvg}
                       </text>
                     </>
                   )

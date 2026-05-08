@@ -9,7 +9,7 @@ import {
   ReferenceLine,
   Tooltip,
 } from 'recharts'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries } from '@/lib/db'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling30DayAvg } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
@@ -778,6 +778,7 @@ export default function App() {
   // ── Goals data + VO2 state (from GoalsTab) ───────────────────────
   const [goalsData,            setGoalsData]            = useState<GoalsData | null>(null)
   const [greeting]                                       = useState(() => getGreeting())
+  const [vo2RollingAvg,        setVo2RollingAvg]        = useState<number | null>(null)
   const [vo2Expanded,          setVo2Expanded]          = useState(false)
   const [vo2Sparkline,         setVo2Sparkline]         = useState<BiomarkerReading[]>([])
   const [vo2SparklineLoaded,   setVo2SparklineLoaded]   = useState(false)
@@ -891,6 +892,7 @@ export default function App() {
 
   // Load goals data for long-term goals + health calendar (from GoalsTab)
   useEffect(() => {
+    getVo2Rolling30DayAvg().then(setVo2RollingAvg).catch(console.error)
     getGoalsData()
       .then(async d => {
         if (d.appointments.length === 0) {
@@ -1386,7 +1388,7 @@ export default function App() {
                   VO₂ Max
                 </span>
                 <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
-                  {vo2Max ? `${parseFloat(vo2Max.value.toFixed(1))} ml/kg/min` : 'Not yet logged'}
+                  {vo2RollingAvg !== null ? `${vo2RollingAvg} ml/kg/min` : 'Not yet logged'}
                 </span>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${vo2Expanded ? ' open' : ''}`} style={{ flexShrink: 0 }}>
                   <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -1410,18 +1412,18 @@ export default function App() {
                             cursor: 'pointer',
                             padding: 0,
                             fontFamily: 'var(--font-mono)',
-                            fontSize: vo2Max ? 36 : 15,
+                            fontSize: vo2RollingAvg !== null ? 36 : 15,
                             fontWeight: 700,
                             lineHeight: 1,
-                            color: vo2Max ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
+                            color: vo2RollingAvg !== null ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
                           }}
                         >
-                          {vo2Max ? parseFloat(vo2Max.value.toFixed(1)) : 'Not yet logged'}
+                          {vo2RollingAvg !== null ? vo2RollingAvg : 'Not yet logged'}
                         </button>
-                        {vo2Max && <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>ml/kg/min</span>}
+                        {vo2RollingAvg !== null && <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>ml/kg/min</span>}
                       </div>
                     </div>
-                    {vo2Max && vo2NextTier(vo2Max.value) && (
+                    {vo2RollingAvg !== null && vo2NextTier(vo2RollingAvg) && (
                       <div style={{
                         background: 'var(--color-primary-light)',
                         color: 'var(--color-primary-dark)',
@@ -1433,7 +1435,7 @@ export default function App() {
                         marginTop: 4,
                         flexShrink: 0,
                       }}>
-                        {vo2NextTier(vo2Max.value)} →
+                        {vo2NextTier(vo2RollingAvg)} →
                       </div>
                     )}
                   </div>
@@ -1509,12 +1511,12 @@ export default function App() {
                           </>
                         )
                       })()}
-                      {vo2Max && (() => {
-                        const cx = Math.min(vo2Max.value, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
+                      {vo2RollingAvg !== null && (() => {
+                        const cx = Math.min(vo2RollingAvg, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
                         return (
                           <>
                             <text x={cx} y="11" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: 'var(--color-primary)', fontFamily: 'var(--font-mono)' }}>
-                              {vo2Max.value}
+                              {vo2RollingAvg}
                             </text>
                             <line x1={cx} y1="14" x2={cx} y2="32" stroke="var(--color-primary)" strokeWidth="2" />
                           </>
