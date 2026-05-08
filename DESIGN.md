@@ -208,6 +208,7 @@ Field layout inside open accordions:
 └────────────────────────────────────┘
 ```
 
+
 - Toggle active state: `--color-amber` background
 - Toggle inactive state: `--color-border` background
 - Name: `body-lg`
@@ -251,7 +252,7 @@ Used for: Sleep Quality (1–10), RPE
 
 ## Contextual Hero Image Pattern (Dashboard)
 
-The Dashboard tab shows a full-width hero image that reflects the training state of the day. This is a core BodyCipher pattern — the app should feel alive and personal, not like a data grid.
+The Dashboard tab shows a full-width hero image that reflects the training state of the day. All images are personal photos taken by Julie. The app should feel alive and personal, not like a data grid.
 
 Image treatment:
 - Full width, height ~240px
@@ -259,17 +260,28 @@ Image treatment:
 - Greeting text and primary insight overlaid on image in white
 - `border-radius: 0` — image bleeds to screen edges
 
-### HRV Training States → Image Mood Mapping
+### Hero Image Rotation
 
-| State | HRV Threshold | Image Mood | Keywords |
-|---|---|---|---|
-| Hard | > 100 | Energy, motion, dawn light | forest runner, sunrise trail, motion blur |
-| Moderate | 80–100 | Focused, purposeful | calm lake morning, steady movement |
-| Easy | 60–80 | Gentle, natural | soft light through trees, walking path |
-| Rest | < 60 | Restorative, still | still water, misty dock, morning calm |
-| No data | — | Neutral, warm | warm morning light, soft bokeh |
+Images are stored in `/public/images/hero/`. On Dashboard load, read today's HRV value and randomly select one image from the matching state array. Selection is random on each load — do not cache the selection between sessions.
 
-Source images from Unsplash API (free tier, 50 req/hour — more than sufficient for solo use). Search keyword maps to the mood column above.
+
+```javascript
+const heroImages = {
+  hard:     ["state-hard.jpg", "state-hard-iceland.jpg"],
+  moderate: ["state-moderate.jpg", "state-moderate-scotland.jpg"],
+  easy:     ["state-easy.jpg", "state-easy-blackforest.jpg", "state-easy-bovic.jpg", "state-easy-mushrooms.jpg"],
+  rest:     ["state-rest.jpg", "state-rest-cat.jpg", "state-rest-norway.jpg"],
+  nodata:   ["state-nodata.jpg"]
+};
+```
+
+
+HRV threshold mapping:
+- **hard** — HRV > 100
+- **moderate** — HRV 80–100
+- **easy** — HRV 60–80
+- **rest** — HRV < 60
+- **nodata** — no HRV logged today
 
 ---
 
