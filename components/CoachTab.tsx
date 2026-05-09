@@ -61,7 +61,7 @@ function RefreshIcon() {
 function SendIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M2 9h14M9 2l7 7-7 7" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 9h14M9 2l7 7-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -345,28 +345,32 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
   const sleepLogged = hasSleepData(today)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 32 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 100 }}>
 
       {/* ── Header ──────────────────────────────────────────────── */}
       <div style={{ paddingTop: 8, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1
             style={{
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '0.1em',
+              fontSize: 'var(--fs-label)',
+              fontWeight: 'var(--fw-bold)',
+              letterSpacing: 'var(--ls-label-bold)',
               textTransform: 'uppercase',
-              color: 'var(--color-text-secondary)',
+              color: 'var(--color-text-muted)',
               marginBottom: 4,
             }}
           >
             Coach
           </h1>
-          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
-            {sleepLogged
-              ? (briefingMode ? MODE_HEADERS[briefingMode] : 'Generating briefing…')
-              : 'Log today\'s sleep data to receive your briefing.'}
-          </p>
+          {sleepLogged && briefingMode ? (
+            <p style={{ fontSize: 'var(--fs-title)', fontWeight: 'var(--fw-bold)', color: 'var(--color-navy)', margin: 0 }}>
+              {MODE_HEADERS[briefingMode]}
+            </p>
+          ) : (
+            <p style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-muted)', margin: 0 }}>
+              {sleepLogged ? 'Generating briefing…' : 'Log today\'s sleep data to receive your briefing.'}
+            </p>
+          )}
         </div>
 
         {sleepLogged && (
@@ -465,19 +469,20 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
             <div
               key={key}
               style={{
-                padding: '16px',
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 12,
+                padding: 'var(--space-md)',
+                background: 'var(--color-navy)',
+                borderLeft: '3px solid var(--color-amber)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-card)',
               }}
             >
               <div
                 style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  letterSpacing: '0.08em',
+                  fontSize: 'var(--fs-body)',
+                  fontWeight: 'var(--fw-semibold)',
+                  letterSpacing: 'var(--ls-label-bold)',
                   textTransform: 'uppercase',
-                  color: 'var(--color-text-secondary)',
+                  color: 'white',
                   marginBottom: 8,
                   display: 'flex',
                   alignItems: 'center',
@@ -489,9 +494,10 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
               </div>
               <p
                 style={{
-                  fontSize: 15,
+                  fontSize: 'var(--fs-body)',
+                  fontWeight: 400,
                   lineHeight: 1.55,
-                  color: 'var(--color-text-primary)',
+                  color: 'rgba(255,255,255,0.85)',
                   margin: 0,
                 }}
               >
@@ -685,87 +691,6 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
           </div>
         )}
 
-        {/* Input row */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-          }}
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
-            placeholder="Ask anything about your data…"
-            style={{
-              flex: 1,
-              height: 44,
-              padding: '0 12px',
-              fontSize: 14,
-              color: 'var(--color-text-primary)',
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 10,
-              outline: 'none',
-              fontFamily: 'var(--font-sans)',
-            }}
-          />
-
-          {/* Mic button */}
-          <button
-            type="button"
-            onClick={startListening}
-            aria-label={isListening ? 'Listening…' : 'Voice input'}
-            style={{
-              width: 44,
-              height: 44,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: isListening ? 'var(--color-primary-light)' : 'var(--color-surface)',
-              border: `1px solid ${isListening ? 'var(--color-danger)' : 'var(--color-border)'}`,
-              borderRadius: 10,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            <MicIcon active={isListening} />
-          </button>
-
-          {/* Send button */}
-          <button
-            type="button"
-            onClick={sendMessage}
-            disabled={!chatInput.trim() || chatLoading}
-            aria-label="Send"
-            style={{
-              width: 44,
-              height: 44,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: chatInput.trim() && !chatLoading ? 'var(--color-primary)' : 'var(--color-border)',
-              border: 'none',
-              borderRadius: 10,
-              cursor: chatInput.trim() && !chatLoading ? 'pointer' : 'default',
-              flexShrink: 0,
-              transition: 'background 0.15s',
-            }}
-          >
-            <SendIcon />
-          </button>
-        </div>
-
-        {/* Chat voice error / transcribing */}
-        {(voiceError || transcribing) && (
-          <div style={{ fontSize: 12, color: transcribing ? 'var(--color-text-dim)' : 'var(--color-danger)', marginTop: -8 }}>
-            {transcribing ? 'Transcribing…' : voiceError}
-          </div>
-        )}
-
         {/* Suggested starters — only when no chat yet */}
         {chatMessages.length === 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -795,6 +720,92 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* ── Floating chat input (pinned above tab bar) ───────────── */}
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+          left: 0,
+          right: 0,
+          background: 'white',
+          borderTop: '1px solid var(--color-border-subtle)',
+          padding: `var(--space-sm) var(--space-md)`,
+          zIndex: 45,
+        }}
+      >
+        <div style={{ maxWidth: 480, margin: '0 auto' }}>
+          {(voiceError || transcribing) && (
+            <div style={{ fontSize: 12, color: transcribing ? 'var(--color-text-dim)' : 'var(--color-danger)', marginBottom: 6 }}>
+              {transcribing ? 'Transcribing…' : voiceError}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              ref={inputRef}
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+              placeholder="Ask anything about your data…"
+              style={{
+                flex: 1,
+                height: 44,
+                padding: `var(--space-sm) var(--space-md)`,
+                fontSize: 'var(--fs-body)',
+                color: 'var(--color-text-primary)',
+                background: 'white',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-full)',
+                outline: 'none',
+                fontFamily: 'var(--font-sans)',
+              }}
+            />
+            <button
+              type="button"
+              onClick={startListening}
+              aria-label={isListening ? 'Listening…' : 'Voice input'}
+              style={{
+                width: 44,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: isListening ? 'rgba(0,31,63,0.08)' : 'var(--color-surface)',
+                border: `1px solid ${isListening ? 'var(--color-danger)' : 'var(--color-border)'}`,
+                borderRadius: 'var(--radius-full)',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <MicIcon active={isListening} />
+            </button>
+            <button
+              type="button"
+              onClick={sendMessage}
+              disabled={!chatInput.trim() || chatLoading}
+              aria-label="Send"
+              style={{
+                width: 44,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'var(--color-navy)',
+                border: 'none',
+                borderRadius: 'var(--radius-full)',
+                cursor: chatInput.trim() && !chatLoading ? 'pointer' : 'default',
+                color: 'white',
+                opacity: chatInput.trim() && !chatLoading ? 1 : 0.5,
+                flexShrink: 0,
+                transition: 'opacity 0.15s',
+              }}
+            >
+              <SendIcon />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
