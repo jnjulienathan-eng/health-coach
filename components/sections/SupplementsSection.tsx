@@ -346,7 +346,17 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
   ) : null
 
   return (
-    <Section title="Supplements" isComplete={isComplete} rightSlot={summary}>
+    <Section
+      title="Supplements"
+      isComplete={isComplete}
+      rightSlot={summary}
+      icon={
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M9 6v6M6 9h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      }
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* ── Hormone toggles ────────────────────────────────────── */}

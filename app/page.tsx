@@ -464,24 +464,23 @@ function ScoreCard({ label, score, bullets }: { label: string; score: number; bu
     <div
       style={{
         flex: 1,
-        textAlign: 'center',
-        padding: '14px 8px 12px',
+        padding: '14px 10px 12px',
         background: 'var(--color-surface)',
-        border: '1px solid var(--color-border)',
-        borderRadius: 12,
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-card)',
       }}
     >
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 40, fontWeight: 700, color, lineHeight: 1 }}>
+      <div style={{ fontSize: 'var(--fs-display)', fontWeight: 'var(--fw-bold)', color: 'var(--color-navy)', lineHeight: 1, textAlign: 'center' }}>
         {score}
       </div>
-      <div style={{ fontSize: 11, fontWeight: 500, color, marginTop: 4 }}>{word}</div>
-      <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginTop: 3 }}>
+      <div style={{ fontSize: 13, fontWeight: 500, color, marginTop: 4, textAlign: 'center' }}>{word}</div>
+      <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginTop: 4, textAlign: 'center' }}>
         {label}
       </div>
       {bullets && bullets.length > 0 && (
-        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border-subtle)', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 4 }}>
           {bullets.map((b, i) => (
-            <div key={i} style={{ fontSize: 10, lineHeight: 1.4, color: b.ok ? 'var(--color-text-secondary)' : 'var(--color-text-dim)', display: 'flex', gap: 4 }}>
+            <div key={i} style={{ fontSize: 10, lineHeight: 1.4, color: b.ok ? 'var(--color-text-secondary)' : 'var(--color-text-muted)', display: 'flex', gap: 4 }}>
               <span style={{ flexShrink: 0 }}>{b.ok ? '✓' : '✗'}</span>
               <span>{b.text}</span>
             </div>
@@ -507,8 +506,8 @@ function TrainingLoadCard({ status, colour, acute, chronic, ratio, daysOfData }:
       textAlign: 'center',
       padding: '14px 8px 12px',
       background: 'var(--color-surface)',
-      border: '1px solid var(--color-border)',
-      borderRadius: 12,
+      borderRadius: 'var(--radius-lg)',
+      boxShadow: 'var(--shadow-card)',
     }}>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
         <div style={{ width: 10, height: 10, borderRadius: '50%', background: colour }} />
@@ -794,6 +793,10 @@ export default function App() {
 
   // ── Cardio state (from GoalsTab) ─────────────────────────────────
   const [cardioExpanded,  setCardioExpanded]  = useState(false)
+
+  // ── Glucose Stability state ───────────────────────────────────────
+  const [glucoseExpanded, setGlucoseExpanded] = useState(false)
+  const [cgmEnabled,      setCgmEnabled]      = useState(false)
   const [cardioEntryOpen, setCardioEntryOpen] = useState(false)
   const [cardioLdlValue,  setCardioLdlValue]  = useState('')
   const [cardioHdlValue,  setCardioHdlValue]  = useState('')
@@ -1281,7 +1284,7 @@ export default function App() {
             </div>
 
             {/* Score cards (from DashboardTab) */}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'flex-start', marginBottom: 16 }}>
               <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(entry, todayScored?.nutrition)} />
               <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(entry)} />
               <button
@@ -1359,12 +1362,21 @@ export default function App() {
             )}
 
             {/* Long-term Goals (from GoalsTab — VO2 Max, Cardiovascular, Glucose Stability) */}
-            <div className="section-label" style={{ paddingLeft: 4, marginTop: 16 }}>
+            <div style={{ paddingLeft: 4, marginTop: 24, marginBottom: 4, fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
               Long-term Goals
             </div>
 
             {/* VO2 Max card */}
-            <div className="card" style={{ padding: 0, marginTop: 8 }}>
+            <div
+              style={{
+                background: 'var(--color-surface)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-card)',
+                marginTop: 8,
+                overflow: 'hidden',
+                ...(vo2Expanded ? { borderLeft: '3px solid var(--color-amber)' } : {}),
+              }}
+            >
               <button
                 type="button"
                 onClick={handleVo2Toggle}
@@ -1377,31 +1389,38 @@ export default function App() {
                   padding: 16,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
+                  gap: 12,
+                  minHeight: 64,
                 }}
               >
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <path
-                    d="M9 3v8M5 7C3 7.5 2 9 2 11a3 3 0 003 3h2V7M13 7c2 .5 3 2 3 4a3 3 0 01-3 3h-2V7"
-                    stroke="var(--color-primary)"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-navy)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  color: '#fff',
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <path d="M9 3v8M5 7C3 7.5 2 9 2 11a3 3 0 003 3h2V7M13 7c2 .5 3 2 3 4a3 3 0 01-3 3h-2V7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-navy)', flex: 1 }}>
                   VO₂ Max
                 </span>
-                <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
                   {vo2RollingAvg !== null ? `${vo2RollingAvg} ml/kg/min` : 'Not yet logged'}
                 </span>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${vo2Expanded ? ' open' : ''}`} style={{ flexShrink: 0 }}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${vo2Expanded ? ' open' : ''}`} style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
                   <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
 
               {vo2Expanded && (
-                <div style={{ padding: '0 16px 16px' }}>
+                <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--color-border-subtle)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 4 }}>
@@ -1609,7 +1628,16 @@ export default function App() {
               const ratioHistory = pairCardioHistory(goalsData?.biomarkers ?? [])
 
               return (
-                <div className="card" style={{ padding: 0, marginTop: 8 }}>
+                <div
+                  style={{
+                    background: 'var(--color-surface)',
+                    borderRadius: 'var(--radius-lg)',
+                    boxShadow: 'var(--shadow-card)',
+                    marginTop: 8,
+                    overflow: 'hidden',
+                    ...(cardioExpanded ? { borderLeft: '3px solid var(--color-amber)' } : {}),
+                  }}
+                >
                   <button
                     type="button"
                     onClick={handleCardioToggle}
@@ -1622,37 +1650,32 @@ export default function App() {
                       padding: 16,
                       display: 'flex',
                       justifyContent: 'space-between',
-                      alignItems: 'flex-start',
+                      alignItems: 'center',
                       gap: 12,
+                      minHeight: 64,
                     }}
                   >
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flex: 1, minWidth: 0 }}>
                       <div style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 8,
-                        background: 'var(--color-heart-pink-bg)',
+                        width: 36,
+                        height: 36,
+                        borderRadius: 'var(--radius-md)',
+                        background: 'var(--color-navy)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexShrink: 0,
+                        color: '#fff',
                       }}>
                         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                          <path
-                            d="M9 15S2 10.5 2 6a4 4 0 018 0 4 4 0 018 0c0 4.5-7 9-7 9z"
-                            fill="var(--color-heart-pink)"
-                            stroke="var(--color-heart-pink)"
-                            strokeWidth="1.2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
+                          <path d="M9 15S2 10.5 2 6a4 4 0 018 0 4 4 0 018 0c0 4.5-7 9-7 9z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                          Cardiovascular health
+                        <div style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-navy)' }}>
+                          Cardiovascular Health
                         </div>
-                        <div style={{ fontSize: 12, color: 'var(--color-text-dim)', marginTop: 2 }}>
+                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
                           {(ldl && hdl)
                             ? `LDL ${parseFloat(ldl.value.toFixed(1))} · HDL ${parseFloat(hdl.value.toFixed(1))} mg/dL`
                             : 'Not yet logged'}
@@ -1674,14 +1697,17 @@ export default function App() {
                           {ratio.toFixed(1)}
                         </div>
                         <div style={{ fontSize: 11, color: rc.color, marginTop: 2 }}>
-                          {rc.label} <span style={{ fontSize: 9 }}>✦</span>
+                          {rc.label}
                         </div>
                       </div>
                     )}
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${cardioExpanded ? ' open' : ''}`} style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
+                      <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                   </button>
 
                   {cardioExpanded && (
-                    <div style={{ padding: '0 16px 16px' }}>
+                    <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--color-border-subtle)' }}>
                       {cardioEntryOpen && (
                         <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
@@ -1981,61 +2007,127 @@ export default function App() {
             })()}
 
             {/* Glucose Stability card */}
-            <div className="card" style={{ marginTop: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <path
-                    d="M2 9c1-3 2-5 3-5s2 4 3 6 2 5 3 5 2-3 3-6"
-                    stroke="var(--color-amber)"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            <div
+              style={{
+                background: 'var(--color-surface)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-card)',
+                marginTop: 8,
+                overflow: 'hidden',
+                ...(glucoseExpanded ? { borderLeft: '3px solid var(--color-amber)' } : {}),
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setGlucoseExpanded(v => !v)}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  minHeight: 64,
+                }}
+              >
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-navy)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  color: '#fff',
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <path d="M2 9c1-3 2-5 3-5s2 4 3 6 2 5 3 5 2-3 3-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-navy)', flex: 1 }}>
                   Glucose Stability
                 </span>
-              </div>
-              {(glucoseAvg != null || hba1c) ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {glucoseAvg != null && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
-                        Fasting (7-day avg)
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  {glucoseAvg != null ? `${glucoseAvg.toFixed(1)} mmol/L` : 'No data'}
+                </span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${glucoseExpanded ? ' open' : ''}`} style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
+                  <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+
+              {glucoseExpanded && (
+                <div style={{ padding: '16px', borderTop: '1px solid var(--color-border-subtle)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* 7-day fasting glucose average */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                        Fasting Glucose (7-day avg)
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                      <span style={{
+                        fontSize: 'var(--fs-body)',
+                        fontWeight: 'var(--fw-semibold)',
+                        color: glucoseAvg == null
+                          ? 'var(--color-text-muted)'
+                          : glucoseAvg <= 4.8
+                          ? 'var(--color-status-optimal)'
+                          : glucoseAvg <= 5.6
+                          ? 'var(--color-status-moderate)'
+                          : 'var(--color-status-low)',
+                      }}>
+                        {glucoseAvg != null ? glucoseAvg.toFixed(1) : '—'}
                       </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 15,
-                          color: glucoseAvg <= 4.8
-                            ? 'var(--color-success)'
-                            : glucoseAvg <= 5.6
-                            ? 'var(--color-amber)'
-                            : 'var(--color-danger)',
-                        }}>
-                          {glucoseAvg.toFixed(1)}
-                        </span>
-                        <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>mmol/L</span>
+                      <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>mmol/L</span>
+                    </div>
+                  </div>
+
+                  {/* HbA1c */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                        HbA1c
                       </div>
                     </div>
-                  )}
-                  {hba1c && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>HbA1c</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 15, color: 'var(--color-text-primary)' }}>
-                          {parseFloat(hba1c.value.toFixed(1))}
-                        </span>
-                        <span style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>
-                          {hba1c.unit ?? '%'}
-                        </span>
-                      </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                      <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-navy)' }}>
+                        {hba1c != null ? parseFloat(hba1c.value.toFixed(1)) : '—'}
+                      </span>
+                      <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>
+                        {hba1c?.unit ?? '%'}
+                      </span>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>
-                  Start logging fasting glucose in the Sleep section
+                  </div>
+
+                  {/* CGM toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid var(--color-border-subtle)' }}>
+                    <div>
+                      <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                        CGM Data
+                      </div>
+                      {!cgmEnabled && (
+                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                          CGM data not connected
+                        </div>
+                      )}
+                      {cgmEnabled && (
+                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                          CGM data not connected
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={cgmEnabled}
+                      onChange={e => setCgmEnabled(e.target.checked)}
+                      className="toggle"
+                      aria-label="Enable CGM data"
+                    />
+                  </div>
                 </div>
               )}
             </div>

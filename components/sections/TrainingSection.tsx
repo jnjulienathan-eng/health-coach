@@ -147,7 +147,17 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
   ) : null
 
   return (
-    <Section title="Training" isComplete={isComplete} rightSlot={summary}>
+    <Section
+      title="Training"
+      isComplete={isComplete}
+      rightSlot={summary}
+      accent
+      icon={
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M10 2L5 9h5l-1 7 6-8h-5l1-6z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      }
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* Quick-add row */}

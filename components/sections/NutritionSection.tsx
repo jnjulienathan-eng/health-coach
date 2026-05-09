@@ -527,7 +527,17 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
   }
 
   return (
-    <Section title="Nutrition" isComplete={targetsHit} isPartial={hasData && !targetsHit} rightSlot={summaryBars}>
+    <Section
+      title="Nutrition"
+      isComplete={targetsHit}
+      isPartial={hasData && !targetsHit}
+      rightSlot={summaryBars}
+      icon={
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M6 2v5a3 3 0 006 0V2M9 9v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      }
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {/* Macro summary bar */}

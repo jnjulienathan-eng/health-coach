@@ -120,7 +120,16 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
   ) : null
 
   return (
-    <Section title="Hydration" isComplete={totalMl > 0} rightSlot={summary}>
+    <Section
+      title="Hydration"
+      isComplete={totalMl > 0}
+      rightSlot={summary}
+      icon={
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M9 2C9 2 4 8 4 11.5a5 5 0 0010 0C14 8 9 2 9 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      }
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* ── Cup row + extra input ────────────────────────────── */}

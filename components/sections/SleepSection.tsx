@@ -149,7 +149,16 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
     ) : null
 
   return (
-    <Section title="Sleep" isComplete={isComplete} rightSlot={summary}>
+    <Section
+      title="Sleep"
+      isComplete={isComplete}
+      rightSlot={summary}
+      icon={
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M15 10.5A7 7 0 017.5 3a6.5 6.5 0 100 12A7 7 0 0115 10.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      }
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
         {/* Bedtime */}

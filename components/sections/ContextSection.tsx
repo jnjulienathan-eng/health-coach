@@ -66,7 +66,17 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
     ) : null
 
   return (
-    <Section title="Context" isComplete={isComplete} rightSlot={summary}>
+    <Section
+      title="Context"
+      isComplete={isComplete}
+      rightSlot={summary}
+      icon={
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <rect x="2" y="4" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M6 2v4M12 2v4M2 9h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      }
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
         {/* ── Cycle day ─────────────────────────────────────────── */}
