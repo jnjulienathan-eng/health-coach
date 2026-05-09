@@ -708,7 +708,7 @@ export default function CoachTab({ today, cycleDay, currentDate }: Props) {
                   padding: '7px 12px',
                   fontSize: 13,
                   color: 'var(--color-navy)',
-                  background: 'var(--color-primary-light)',
+                  background: 'var(--color-surface)',
                   border: '1px solid var(--color-navy)',
                   borderRadius: 20,
                   cursor: 'pointer',
