@@ -364,7 +364,7 @@ function SessionCard({
     <div
       style={{
         background: 'var(--color-surface)',
-        border: '1px solid var(--color-border)',
+        border: '1px solid var(--color-navy)',
         borderRadius: 10,
         padding: 14,
       }}
