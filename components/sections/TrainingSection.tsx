@@ -201,7 +201,7 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
               type="button"
               onClick={() => setShowCustomForm((v) => !v)}
               className="btn-template"
-              style={{ background: showCustomForm ? 'var(--color-primary)' : undefined, color: showCustomForm ? '#fff' : undefined }}
+              style={{ background: showCustomForm ? 'var(--color-navy)' : undefined, color: showCustomForm ? '#fff' : undefined }}
             >
               <span style={{ fontSize: 18 }}>＋</span>
               <span style={{ fontSize: 12, marginTop: 2 }}>Other</span>
