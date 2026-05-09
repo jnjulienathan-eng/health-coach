@@ -353,7 +353,7 @@ function SessionCard({
   onRemove: () => void
 }) {
   const INTENSITY_COLORS: Record<string, string> = {
-    Easy:     'var(--color-success)',
+    Easy:     'var(--color-navy)',
     Moderate: 'var(--color-amber)',
     Hard:     'var(--color-danger)',
   }
