@@ -55,35 +55,42 @@ function formatDate(dateStr: string) {
 // ─── Types ────────────────────────────────────────────────────────
 type Tab = 'today' | 'calendar' | 'coach' | 'dashboard'
 
-// ─── Icons ───────────────────────────────────────────────────────
-function IconBodyCipher({ active }: { active: boolean }) {
-  const c = active ? 'var(--color-primary)' : 'var(--color-text-dim)'
+// ─── Icons (all use currentColor — container controls colour) ────
+function IconBodyCipher() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <circle cx="11" cy="11" r="7" stroke={c} strokeWidth="1.5" />
-      <circle cx="11" cy="11" r="2.5" stroke={c} strokeWidth="1.5" />
-      <path d="M11 4v3M11 15v3M4 11h3M15 11h3" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="11" cy="11" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M11 4v3M11 15v3M4 11h3M15 11h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   )
 }
 
-function IconToday({ active }: { active: boolean }) {
-  const c = active ? 'var(--color-primary)' : 'var(--color-text-dim)'
+function IconToday() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <rect x="3" y="5" width="16" height="14" rx="2" stroke={c} strokeWidth="1.5" />
-      <path d="M7 3v4M15 3v4M3 10h16" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
+      <rect x="3" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M7 3v4M15 3v4M3 10h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   )
 }
 
-function IconCoach({ active }: { active: boolean }) {
-  const c = active ? 'var(--color-primary)' : 'var(--color-text-dim)'
+function IconCalendar() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <rect x="3" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M7 3v4M15 3v4M3 10h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M11 13v-3M9.5 11.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function IconCoach() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
       <path
         d="M4 4h14a1 1 0 011 1v9a1 1 0 01-1 1H7l-4 3V5a1 1 0 011-1z"
-        stroke={c}
+        stroke="currentColor"
         strokeWidth="1.5"
         strokeLinejoin="round"
       />
@@ -91,30 +98,28 @@ function IconCoach({ active }: { active: boolean }) {
   )
 }
 
-function IconDashboard({ active }: { active: boolean }) {
-  const c = active ? 'var(--color-primary)' : 'var(--color-text-dim)'
+function IconDashboard() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <rect x="3" y="13" width="4" height="6" rx="1" stroke={c} strokeWidth="1.5" />
-      <rect x="9" y="9"  width="4" height="10" rx="1" stroke={c} strokeWidth="1.5" />
-      <rect x="15" y="5" width="4" height="14" rx="1" stroke={c} strokeWidth="1.5" />
+      <rect x="3" y="13" width="4" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="9" y="9"  width="4" height="10" rx="1" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="15" y="5" width="4" height="14" rx="1" stroke="currentColor" strokeWidth="1.5" />
     </svg>
   )
 }
 
-function IconHistory({ active }: { active: boolean }) {
-  const c = active ? 'var(--color-primary)' : 'var(--color-text-dim)'
+function IconHistory() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <circle cx="11" cy="11" r="8" stroke={c} strokeWidth="1.5" />
-      <path d="M11 7v4l3 2" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M11 7v4l3 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
-const TABS: { id: Tab; label: string; Icon: React.FC<{ active: boolean }> }[] = [
+const TABS: { id: Tab; label: string; Icon: React.FC }[] = [
   { id: 'today',    label: 'Today',           Icon: IconToday },
-  { id: 'calendar', label: 'Health Calendar', Icon: IconToday },
+  { id: 'calendar', label: 'Health Calendar', Icon: IconCalendar },
   { id: 'coach',    label: 'Coach',           Icon: IconCoach },
   { id: 'dashboard',label: 'Dashboard',       Icon: IconDashboard },
 ]
@@ -2557,12 +2562,12 @@ export default function App() {
           left: 0,
           right: 0,
           height: 72,
-          background: 'var(--color-surface)',
-          borderTop: '1px solid var(--color-border)',
+          background: 'var(--color-navy)',
           display: 'flex',
-          alignItems: 'stretch',
+          alignItems: 'center',
+          justifyContent: 'space-around',
           zIndex: 50,
-          paddingBottom: 'env(safe-area-inset-bottom)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         }}
       >
         {TABS.map(({ id, label, Icon }) => {
@@ -2578,28 +2583,47 @@ export default function App() {
               style={{
                 flex: 1,
                 display: 'flex',
-                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 4,
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                color: active ? 'var(--color-primary)' : 'var(--color-text-dim)',
-                transition: 'color 150ms',
+                padding: 0,
               }}
             >
-              <Icon active={active} />
-              <span
+              <div
                 style={{
-                  fontSize: 10,
-                  fontWeight: active ? 500 : 400,
-                  fontFamily: 'var(--font-sans)',
-                  letterSpacing: '0.02em',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                  ...(active
+                    ? {
+                        background: '#FFFFFF',
+                        borderRadius: 'var(--radius-full)',
+                        padding: '6px 16px',
+                        color: 'var(--color-navy)',
+                      }
+                    : {
+                        color: '#FFFFFF',
+                        opacity: 0.6,
+                        padding: '6px 16px',
+                      }),
                 }}
               >
-                {label}
-              </span>
+                <Icon />
+                <span
+                  style={{
+                    fontSize: 'var(--fs-label)',
+                    fontWeight: 'var(--fw-medium)',
+                    fontFamily: 'Manrope, sans-serif',
+                    letterSpacing: '0.01em',
+                    lineHeight: 1,
+                  }}
+                >
+                  {label}
+                </span>
+              </div>
             </button>
           )
         })}

@@ -108,6 +108,10 @@
 
   /* Typography — letter-spacing (label-bold only) */
   --ls-label-bold: 0.05em;
+
+  /* Convenience aliases */
+  --fs-label:  12px;
+  --fw-medium: 500;
 }
 
 /* ─── Tailwind v4 theme extension ───────────────────────────────── */
