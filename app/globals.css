@@ -199,7 +199,7 @@ body {
   background: var(--color-navy);
   color: #fff;
   border: none;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   font-family: var(--font-sans);
   font-size: var(--fs-body);
   font-weight: var(--fw-semibold);
@@ -299,6 +299,37 @@ input[type='number'] {
 select option {
   background: var(--color-surface);
   color: var(--color-text-primary);
+}
+
+/* ─── Range slider ──────────────────────────────────────────────── */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  outline: none;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+}
+input[type='range']::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
 }
 
 /* ─── Tap scale (1–5) ───────────────────────────────────────────── */

@@ -470,7 +470,7 @@ function ScoreCard({ label, score, bullets }: { label: string; score: number; bu
         boxShadow: 'var(--shadow-card)',
       }}
     >
-      <div style={{ fontSize: 'var(--fs-display)', fontWeight: 'var(--fw-bold)', color: 'var(--color-navy)', lineHeight: 1, textAlign: 'center' }}>
+      <div style={{ fontSize: 'var(--fs-display)', fontWeight: 'var(--fw-bold)', color: score >= 80 ? 'var(--color-status-optimal)' : score >= 65 ? 'var(--color-status-good)' : 'var(--color-status-moderate)', lineHeight: 1, textAlign: 'center' }}>
         {score}
       </div>
       <div style={{ fontSize: 13, fontWeight: 500, color, marginTop: 4, textAlign: 'center' }}>{word}</div>
