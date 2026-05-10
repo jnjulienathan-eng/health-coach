@@ -1,14 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import {
-  ResponsiveContainer,
-  LineChart, Line,
-  BarChart, Bar,
-  XAxis, YAxis,
-  ReferenceLine,
-  Tooltip,
-} from 'recharts'
 import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling30DayAvg } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment } from '@/lib/types'
@@ -645,16 +637,6 @@ function durationToH(min: number | null): number | null {
   return Math.round((min / 60) * 10) / 10
 }
 
-const tooltipStyle = {
-  background: 'var(--color-surface)',
-  border: '1px solid #DCE8E0',
-  borderRadius: 8,
-  fontSize: 12,
-  fontFamily: 'DM Mono, monospace',
-  color: '#1A2E22',
-}
-const tooltipItemStyle  = { color: '#1A2E22' }
-const tooltipLabelStyle = { color: '#5A7A66', marginBottom: 2 }
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -732,7 +714,7 @@ function HrvChart({ data }: { data: { date: string; value: number | null }[] }) 
       {/* Baseline dashed */}
       <line x1={SVG_PAD_L} x2={SVG_PAD_L + svgCW} y1={yOf(BASELINE)} y2={yOf(BASELINE)}
         stroke="var(--color-amber)" strokeOpacity="0.6" strokeWidth="1" strokeDasharray="4 4" />
-      <text x={SVG_PAD_L + svgCW} y={yOf(BASELINE) - 3} textAnchor="end"
+      <text x={SVG_PAD_L + svgCW} y={SVG_PAD_T + 12} textAnchor="end"
         fontSize="12" fill="var(--color-text-muted)">baseline 88ms</text>
       {/* Polyline segments */}
       {segments.map((pts, si) => (
@@ -780,8 +762,6 @@ function BarChart2T({ data, target, targetLabel }: { data: Bar2TData[]; target: 
       {/* Target dashed line */}
       <line x1={SVG_PAD_L} x2={SVG_PAD_L + svgCW} y1={yOf(target)} y2={yOf(target)}
         stroke="var(--color-amber)" strokeOpacity="0.6" strokeWidth="1" strokeDasharray="4 4" />
-      <text x={SVG_PAD_L + svgCW} y={yOf(target) - 3} textAnchor="end"
-        fontSize="12" fill="var(--color-text-muted)">{targetLabel}</text>
       {/* Bars */}
       {data.map((d, i) => {
         if (d.value == null) return null
@@ -985,10 +965,11 @@ function HistoryRow({ entry, onSelectDate }: { entry: DailyEntry; onSelectDate: 
         ) : (
           <span style={{ fontSize: 14, color: 'var(--color-text-muted)', flexShrink: 0 }}>No sleep logged</span>
         )}
-        {/* ChevronRight — does not rotate on expand */}
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
-          <path d="M7 5l4 4-4 4" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        {!expanded && (
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
+            <path d="M5 7l4 4 4-4" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
       </button>
       {expanded && <EntryDetail entry={entry} />}
       {expanded && (
@@ -2736,9 +2717,6 @@ export default function App() {
           const tlResult  = computeTrainingLoad(allEntries)
           const tlHistory = computeTrainingLoadHistory(chart30)
 
-          const CHART_H = 120
-          const axisStyle = { fontSize: 10, fill: '#8FAA98', fontFamily: 'DM Mono, monospace' }
-
           const hrvData = chart30.map(e => ({ date: chartDate(e.date), value: e.sleep.hrv }))
           const sleepData = chart30.map(e => ({ date: chartDate(e.date), value: durationToH(e.sleep.duration_min) }))
           // Independent 30-day date range for nutrition charts — not derived from
@@ -2827,9 +2805,12 @@ export default function App() {
                           }}
                           style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}
                         >
-                          <span style={{ fontSize: 18, fontWeight: 600, color: '#FFFFFF', flex: 1 }}>
-                            {tlResult.status}
-                          </span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-amber)', marginBottom: 2 }}>TRAINING LOAD</div>
+                            <span style={{ fontSize: 18, fontWeight: 600, color: '#FFFFFF' }}>
+                              {tlResult.status}
+                            </span>
+                          </div>
                           <div style={{ width: 10, height: 10, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
                           <svg
                             width="18" height="18" viewBox="0 0 18 18" fill="none"
@@ -2892,6 +2873,7 @@ export default function App() {
                                 {/* 30-day trend line */}
                                 {n >= 2 ? (
                                   <div style={{ marginTop: 'var(--space-md)' }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 4 }}>30-DAY TREND</div>
                                     <svg viewBox={`0 0 ${CHART_W} ${PAD_Y * 2 + TL_H}`} width="100%" height="80" style={{ display: 'block' }}>
                                       <defs>
                                         <clipPath id="dashTlClip">
@@ -2945,16 +2927,8 @@ export default function App() {
                   </ChartCard>
 
                   {/* Training minutes */}
-                  <ChartCard title="Training minutes — 30 days">
-                    <ResponsiveContainer width="100%" height={CHART_H}>
-                      <BarChart data={trainingData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="date" tick={axisStyle} />
-                        <YAxis tick={axisStyle} />
-                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}min`, 'Training']} />
-                        <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>Total training minutes per day</div>
+                  <ChartCard title="Training minutes — 30 Days">
+                    <BarChart2T data={trainingData} target={60} targetLabel="60min" />
                   </ChartCard>
                 </>
               )}
