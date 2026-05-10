@@ -135,26 +135,26 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
       <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
         {data.duration_min != null && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-bold)', textTransform: 'uppercase' }}>Sleep</span>
-            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-semibold)' }}>{Math.floor(data.duration_min / 60)}h {data.duration_min % 60}m</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-medium)' }}>Sleep</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-medium)' }}>{Math.floor(data.duration_min / 60)}h {data.duration_min % 60}m</span>
           </div>
         )}
         {data.hrv != null && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-bold)', textTransform: 'uppercase' }}>HRV</span>
-            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-semibold)' }}>{data.hrv}</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-medium)' }}>HRV</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-medium)' }}>{data.hrv}</span>
           </div>
         )}
         {data.rhr != null && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-bold)', textTransform: 'uppercase' }}>RHR</span>
-            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-semibold)' }}>{data.rhr}</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-medium)' }}>RHR</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-medium)' }}>{data.rhr}</span>
           </div>
         )}
         {data.rested != null && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-bold)', textTransform: 'uppercase' }}>Rested</span>
-            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-semibold)' }}>{data.rested}/5</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-medium)' }}>Rested</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-medium)' }}>{data.rested}/5</span>
           </div>
         )}
       </div>
