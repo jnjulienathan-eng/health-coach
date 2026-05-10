@@ -769,7 +769,7 @@ function ScreenMenu({
           </span>
         </button>
         <button
-          type="button" onClick={onBrowseLibrary} className="btn-secondary"
+          type="button" onClick={onBrowseLibrary} className="btn-primary"
           style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6 }}
         >
           <span>Browse Library</span>
@@ -778,7 +778,7 @@ function ScreenMenu({
           </span>
         </button>
         <button
-          type="button" onClick={onCreateRecipe} className="btn-secondary"
+          type="button" onClick={onCreateRecipe} className="btn-primary"
           style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6 }}
         >
           <span>Create a recipe</span>
@@ -787,7 +787,7 @@ function ScreenMenu({
           </span>
         </button>
         <button
-          type="button" onClick={onPhotoEstimate} className="btn-secondary"
+          type="button" onClick={onPhotoEstimate} className="btn-primary"
           style={{ padding: '14px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6 }}
         >
           <span>Estimate from photo or description</span>
