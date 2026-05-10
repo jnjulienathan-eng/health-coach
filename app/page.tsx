@@ -1800,19 +1800,19 @@ export default function App() {
                               </feMerge>
                             </filter>
                             <linearGradient id="vo2FillGrad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%"   style={{ stopColor: 'var(--color-primary)', stopOpacity: 0.2 }} />
-                              <stop offset="100%" style={{ stopColor: 'var(--color-primary)', stopOpacity: 0 }} />
+                              <stop offset="0%"   style={{ stopColor: 'var(--color-navy)', stopOpacity: 0.2 }} />
+                              <stop offset="100%" style={{ stopColor: 'var(--color-navy)', stopOpacity: 0 }} />
                             </linearGradient>
                           </defs>
                           {points.length >= 2 && (
                             <>
                               <path d={fillPath} fill="url(#vo2FillGrad)" />
-                              <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="4" opacity="0.55" filter="url(#vo2Glow)" />
-                              <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+                              <path d={linePath} fill="none" stroke="var(--color-navy)" strokeWidth="4" opacity="0.55" filter="url(#vo2Glow)" />
+                              <path d={linePath} fill="none" stroke="var(--color-navy)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
                             </>
                           )}
                           {points.map((p, i) => (
-                            <circle key={i} cx={p.x} cy={p.y} r="3" fill="var(--color-primary)" />
+                            <circle key={i} cx={p.x} cy={p.y} r="3" fill="var(--color-navy)" />
                           ))}
                           {points.map((p, i) => (
                             <text
