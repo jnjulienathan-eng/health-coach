@@ -54,7 +54,7 @@ _Last updated: May 4, 2026 (Session 3 — notifications complete)_
 | Index | Label | Component | Status |
 |---|---|---|---|
 | 0 | Today | Daily logging accordions (inline in app/page.tsx) | Live |
-| 1 | Health Calendar | Health appointments list (copied from GoalsTab) | Live |
+| 1 | Health Calendar | Hero card + appointment list (inline in app/page.tsx) | Live — design Step 5 complete |
 | 2 | Coach | `CoachTab` | Live |
 | 3 | Dashboard | Inline in app/page.tsx (charts + history list) | Live |
 
@@ -173,10 +173,14 @@ Glucose stability expanded state design (not yet built):
 - CGM toggle: when off, card greys out with note "Enable CGM to track glucose."
 - Build: targeted edit to GoalsTab.tsx only. No new API routes. No DB migrations.
 
-**Health calendar section**
-- 9 default appointments seeded. Always visible and tappable. Sorted by next_due_date ascending, nulls last.
+**Health calendar section (design Step 5 complete — May 10, 2026)**
+- **Hero card** at top of tab: navy card (`--color-navy`) with circular amber ring (80×80px SVG, 3px stroke, 70% opacity), type-specific icon (inline SVG, lucide-style, 28px), "UPCOMING EVENT" label, appointment name (24px, white), date (16px, 70% white), and amber days-remaining pill. Surfaces the single nearest appointment where `next_due_date` is not null. Days remaining computed in Europe/Berlin local date. Fallback: "All appointments up to date." on a navy card.
+- **Appointment rows — State A (next_due_date not null):** `--color-surface` bg, 1px `--color-border` border, `--radius-lg`, `--shadow-card`, min-height 72px. Name (18px bold, `--color-text-primary`) on left with "Last done: DD Mon YYYY" below; due date (12px amber, nowrap) + ChevronDown (18px, muted) stacked on right.
+- **Appointment rows — State B (next_due_date null):** Same card style, min-height 56px, single line: name (18px bold, navy) left + "Not scheduled" (16px muted) right. No chevron.
+- **Expanded state:** 4px amber left border, 20px all-side padding. Field labels (14px, 700, uppercase, letter-spacing 0.05em). NEXT DUE sub-label "(Auto-computed, overridable)" at 12px muted. Inputs: 16px, 1px border, `--radius-md`, full width. Textarea: 3 rows, resize vertical. MARK AS DONE TODAY: full-width, navy, white, `--radius-full`, 52px. SAVE/CANCEL: equal flex, 44px, `--radius-full`.
+- 9 default appointments seeded. Sorted by next_due_date ascending, nulls last.
 - Dimming: appointments with interval_months > 6 are dimmed unless next_due_date is within 4 months or last_completed_date is null.
-- Each row taps to bottom sheet: appointment name, last completed (datetime-local), next due (auto-computed, manually overridable), "Mark as done", notes field.
+- Save/mark-done logic unchanged — visual restyling only.
 
 ---
 
