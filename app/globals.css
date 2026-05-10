@@ -446,9 +446,9 @@ input[type='range']::-moz-range-thumb {
   border-radius: 3px;
   transition: width 300ms ease;
 }
-.macro-bar-fill.on-track  { background: var(--color-success); }
-.macro-bar-fill.under     { background: var(--color-danger); }
-.macro-bar-fill.over      { background: var(--color-amber); }
+.macro-bar-fill.on-track  { background: var(--color-navy); }
+.macro-bar-fill.under     { background: var(--color-amber); }
+.macro-bar-fill.over      { background: var(--color-navy); }
 
 /* ─── Score count-up animation ──────────────────────────────────── */
 @keyframes score-count-up {
