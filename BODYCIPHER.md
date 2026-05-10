@@ -56,7 +56,7 @@ _Last updated: May 4, 2026 (Session 3 — notifications complete)_
 | 0 | Today | Daily logging accordions (inline in app/page.tsx) | Live |
 | 1 | Health Calendar | Hero card + appointment list (inline in app/page.tsx) | Live — design Step 5 complete |
 | 2 | Coach | `CoachTab` | Live |
-| 3 | Dashboard | Inline in app/page.tsx (charts + history list) | Live |
+| 3 | Dashboard | Inline in app/page.tsx (charts + history list) | Live — design Step 6 complete |
 
 Default active tab: 0 (Today). GoalsTab, DashboardTab, and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
 
@@ -137,17 +137,22 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 
 ---
 
-### Dashboard (updated April 30, 2026 — inlined in app/page.tsx)
+### Dashboard (updated May 10, 2026 — design Step 6 complete — inlined in app/page.tsx)
 
 **Score cards row removed** from Dashboard tab (April 30, 2026). Score cards remain on Today tab only.
 
 - No score cards in Dashboard tab.
 - 30-day trend charts: HRV, Sleep duration, Protein, Fiber, Training minutes.
-- Training Load expandable card at top above HRV chart:
-  - Collapsed: status + colour dot + chevron
-  - Expanded: Acute TSU + Chronic TSU values, ratio with spectrum bar, 30-day colour-coded trend line with shaded optimal band (0.8–1.3)
+- **Training Load expandable card (design Step 6):** Primary Insight Card shell — `--color-navy` background, `--radius-lg`, `--space-lg` padding, `--shadow-card`.
+  - Collapsed: status label (18px/600/white) on left, zone-coloured 10px dot + ChevronDown SVG (18px, white 70%, rotates 180° on expand) on right. Zone colour computed via `zoneDisplayColor(ratio)` using design spec thresholds (not `tlResult.colour`).
+  - Expanded: white 15% opacity divider, two sub-metric boxes (ACUTE TSU / CHRONIC TSU, white 8% bg), CSS linear-gradient ratio bar (0–0.6 amber / 0.6–0.8 #6DBF8A / 0.8–1.3 status-optimal / 1.3–1.5 amber / 1.5+ status-low), 3px×20px tick marker at current ratio, scale labels (0.6/0.8/1.3/1.5), ratio value (40px/800), 30-day trend SVG (amber line, white 8% optimal band). If fewer than 2 data points: "Not enough data yet" label.
   - Tapping the Training Load score card on the Today tab navigates to Dashboard and opens this card expanded via `trainingLoadExpanded` state. Manual toggle on the Dashboard card clears `trainingLoadExpanded` and resumes normal toggle behaviour.
+- **Charts (design Step 6):** HRV, Sleep, Protein, Fiber replaced with inline SVGs (no Recharts). Training minutes chart still uses Recharts. ChartCard restyled: `--shadow-card`, title 18px/700/`--color-text-primary`.
+  - HRV line chart (160px SVG): navy polyline, amber dots above baseline / navy dots below, amber dashed baseline at 88ms, horizontal grid lines at `--color-border-subtle`, y-axis labels right of PAD_L=32.
+  - Sleep/Protein/Fiber bar charts (120px SVG): two-tone bars (navy below target, amber above target), amber dashed target line.
+  - Targets: Sleep 7.5h, Protein 130g, Fiber 30g.
 - **History section appended below charts** (April 30, 2026): chronological entry list with expandable detail rows and "Edit this day →" link (navigates to Today tab for that date). Uses `loadAllEntries()` fetched once on mount via dedicated state (`historyEntries`, `historyLoading`, `historyError`).
+- **History rows (design Step 6):** HISTORY section label (14px/700/uppercase/letter-spacing 0.05em). Each row: `--shadow-card`, min-height 72px, date (24px/700), emojis (16px), BEHAV/OUTC columns (14px/700 label above 24px/700 score, coloured by `scoreDisplayColor`: ≥80 optimal / 65–79 moderate / <65 low), ChevronRight (no rotation). Expanded detail: fields (14px/700 label, 16px value). "Edit this day →" link (14px/700/uppercase/amber).
 - Data source: `dashEntries` (already loaded by the Today tab's `loadRecentEntries(30)` effect) reused for HRV/sleep/training chart computation. `loadAllEntries()` added separately for the history list.
 - **Protein and Fiber charts (updated May 1, 2026):** Read from `daily_nutrition_summary` via `GET /api/nutrition/chart?days=31` (service-role admin client, bypasses RLS). Stored in `nutritionSummaries` state as a `Record<string, { protein, fiber }>` keyed by plain YYYY-MM-DD strings using `.slice(0, 10)`. Chart arrays are built from an **independent 30-consecutive-date range** (`nutritionChart30`) ending at `currentDate`, not from `dashEntries`/`chart30` — so bars show even on dates where `daily_entries` has no row. Date generation uses `Date.UTC` arithmetic + `.toISOString().slice(0, 10)` with no local-timezone shift; map lookup is a direct string key comparison. Legacy `daily_entries.total_protein` / `total_fiber` columns are no longer read by the charts.
 - DashboardTab.tsx no longer imported — content fully inlined in app/page.tsx. Component preserved on disk.

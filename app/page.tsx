@@ -660,26 +660,155 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
   return (
     <div
       style={{
-        padding: '16px 16px 12px',
+        padding: 'var(--space-md)',
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
-        borderRadius: 12,
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-card)',
       }}
     >
       <div
         style={{
-          fontSize: 11,
-          fontWeight: 500,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          color: 'var(--color-text-secondary)',
-          marginBottom: 12,
+          fontSize: 18,
+          fontWeight: 700,
+          color: 'var(--color-text-primary)',
+          marginBottom: 'var(--space-sm)',
         }}
       >
         {title}
       </div>
       {children}
     </div>
+  )
+}
+
+// ─── Inline SVG chart helpers ──────────────────────────────────────
+
+const SVG_VW = 300
+const SVG_PAD_L = 32
+const SVG_PAD_R = 4
+const SVG_PAD_T = 8
+const SVG_PAD_B = 18
+const svgCW = SVG_VW - SVG_PAD_L - SVG_PAD_R
+
+function HrvChart({ data }: { data: { date: string; value: number | null }[] }) {
+  const VH = 160
+  const ch = VH - SVG_PAD_T - SVG_PAD_B
+  const BASELINE = 88
+  const nonNull = data.map(d => d.value).filter(v => v != null) as number[]
+  if (nonNull.length === 0) {
+    return (
+      <div style={{ height: VH, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>No data yet</span>
+      </div>
+    )
+  }
+  const rawMin = Math.min(...nonNull, BASELINE)
+  const rawMax = Math.max(...nonNull, BASELINE)
+  const pad    = Math.max((rawMax - rawMin) * 0.1, 5)
+  const minV   = rawMin - pad
+  const maxV   = rawMax + pad
+  const range  = maxV - minV || 1
+  const xOf = (i: number) => SVG_PAD_L + (data.length <= 1 ? svgCW / 2 : (i / (data.length - 1)) * svgCW)
+  const yOf = (v: number) => SVG_PAD_T + ch * (1 - (v - minV) / range)
+  // Y-axis: 3 evenly-spaced grid values
+  const yStep = (maxV - minV) / 2
+  const gridVals = [minV, minV + yStep, maxV]
+  // Build polyline segments (break on null)
+  const segments: string[][] = []
+  let cur: string[] = []
+  data.forEach((d, i) => {
+    if (d.value == null) { if (cur.length) { segments.push(cur); cur = [] } }
+    else cur.push(`${xOf(i).toFixed(1)},${yOf(d.value).toFixed(1)}`)
+  })
+  if (cur.length) segments.push(cur)
+  return (
+    <svg width="100%" viewBox={`0 0 ${SVG_VW} ${VH}`} style={{ display: 'block', overflow: 'visible' }}>
+      {/* Horizontal grid lines */}
+      {gridVals.map(v => (
+        <line key={v} x1={SVG_PAD_L} x2={SVG_PAD_L + svgCW} y1={yOf(v)} y2={yOf(v)}
+          stroke="var(--color-border-subtle)" strokeWidth="1" />
+      ))}
+      {/* Baseline dashed */}
+      <line x1={SVG_PAD_L} x2={SVG_PAD_L + svgCW} y1={yOf(BASELINE)} y2={yOf(BASELINE)}
+        stroke="var(--color-amber)" strokeOpacity="0.6" strokeWidth="1" strokeDasharray="4 4" />
+      <text x={SVG_PAD_L + svgCW} y={yOf(BASELINE) - 3} textAnchor="end"
+        fontSize="12" fill="var(--color-text-muted)">baseline 88ms</text>
+      {/* Polyline segments */}
+      {segments.map((pts, si) => (
+        <polyline key={si} points={pts.join(' ')} fill="none" stroke="var(--color-navy)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+      {/* Dots */}
+      {data.map((d, i) => d.value != null && (
+        <circle key={i} cx={xOf(i)} cy={yOf(d.value)} r="5"
+          fill={d.value > BASELINE ? 'var(--color-amber)' : 'var(--color-navy)'} />
+      ))}
+      {/* X-axis: first and last labels only */}
+      <text x={SVG_PAD_L} y={VH - 3} textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">1</text>
+      <text x={SVG_PAD_L + svgCW} y={VH - 3} textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">30</text>
+      {/* Y-axis labels */}
+      {gridVals.map(v => (
+        <text key={v} x={SVG_PAD_L - 4} y={yOf(v) + 4} textAnchor="end" fontSize="12" fill="var(--color-text-muted)">{Math.round(v)}</text>
+      ))}
+    </svg>
+  )
+}
+
+interface Bar2TData { date: string; value: number | null }
+function BarChart2T({ data, target, targetLabel }: { data: Bar2TData[]; target: number; targetLabel: string }) {
+  const VH = 120
+  const ch = VH - SVG_PAD_T - SVG_PAD_B
+  const nonNull = data.map(d => d.value).filter(v => v != null) as number[]
+  if (nonNull.length === 0) {
+    return (
+      <div style={{ height: VH, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>No data yet</span>
+      </div>
+    )
+  }
+  const maxV = Math.max(...nonNull, target * 1.25)
+  const yOf  = (v: number) => SVG_PAD_T + ch * (1 - v / maxV)
+  const barTotal = svgCW / data.length
+  const barW  = Math.max(barTotal - 1.5, 2)
+  const gap   = barTotal - barW
+  const yVals = [0, target, Math.round(maxV)]
+  return (
+    <svg width="100%" viewBox={`0 0 ${SVG_VW} ${VH}`} style={{ display: 'block', overflow: 'visible' }}>
+      {/* Baseline rule at y=0 */}
+      <line x1={SVG_PAD_L} x2={SVG_PAD_L + svgCW} y1={yOf(0)} y2={yOf(0)}
+        stroke="var(--color-border-subtle)" strokeWidth="1" />
+      {/* Target dashed line */}
+      <line x1={SVG_PAD_L} x2={SVG_PAD_L + svgCW} y1={yOf(target)} y2={yOf(target)}
+        stroke="var(--color-amber)" strokeOpacity="0.6" strokeWidth="1" strokeDasharray="4 4" />
+      <text x={SVG_PAD_L + svgCW} y={yOf(target) - 3} textAnchor="end"
+        fontSize="12" fill="var(--color-text-muted)">{targetLabel}</text>
+      {/* Bars */}
+      {data.map((d, i) => {
+        if (d.value == null) return null
+        const x = SVG_PAD_L + i * barTotal + gap / 2
+        const val = d.value
+        const bottomY = yOf(0)
+        if (val >= target) {
+          const navyH = Math.max(bottomY - yOf(target), 0)
+          const amberH = Math.max(yOf(target) - yOf(val), 0)
+          return (
+            <g key={i}>
+              <rect x={x} y={yOf(target)} width={barW} height={navyH} fill="var(--color-navy)" rx="4" />
+              <rect x={x} y={yOf(val)} width={barW} height={amberH} fill="var(--color-amber)" rx="4" />
+            </g>
+          )
+        }
+        const navyH = Math.max(bottomY - yOf(val), 0)
+        return <rect key={i} x={x} y={yOf(val)} width={barW} height={navyH} fill="var(--color-navy)" rx="4" />
+      })}
+      {/* X-axis */}
+      <text x={SVG_PAD_L} y={VH - 3} textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">1</text>
+      <text x={SVG_PAD_L + svgCW} y={VH - 3} textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">30</text>
+      {/* Y-axis */}
+      {yVals.map(v => (
+        <text key={v} x={SVG_PAD_L - 4} y={yOf(v) + 4} textAnchor="end" fontSize="12" fill="var(--color-text-muted)">{v}</text>
+      ))}
+    </svg>
   )
 }
 
@@ -724,15 +853,30 @@ function durationStr(min: number | null): string {
   return h > 0 ? `${h}h${m > 0 ? `${m}m` : ''}` : `${m}m`
 }
 
+function scoreDisplayColor(score: number | null): string {
+  if (score == null) return 'var(--color-text-muted)'
+  if (score >= 80)   return 'var(--color-status-optimal)'
+  if (score >= 65)   return 'var(--color-status-moderate)'
+  return 'var(--color-status-low)'
+}
+
+function zoneDisplayColor(ratio: number | null): string {
+  if (ratio == null) return '#FFFFFF'
+  if (ratio > 1.5)   return 'var(--color-status-low)'
+  if (ratio >= 1.3)  return 'var(--color-amber)'
+  if (ratio >= 0.8)  return 'var(--color-status-optimal)'
+  if (ratio >= 0.6)  return '#6DBF8A'
+  return 'var(--color-amber)'
+}
+
 function ScorePill({ score, label }: { score: number; label: string }) {
-  const color = scoreColor(score)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 44 }}>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 400, color, lineHeight: 1 }}>
-        {score}
-      </span>
-      <span style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginTop: 2 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>
+      <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
         {label}
+      </span>
+      <span style={{ fontSize: 24, fontWeight: 700, color: scoreDisplayColor(score), lineHeight: 1.2 }}>
+        {score}
       </span>
     </div>
   )
@@ -741,11 +885,11 @@ function ScorePill({ score, label }: { score: number; label: string }) {
 function DetailRow({ label, value }: { label: string; value: string | null }) {
   if (!value) return null
   return (
-    <div style={{ display: 'flex', gap: 8, fontSize: 13 }}>
-      <span style={{ minWidth: 90, fontSize: 10, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-dim)', paddingTop: 1 }}>
+    <div style={{ display: 'flex', gap: 8 }}>
+      <span style={{ minWidth: 100, fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', paddingTop: 1, flexShrink: 0 }}>
         {label}
       </span>
-      <span style={{ color: 'var(--color-text-primary)', lineHeight: 1.4 }}>{value}</span>
+      <span style={{ fontSize: 16, color: 'var(--color-text-primary)', lineHeight: 1.4 }}>{value}</span>
     </div>
   )
 }
@@ -795,7 +939,7 @@ function EntryDetail({ entry }: { entry: DailyEntry }) {
   ].filter(Boolean).join(' · ')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 14px 14px', background: 'var(--color-bg)', borderTop: '1px solid var(--color-border)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 'var(--space-md) var(--space-lg)', background: 'var(--color-surface)', borderTop: '1px solid var(--color-border-subtle)' }}>
       <DetailRow label="Sleep"    value={sleepParts || null} />
       <DetailRow label="Training" value={trainParts || (t.cycled_today ? '🚴 Cycled' : 'Rest day')} />
       <DetailRow label="Nutrition"    value={nutParts || null} />
@@ -813,45 +957,46 @@ function HistoryRow({ entry, onSelectDate }: { entry: DailyEntry; onSelectDate: 
   const oScore = outcomeScore(entry)
   const hasSleep = entry.sleep.hrv != null || entry.sleep.duration_min != null
 
-  const sessionIcons = entry.training.sessions.map(s => activityEmoji(s.activity_type)).join(' ')
+  const sessionIcons = entry.training.sessions.map(s => activityEmoji(s.activity_type))
+  if (entry.training.cycled_today && !sessionIcons.includes('🚴')) sessionIcons.push('🚴')
 
   return (
-    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-card)', overflow: 'hidden' }}>
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
-        style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '14px 14px', background: 'none', border: 'none', cursor: 'pointer', gap: 12, textAlign: 'left' }}
+        style={{ display: 'flex', alignItems: 'center', width: '100%', minHeight: 72, padding: 'var(--space-md) var(--space-lg)', background: 'none', border: 'none', cursor: 'pointer', gap: 12, textAlign: 'left' }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', lineHeight: 1.2 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.2 }}>
             {historyFormatDate(entry.date)}
           </div>
-          {(sessionIcons || entry.training.cycled_today) && (
-            <div style={{ fontSize: 15, marginTop: 4, letterSpacing: 2 }}>
-              {sessionIcons}
-              {entry.training.cycled_today && ' 🚴'}
+          {sessionIcons.length > 0 && (
+            <div style={{ fontSize: 16, marginTop: 4, display: 'flex', gap: 4 }}>
+              {sessionIcons.map((e, i) => <span key={i}>{e}</span>)}
             </div>
           )}
         </div>
         {hasSleep ? (
           <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
-            <ScorePill score={bScore} label="Behav" />
-            <ScorePill score={oScore} label="Outc"  />
+            <ScorePill score={bScore} label="BEHAV" />
+            <ScorePill score={oScore} label="OUTC"  />
           </div>
         ) : (
-          <span style={{ fontSize: 11, color: 'var(--color-text-dim)', flexShrink: 0 }}>No sleep logged</span>
+          <span style={{ fontSize: 14, color: 'var(--color-text-muted)', flexShrink: 0 }}>No sleep logged</span>
         )}
-        <span style={{ fontSize: 16, color: 'var(--color-text-dim)', transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 200ms', flexShrink: 0 }}>
-          ›
-        </span>
+        {/* ChevronRight — does not rotate on expand */}
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
+          <path d="M7 5l4 4-4 4" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
       {expanded && <EntryDetail entry={entry} />}
       {expanded && (
-        <div style={{ padding: '8px 14px 12px', background: 'var(--color-bg)', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--color-border)' }}>
+        <div style={{ padding: 'var(--space-sm) var(--space-lg)', background: 'var(--color-surface)', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--color-border-subtle)' }}>
           <button
             type="button"
             onClick={() => onSelectDate(entry.date)}
-            style={{ fontSize: 12, color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)', padding: 0 }}
+            style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-amber)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'none', padding: 0 }}
           >
             Edit this day →
           </button>
@@ -2666,20 +2811,13 @@ export default function App() {
                     const xOf = (i: number) => n <= 1 ? PAD_X : PAD_X + (i / (n - 1)) * (CHART_W - 2 * PAD_X)
                     const yOf = (v: number) => PAD_Y + TL_H * (1 - v / maxR)
                     const opt_y1 = yOf(1.3), opt_y2 = yOf(0.8)
-
-                    const BAR_W = 280
-                    const ZONES = [
-                      { end: 0.6,  colour: 'var(--color-amber)' },
-                      { end: 0.8,  colour: 'var(--color-training-easy)' },
-                      { end: 1.3,  colour: 'var(--color-success)' },
-                      { end: 1.5,  colour: 'var(--color-amber)' },
-                      { end: 2.0,  colour: 'var(--color-danger)' },
-                    ]
-                    const SCALE_MAX = 2.0
-                    const ratioX = tlResult.ratio != null ? Math.min(tlResult.ratio, SCALE_MAX) / SCALE_MAX * BAR_W : null
+                    const isExpanded  = dashTlExpanded || trainingLoadExpanded
+                    const dotColor    = zoneDisplayColor(tlResult.ratio)
+                    const tickPct     = tlResult.ratio != null ? Math.min(tlResult.ratio, 2.0) / 2.0 * 100 : null
 
                     return (
-                      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12 }}>
+                      <div style={{ background: 'var(--color-navy)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-lg)', boxShadow: 'var(--shadow-card)' }}>
+                        {/* Collapsed header row */}
                         <button
                           type="button"
                           onClick={() => {
@@ -2687,160 +2825,123 @@ export default function App() {
                             setTrainingLoadExpanded(false)
                             setDashTlExpanded(!effectivelyExpanded)
                           }}
-                          style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}
+                          style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}
                         >
-                          <div style={{ width: 10, height: 10, borderRadius: '50%', background: tlResult.colour, flexShrink: 0 }} />
-                          <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
-                            Training Load
+                          <span style={{ fontSize: 18, fontWeight: 600, color: '#FFFFFF', flex: 1 }}>
+                            {tlResult.status}
                           </span>
-                          <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500, color: tlResult.colour }}>{tlResult.status}</span>
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${(dashTlExpanded || trainingLoadExpanded) ? ' open' : ''}`} style={{ flexShrink: 0 }}>
-                            <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          <div style={{ width: 10, height: 10, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+                          <svg
+                            width="18" height="18" viewBox="0 0 18 18" fill="none"
+                            style={{ flexShrink: 0, marginLeft: 'var(--space-xs)', opacity: 0.7, transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 200ms ease' }}
+                          >
+                            <path d="M5 7l4 4 4-4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         </button>
 
-                        {(dashTlExpanded || trainingLoadExpanded) && (
-                          <div style={{ padding: '0 16px 16px' }}>
+                        {/* Expanded content */}
+                        {isExpanded && (
+                          <>
+                            <div style={{ height: 1, background: 'rgba(255,255,255,0.15)', margin: 'var(--space-md) 0' }} />
+
                             {tlResult.status === 'Establishing baseline' ? (
-                              <div style={{ fontSize: 12, color: 'var(--color-text-dim)', marginBottom: 14 }}>
-                                Building baseline — check back in {Math.max(0, 28 - allEntries.length)} days
-                              </div>
+                              <>
+                                <div style={{ fontSize: 40, fontWeight: 800, color: '#FFFFFF', textAlign: 'right' }}>—</div>
+                                <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.6)', textAlign: 'right' }}>Establishing baseline</div>
+                              </>
                             ) : (
                               <>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-                                  <div style={{ textAlign: 'center', padding: '8px', background: 'var(--color-bg)', borderRadius: 8 }}>
-                                    <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 2 }}>Acute (7d)</div>
-                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: 'var(--color-text-primary)' }}>{tlResult.acute}</div>
-                                    <div style={{ fontSize: 9, color: 'var(--color-text-dim)' }}>TSU</div>
+                                {/* Sub-metric boxes */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)' }}>
+                                  <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 'var(--radius-md)', padding: 'var(--space-sm) var(--space-md)' }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 4 }}>ACUTE TSU</div>
+                                    <div style={{ fontSize: 24, fontWeight: 700, color: '#FFFFFF' }}>{tlResult.acute ?? '—'}</div>
                                   </div>
-                                  <div style={{ textAlign: 'center', padding: '8px', background: 'var(--color-bg)', borderRadius: 8 }}>
-                                    <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 2 }}>Chronic (28d)</div>
-                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: 'var(--color-text-primary)' }}>{tlResult.chronic}</div>
-                                    <div style={{ fontSize: 9, color: 'var(--color-text-dim)' }}>TSU</div>
+                                  <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 'var(--radius-md)', padding: 'var(--space-sm) var(--space-md)' }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 4 }}>CHRONIC TSU</div>
+                                    <div style={{ fontSize: 24, fontWeight: 700, color: '#FFFFFF' }}>{tlResult.chronic ?? '—'}</div>
                                   </div>
                                 </div>
-                                <div style={{ marginBottom: 4 }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                                    <div style={{ fontSize: 11, color: 'var(--color-text-dim)' }}>Ratio</div>
-                                    {tlResult.ratio != null && (
-                                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: tlResult.colour }}>
-                                        {tlResult.ratio.toFixed(2)}
-                                      </div>
+
+                                {/* Ratio bar */}
+                                <div style={{ marginTop: 'var(--space-md)' }}>
+                                  <div style={{ height: 12, borderRadius: 'var(--radius-full)', background: 'linear-gradient(to right, var(--color-amber) 0% 30%, #6DBF8A 30% 40%, var(--color-status-optimal) 40% 65%, var(--color-amber) 65% 75%, var(--color-status-low) 75% 100%)', position: 'relative' }}>
+                                    {tickPct != null && (
+                                      <div style={{ position: 'absolute', left: `${tickPct}%`, top: '50%', transform: 'translate(-50%, -50%)', width: 3, height: 20, background: dotColor, borderRadius: 2 }} />
                                     )}
                                   </div>
-                                  <svg viewBox={`0 0 ${BAR_W} 30`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
-                                    {(() => {
-                                      let x = 0
-                                      return ZONES.map((z, i) => {
-                                        const prev = i === 0 ? 0 : ZONES[i - 1].end
-                                        const w = (z.end - prev) / SCALE_MAX * BAR_W
-                                        const rect = <rect key={z.end} x={x} y="14" width={w} height="10" fill={z.colour} opacity="0.5" />
-                                        x += w
-                                        return rect
-                                      })
-                                    })()}
-                                    {[0.6, 0.8, 1.3, 1.5].map(v => {
-                                      const cx = v / SCALE_MAX * BAR_W
-                                      return (
-                                        <g key={v}>
-                                          <line x1={cx} y1="12" x2={cx} y2="24" stroke="var(--color-surface)" strokeWidth="1.5" />
-                                          <text x={cx} y="29" textAnchor="middle" fontSize="7" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{v}</text>
-                                        </g>
-                                      )
-                                    })}
-                                    {ratioX != null && (
-                                      <>
-                                        <line x1={ratioX} y1="8" x2={ratioX} y2="14" stroke={tlResult.colour} strokeWidth="1.5" />
-                                        <circle cx={ratioX} cy="5" r="4" fill={tlResult.colour} />
-                                      </>
-                                    )}
-                                  </svg>
+                                  <div style={{ position: 'relative', height: 18, marginTop: 2 }}>
+                                    {[{ v: 0.6, pct: 30 }, { v: 0.8, pct: 40 }, { v: 1.3, pct: 65 }, { v: 1.5, pct: 75 }].map(({ v, pct }) => (
+                                      <span key={v} style={{ position: 'absolute', left: `${pct}%`, transform: 'translateX(-50%)', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{v}</span>
+                                    ))}
+                                  </div>
                                 </div>
-                                {n >= 2 && (
-                                  <div style={{ marginTop: 14 }}>
-                                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginBottom: 6 }}>30-day trend</div>
-                                    <svg viewBox={`0 0 ${CHART_W} ${PAD_Y * 2 + TL_H + 12}`} width="100%" style={{ display: 'block' }}>
+
+                                {/* Ratio value */}
+                                <div style={{ textAlign: 'right', marginTop: 'var(--space-sm)' }}>
+                                  {tlResult.ratio != null ? (
+                                    <span style={{ fontSize: 40, fontWeight: 800, color: dotColor }}>{tlResult.ratio.toFixed(2)}</span>
+                                  ) : (
+                                    <>
+                                      <div style={{ fontSize: 40, fontWeight: 800, color: '#FFFFFF' }}>—</div>
+                                      <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.6)' }}>Establishing baseline</div>
+                                    </>
+                                  )}
+                                </div>
+
+                                {/* 30-day trend line */}
+                                {n >= 2 ? (
+                                  <div style={{ marginTop: 'var(--space-md)' }}>
+                                    <svg viewBox={`0 0 ${CHART_W} ${PAD_Y * 2 + TL_H}`} width="100%" height="80" style={{ display: 'block' }}>
                                       <defs>
                                         <clipPath id="dashTlClip">
                                           <rect x={PAD_X} y={PAD_Y} width={CHART_W - 2 * PAD_X} height={TL_H} />
                                         </clipPath>
                                       </defs>
-                                      <rect x={PAD_X} y={opt_y1} width={CHART_W - 2 * PAD_X} height={Math.max(0, opt_y2 - opt_y1)} fill="var(--color-success)" opacity="0.08" clipPath="url(#dashTlClip)" />
+                                      <rect x={PAD_X} y={opt_y1} width={CHART_W - 2 * PAD_X} height={Math.max(0, opt_y2 - opt_y1)} fill="rgba(255,255,255,0.08)" clipPath="url(#dashTlClip)" />
                                       {tlHistory.slice(1).map((pt, i) => {
                                         const prev = tlHistory[i]
                                         return (
                                           <line key={pt.date}
                                             x1={xOf(i).toFixed(1)} y1={yOf(prev.ratio ?? 0).toFixed(1)}
                                             x2={xOf(i + 1).toFixed(1)} y2={yOf(pt.ratio ?? 0).toFixed(1)}
-                                            stroke={pt.colour} strokeWidth="1.5" strokeLinecap="round"
+                                            stroke="var(--color-amber)" strokeWidth="2" strokeLinecap="round"
                                           />
                                         )
                                       })}
                                     </svg>
                                   </div>
+                                ) : (
+                                  <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 'var(--space-md)' }}>
+                                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Not enough data yet</span>
+                                  </div>
                                 )}
                               </>
                             )}
-                          </div>
+                          </>
                         )}
                       </div>
                     )
                   })()}
 
-                  {/* HRV */}
-                  <ChartCard title="HRV — 30 days">
-                    <ResponsiveContainer width="100%" height={CHART_H}>
-                      <LineChart data={hrvData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="date" tick={axisStyle} />
-                        <YAxis tick={axisStyle} domain={['auto', 'auto']} />
-                        <ReferenceLine y={88} stroke="#DCE8E0" strokeDasharray="4 2" />
-                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}ms`, 'HRV']} />
-                        <Line type="monotone" dataKey="value" stroke="#3D9A6B" strokeWidth={2} dot={{ fill: '#3D9A6B', r: 3 }} connectNulls={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>— baseline 88ms</div>
+                  {/* HRV — 30 Days */}
+                  <ChartCard title="HRV — 30 Days">
+                    <HrvChart data={hrvData} />
                   </ChartCard>
 
-                  {/* Sleep duration */}
-                  <ChartCard title="Sleep — 30 days">
-                    <ResponsiveContainer width="100%" height={CHART_H}>
-                      <BarChart data={sleepData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="date" tick={axisStyle} />
-                        <YAxis tick={axisStyle} domain={[0, 10]} />
-                        <ReferenceLine y={7.5} stroke="#DCE8E0" strokeDasharray="4 2" />
-                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}h`, 'Sleep']} />
-                        <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>— target 7h30</div>
+                  {/* Sleep — 30 Days */}
+                  <ChartCard title="Sleep — 30 Days">
+                    <BarChart2T data={sleepData} target={7.5} targetLabel="7.5h" />
                   </ChartCard>
 
-                  {/* Protein */}
-                  <ChartCard title="Protein — 30 days">
-                    <ResponsiveContainer width="100%" height={CHART_H}>
-                      <BarChart data={proteinData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="date" tick={axisStyle} />
-                        <YAxis tick={axisStyle} />
-                        <ReferenceLine y={130} stroke="#DCE8E0" strokeDasharray="4 2" />
-                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}g`, 'Protein']} />
-                        <Bar dataKey="value" radius={[3, 3, 0, 0]} fill="#3D9A6B" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>— target 130g</div>
+                  {/* Protein — 30 Days */}
+                  <ChartCard title="Protein — 30 Days">
+                    <BarChart2T data={proteinData} target={130} targetLabel="130g" />
                   </ChartCard>
 
-                  {/* Fiber */}
-                  <ChartCard title="Fiber — 30 days">
-                    <ResponsiveContainer width="100%" height={CHART_H}>
-                      <BarChart data={fiberData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="date" tick={axisStyle} />
-                        <YAxis tick={axisStyle} />
-                        <ReferenceLine y={30} stroke="#DCE8E0" strokeDasharray="4 2" />
-                        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} formatter={(v) => [`${v}g`, 'Fiber']} />
-                        <Bar dataKey="value" fill="#3D9A6B" radius={[3, 3, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginTop: 4 }}>— target 30g</div>
+                  {/* Fiber — 30 Days */}
+                  <ChartCard title="Fiber — 30 Days">
+                    <BarChart2T data={fiberData} target={30} targetLabel="30g" />
                   </ChartCard>
 
                   {/* Training minutes */}
@@ -2860,13 +2961,10 @@ export default function App() {
 
               {/* History section */}
               <div>
-                <div style={{ paddingTop: 8, paddingBottom: 8, borderTop: '1px solid var(--color-border)', marginTop: 8 }}>
-                  <h2 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 4 }}>
-                    History
+                <div style={{ marginBottom: 'var(--space-sm)' }}>
+                  <h2 style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+                    HISTORY
                   </h2>
-                  <p style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>
-                    {historyLoading ? 'Loading…' : `${historyEntries.length} ${historyEntries.length === 1 ? 'day' : 'days'} logged`}
-                  </p>
                 </div>
 
                 {historyError && (
