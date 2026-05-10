@@ -97,7 +97,7 @@ export default function Section({
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {!open && rightSlot}
           <ChevronIcon open={open} />
         </div>

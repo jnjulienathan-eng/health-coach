@@ -139,6 +139,9 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
           fontFamily: 'var(--font-mono)',
           fontSize: 12,
           color: 'var(--color-text-secondary)',
+          minWidth: 0,
+          overflow: 'hidden',
+          whiteSpace: 'nowrap',
         }}
       >
         {data.duration_min != null && (
