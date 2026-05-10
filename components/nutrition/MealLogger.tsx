@@ -2510,7 +2510,7 @@ function ScreenPhotoEstimate({
             >
               <CameraIcon />
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {imageFile ? imageFile.name : 'Take or choose a photo'}
+                {imageFile ? imageFile.name : 'Take a photo'}
               </span>
               <input
                 type="file"
