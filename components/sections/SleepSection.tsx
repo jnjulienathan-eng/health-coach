@@ -132,24 +132,31 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
   // Collapsed summary shown in header
   const summary =
     isComplete ? (
-      <div
-        style={{
-          display: 'flex',
-          gap: 10,
-          fontFamily: 'var(--font-mono)',
-          fontSize: 12,
-          color: 'var(--color-text-secondary)',
-          minWidth: 0,
-          overflow: 'hidden',
-          whiteSpace: 'nowrap',
-        }}
-      >
+      <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
         {data.duration_min != null && (
-          <span>{Math.floor(data.duration_min / 60)}h {data.duration_min % 60}m</span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-bold)', textTransform: 'uppercase' }}>Sleep</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-semibold)' }}>{Math.floor(data.duration_min / 60)}h {data.duration_min % 60}m</span>
+          </div>
         )}
-        {data.hrv != null && <span>HRV {data.hrv}</span>}
-        {data.rhr != null && <span>RHR {data.rhr}</span>}
-        {data.rested != null && <span>Rested {data.rested}/5</span>}
+        {data.hrv != null && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-bold)', textTransform: 'uppercase' }}>HRV</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-semibold)' }}>{data.hrv}</span>
+          </div>
+        )}
+        {data.rhr != null && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-bold)', textTransform: 'uppercase' }}>RHR</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-semibold)' }}>{data.rhr}</span>
+          </div>
+        )}
+        {data.rested != null && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', fontWeight: 'var(--fw-bold)', textTransform: 'uppercase' }}>Rested</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-primary)', fontWeight: 'var(--fw-semibold)' }}>{data.rested}/5</span>
+          </div>
+        )}
       </div>
     ) : null
 
