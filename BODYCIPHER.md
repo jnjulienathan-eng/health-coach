@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 4, 2026 (Session 3 — notifications complete)_
+_Last updated: May 10, 2026 (Long-term Goals cards design-aligned)_
 
 ---
 
@@ -59,6 +59,18 @@ _Last updated: May 4, 2026 (Session 3 — notifications complete)_
 | 3 | Dashboard | Inline in app/page.tsx (charts + history list) | Live — design Step 6 complete |
 
 Default active tab: 0 (Today). GoalsTab, DashboardTab, and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
+
+### Today Tab (updated May 10, 2026 — Long-term Goals cards design-aligned)
+
+**Long-term Goals design pass (May 10, 2026):**
+VO2 Max and Cardiovascular Health cards aligned to DESIGN.md tokens:
+- VO2 Max status badge: amber filled pill (`--color-amber` bg, `--color-navy` text, `--radius-full`, `--fs-label`, `--fw-bold`, uppercase); removed green outline/arrow style
+- VO2 Max spectrum bar: flat grey track (`--color-border`), amber fill from left to current value (`--color-amber`), simple navy vertical tick at target (40); removed gradient fill
+- VO2 Max band labels: `--fs-label` (12px), `--color-text-secondary`; removed monospace/hardcoded sizes
+- LDL and HDL spectrum bars: same flat grey + amber fill treatment; removed gradient fills
+- LDL/HDL active band labels: amber colour + bold weight; inactive bands `--color-text-secondary`
+- Log bloodwork button: `btn-primary` class (navy bg, white text, `--radius-lg`, height 52px, full width); was `btn-secondary`
+- Overdue warning text: `--color-amber`, `--fs-label`, `--fw-bold`, uppercase; was `--color-danger`
 
 ### Today Tab (updated May 10, 2026 — accordion interior restyling complete)
 

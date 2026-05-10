@@ -1675,17 +1675,17 @@ export default function App() {
                     </div>
                     {vo2RollingAvg !== null && vo2NextTier(vo2RollingAvg) && (
                       <div style={{
-                        background: 'var(--color-primary-light)',
-                        color: 'var(--color-primary-dark)',
-                        borderRadius: 20,
-                        padding: '4px 10px',
-                        fontSize: 12,
-                        fontWeight: 500,
-                        border: '1px solid var(--color-primary)',
+                        background: 'var(--color-amber)',
+                        color: 'var(--color-navy)',
+                        borderRadius: 'var(--radius-full)',
+                        padding: 'var(--space-xs) var(--space-sm)',
+                        fontSize: 'var(--fs-label)',
+                        fontWeight: 'var(--fw-bold)',
+                        textTransform: 'uppercase',
                         marginTop: 4,
                         flexShrink: 0,
                       }}>
-                        {vo2NextTier(vo2RollingAvg)} →
+                        {vo2NextTier(vo2RollingAvg)}
                       </div>
                     )}
                   </div>
@@ -1739,23 +1739,17 @@ export default function App() {
 
                   <div style={{ paddingRight: 8 }}>
                     <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
-                      <defs>
-                        <linearGradient id="vo2BarGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%"   style={{ stopColor: 'var(--color-spectrum-start)' }} />
-                          <stop offset="100%" style={{ stopColor: 'var(--color-spectrum-end)' }} />
-                        </linearGradient>
-                      </defs>
-                      <rect x="0" y="22" width="280" height="10" rx="5" fill="url(#vo2BarGrad)" />
+                      <rect x="0" y="22" width="280" height="10" rx="5" fill="var(--color-border)" />
+                      {vo2RollingAvg !== null && (() => {
+                        const cx = Math.min(vo2RollingAvg, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
+                        return <rect x="0" y="22" width={cx} height="10" rx="5" fill="var(--color-amber)" />
+                      })()}
                       {(() => {
                         const cx = (40 / VO2_SCALE_MAX) * 280
                         return (
                           <>
-                            <polygon
-                              points={`${cx},${22 - 5} ${cx + 4},${27} ${cx},${32 + 5} ${cx - 4},${27}`}
-                              fill="var(--color-text-primary)"
-                              opacity="0.7"
-                            />
-                            <text x={cx} y="38" textAnchor="middle" fontSize="7" style={{ fill: 'var(--color-text-primary)', fontFamily: 'var(--font-mono)' }}>
+                            <line x1={cx} y1="18" x2={cx} y2="36" stroke="var(--color-navy)" strokeWidth="2" />
+                            <text x={cx} y="38" textAnchor="middle" style={{ fontSize: 'var(--fs-label)', fill: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
                               target
                             </text>
                           </>
@@ -1765,10 +1759,10 @@ export default function App() {
                         const cx = Math.min(vo2RollingAvg, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
                         return (
                           <>
-                            <text x={cx} y="11" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: 'var(--color-primary)', fontFamily: 'var(--font-mono)' }}>
+                            <text x={cx} y="11" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: 'var(--color-navy)', fontFamily: 'var(--font-mono)' }}>
                               {vo2RollingAvg}
                             </text>
-                            <line x1={cx} y1="14" x2={cx} y2="32" stroke="var(--color-primary)" strokeWidth="2" />
+                            <line x1={cx} y1="14" x2={cx} y2="32" stroke="var(--color-navy)" strokeWidth="2" />
                           </>
                         )
                       })()}
@@ -1779,10 +1773,10 @@ export default function App() {
                         const isLast = i === VO2_BANDS.length - 1
                         return (
                           <div key={band.label} style={{ flex: `0 0 ${widthPct}%`, minWidth: 0, textAlign: isLast ? 'right' : 'left' }}>
-                            <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', letterSpacing: '0.02em' }}>
+                            <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)' }}>
                               {band.label}
                             </div>
-                            <div style={{ fontSize: 8, color: 'var(--color-text-dim)', marginTop: 1 }}>
+                            <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', marginTop: 1 }}>
                               {band.rangeLabel}
                             </div>
                           </div>
@@ -2015,19 +2009,12 @@ export default function App() {
                           </span>
                         </button>
                         <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
-                          <defs>
-                            <linearGradient id="ldlBarGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                              <stop offset="0%"   style={{ stopColor: 'var(--color-success)' }} />
-                              <stop offset="50%"  style={{ stopColor: 'var(--color-spectrum-yellow)' }} />
-                              <stop offset="75%"  style={{ stopColor: 'var(--color-amber)' }} />
-                              <stop offset="100%" style={{ stopColor: 'var(--color-danger)' }} />
-                            </linearGradient>
-                          </defs>
-                          <rect x="0" y="22" width="280" height="10" rx="5" fill="url(#ldlBarGrad)" />
+                          <rect x="0" y="22" width="280" height="10" rx="5" fill="var(--color-border)" />
                           {ldl && (() => {
                             const cx = Math.min(ldl.value, LDL_SCALE_MAX) / LDL_SCALE_MAX * 280
                             return (
                               <>
+                                <rect x="0" y="22" width={cx} height="10" rx="5" fill="var(--color-amber)" />
                                 <line x1={cx} y1="16" x2={cx} y2="22" stroke={ldlMarker} strokeWidth="1.5" />
                                 <circle cx={cx} cy="9" r="8" fill="var(--color-surface)" stroke={ldlMarker} strokeWidth="1.5" />
                                 <text x={cx} y="12.5" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: ldlMarker, fontFamily: 'var(--font-mono)' }}>
@@ -2045,15 +2032,13 @@ export default function App() {
                             return (
                               <div key={band.label} style={{ flex: `0 0 ${widthPct}%`, minWidth: 0, textAlign: isLast ? 'right' : 'left' }}>
                                 <div style={{
-                                  fontSize: 9,
-                                  fontFamily: 'var(--font-mono)',
-                                  fontWeight: active ? 700 : 400,
-                                  color: active ? LDL_BAND_COLORS[i] : 'var(--color-text-dim)',
-                                  letterSpacing: '0.02em',
+                                  fontSize: 'var(--fs-label)',
+                                  fontWeight: active ? 'var(--fw-bold)' : 'var(--fw-label-sm)',
+                                  color: active ? 'var(--color-amber)' : 'var(--color-text-secondary)',
                                 }}>
-                                  {band.label}{active && ' ✦'}
+                                  {band.label}
                                 </div>
-                                <div style={{ fontSize: 8, color: 'var(--color-text-dim)', marginTop: 1 }}>
+                                <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', marginTop: 1 }}>
                                   {band.rangeLabel}
                                 </div>
                               </div>
@@ -2087,19 +2072,12 @@ export default function App() {
                           </span>
                         </button>
                         <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
-                          <defs>
-                            <linearGradient id="hdlBarGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                              <stop offset="0%"   style={{ stopColor: 'var(--color-danger)' }} />
-                              <stop offset="35%"  style={{ stopColor: 'var(--color-amber)' }} />
-                              <stop offset="55%"  style={{ stopColor: 'var(--color-spectrum-yellow)' }} />
-                              <stop offset="100%" style={{ stopColor: 'var(--color-success)' }} />
-                            </linearGradient>
-                          </defs>
-                          <rect x="0" y="22" width="280" height="10" rx="5" fill="url(#hdlBarGrad)" />
+                          <rect x="0" y="22" width="280" height="10" rx="5" fill="var(--color-border)" />
                           {hdl && (() => {
                             const cx = Math.min(hdl.value, HDL_SCALE_MAX) / HDL_SCALE_MAX * 280
                             return (
                               <>
+                                <rect x="0" y="22" width={cx} height="10" rx="5" fill="var(--color-amber)" />
                                 <line x1={cx} y1="16" x2={cx} y2="22" stroke={hdlMarker} strokeWidth="1.5" />
                                 <circle cx={cx} cy="9" r="8" fill="var(--color-surface)" stroke={hdlMarker} strokeWidth="1.5" />
                                 <text x={cx} y="12.5" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: hdlMarker, fontFamily: 'var(--font-mono)' }}>
@@ -2117,15 +2095,13 @@ export default function App() {
                             return (
                               <div key={band.label} style={{ flex: `0 0 ${widthPct}%`, minWidth: 0, textAlign: isLast ? 'right' : 'left' }}>
                                 <div style={{
-                                  fontSize: 9,
-                                  fontFamily: 'var(--font-mono)',
-                                  fontWeight: active ? 700 : 400,
-                                  color: active ? HDL_BAND_COLORS[i] : 'var(--color-text-dim)',
-                                  letterSpacing: '0.02em',
+                                  fontSize: 'var(--fs-label)',
+                                  fontWeight: active ? 'var(--fw-bold)' : 'var(--fw-label-sm)',
+                                  color: active ? 'var(--color-amber)' : 'var(--color-text-secondary)',
                                 }}>
-                                  {band.label}{active && ' ✦'}
+                                  {band.label}
                                 </div>
-                                <div style={{ fontSize: 8, color: 'var(--color-text-dim)', marginTop: 1 }}>
+                                <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', marginTop: 1 }}>
                                   {band.rangeLabel}
                                 </div>
                               </div>
@@ -2208,7 +2184,7 @@ export default function App() {
                           <>
                             Last tested {fmtMonthYear(new Date(mostRecent + 'T00:00:00'))}
                             {overdue && (
-                              <> · <span style={{ color: 'var(--color-danger)', fontWeight: 500 }}>bloodwork overdue</span></>
+                              <> · <span style={{ color: 'var(--color-amber)', fontWeight: 'var(--fw-bold)', fontSize: 'var(--fs-label)', textTransform: 'uppercase' }}>bloodwork overdue</span></>
                             )}
                           </>
                         ) : (
@@ -2219,9 +2195,9 @@ export default function App() {
                       {!cardioEntryOpen && (
                         <button
                           type="button"
-                          className="btn-secondary"
+                          className="btn-primary"
                           onClick={openCardioEntry}
-                          style={{ marginTop: 12, height: 40, fontSize: 13 }}
+                          style={{ marginTop: 12, height: 52, width: '100%' }}
                         >
                           Log bloodwork
                         </button>
