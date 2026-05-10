@@ -379,6 +379,106 @@ function fmtDate(s: string | null): string {
   return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function fmtApptDate(s: string | null): string {
+  if (!s) return 'Never completed'
+  const d = new Date(s.includes('T') ? s : s + 'T00:00:00')
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function formatHeroDate(d: Date): string {
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+function getTodayBerlin(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
+}
+
+function calcDaysRemaining(todayStr: string, dueDate: Date): number {
+  const today = new Date(todayStr + 'T00:00:00')
+  const due = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate())
+  return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function ApptIcon({ type }: { type: string }) {
+  const s: React.SVGProps<SVGSVGElement> = {
+    width: 28, height: 28,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'var(--color-amber)',
+    strokeWidth: 2,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  }
+  switch (type) {
+    case 'dentist':
+      return (
+        <svg {...s}>
+          <circle cx="12" cy="12" r="10" />
+          <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+          <line x1="9" y1="9" x2="9.01" y2="9" />
+          <line x1="15" y1="9" x2="15.01" y2="9" />
+        </svg>
+      )
+    case 'dermatologist':
+    case 'breast_scan':
+    case 'thyroid_scan':
+      return (
+        <svg {...s}>
+          <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+          <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+        </svg>
+      )
+    case 'gynaecologist':
+      return (
+        <svg {...s}>
+          <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+        </svg>
+      )
+    case 'full_bloodwork':
+      return (
+        <svg {...s}>
+          <path d="M6 18h8" />
+          <path d="M3 22h18" />
+          <path d="M14 22a7 7 0 1 0 0-14h-1" />
+          <path d="M9 14h2" />
+          <path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z" />
+          <path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3" />
+        </svg>
+      )
+    case 'bone_density':
+    case 'bone_density_scan':
+      return (
+        <svg {...s}>
+          <path d="M17 10c.7-.7 1.69 0 2.5 0a2.5 2.5 0 1 0 0-5 .5.5 0 0 1-.5-.5 2.5 2.5 0 1 0-5 0c0 .81.7 1.8 0 2.5l-7 7c-.7.7-1.69 0-2.5 0a2.5 2.5 0 0 0 0 5c.28 0 .5.22.5.5a2.5 2.5 0 1 0 5 0c0-.81-.7-1.8 0-2.5Z" />
+        </svg>
+      )
+    case 'colonoscopy':
+      return (
+        <svg {...s}>
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        </svg>
+      )
+    case 'eye_optometrist':
+      return (
+        <svg {...s}>
+          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      )
+    default:
+      return (
+        <svg {...s}>
+          <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+      )
+  }
+}
+
 // ─── Score card helpers (copied from DashboardTab) ────────────────
 
 interface TodayScored {
@@ -2183,65 +2283,159 @@ export default function App() {
 
         {/* ── HEALTH CALENDAR TAB ──────────────────────────────── */}
         {activeTab === 'calendar' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0, paddingBottom: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: 16 }}>
 
-            <div className="section-label" style={{ paddingLeft: 4, marginTop: 4, marginBottom: 8 }}>
-              Health Calendar
-            </div>
+            {/* Hero card */}
+            {(() => {
+              const heroAppt = allAppts.find(a => a.next_due_date)
+              if (!heroAppt) {
+                return (
+                  <div style={{
+                    background: 'var(--color-navy)',
+                    borderRadius: 'var(--radius-xl)',
+                    boxShadow: 'var(--shadow-card)',
+                    padding: 'var(--space-lg)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: 80,
+                    marginBottom: 'var(--space-md)',
+                  }}>
+                    <span style={{ fontSize: 16, color: 'white' }}>All appointments up to date.</span>
+                  </div>
+                )
+              }
+              const heroNextDue = heroAppt.next_due_date!
+              const heroDue = new Date(heroNextDue.includes('T') ? heroNextDue : heroNextDue + 'T00:00:00')
+              const daysRemaining = calcDaysRemaining(getTodayBerlin(), heroDue)
+              return (
+                <div style={{
+                  background: 'var(--color-navy)',
+                  borderRadius: 'var(--radius-xl)',
+                  boxShadow: 'var(--shadow-card)',
+                  padding: 'var(--space-lg)',
+                  width: '100%',
+                  marginBottom: 'var(--space-md)',
+                  boxSizing: 'border-box',
+                }}>
+                  <div style={{ width: 80, height: 80, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                    <svg width="80" height="80" viewBox="0 0 80 80" style={{ position: 'absolute', top: 0, left: 0 }}>
+                      <circle cx="40" cy="40" r="37" fill="none" stroke="var(--color-amber)" strokeWidth="3" opacity="0.7" />
+                    </svg>
+                    <ApptIcon type={heroAppt.appointment_type} />
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-amber)', marginBottom: 4 }}>
+                    Upcoming Event
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: 'white' }}>
+                    {APPT_LABELS[heroAppt.appointment_type] ?? heroAppt.appointment_type}
+                  </div>
+                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
+                    {formatHeroDate(heroDue)}
+                  </div>
+                  <div style={{
+                    display: 'inline-flex',
+                    background: 'var(--color-amber)',
+                    color: 'var(--color-navy)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    borderRadius: 'var(--radius-full)',
+                    padding: '4px 12px',
+                    marginTop: 'var(--space-sm)',
+                  }}>
+                    {daysRemaining} days remaining
+                  </div>
+                </div>
+              )
+            })()}
 
             {allAppts.length === 0 ? (
-              <div className="card" style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>
+              <div className="card" style={{ fontSize: 16, color: 'var(--color-text-muted)' }}>
                 No appointments — loading…
               </div>
             ) : (
               allAppts.map(appt => {
-                const dimmed    = isApptDimmed(appt)
-                const isEditing = editingId === appt.id
-                const dueDate   = appt.next_due_date
+                const dimmed     = isApptDimmed(appt)
+                const isEditing  = editingId === appt.id
+                const hasNextDue = !!appt.next_due_date
+                const dueDate    = appt.next_due_date
                   ? new Date(appt.next_due_date.includes('T') ? appt.next_due_date : appt.next_due_date + 'T00:00:00')
                   : nextDueDateFromLast(appt.last_completed_date, appt.interval_months)
-                const dueColor  = dueDate
-                  ? (dueDate <= fourMonthsOut ? 'var(--color-amber)' : 'var(--color-text-dim)')
-                  : 'var(--color-text-dim)'
-                const dueLabel  = dueDate ? `Due: ${fmtDueDate(appt.next_due_date, dueDate)}` : 'Not scheduled'
+                const dueLabel   = dueDate ? `Due: ${fmtDueDate(appt.next_due_date, dueDate)}` : 'Not scheduled'
 
                 return (
                   <div
                     key={appt.id}
-                    className="card"
                     style={{
                       opacity: dimmed ? 0.5 : 1,
-                      padding: dimmed ? '10px 14px' : '14px 16px',
                       transition: 'opacity 200ms',
                       marginBottom: 8,
+                      background: 'var(--color-surface)',
+                      border: '1px solid var(--color-border)',
+                      borderLeft: isEditing ? '4px solid var(--color-amber)' : '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-lg)',
+                      boxShadow: 'var(--shadow-card)',
                     }}
                   >
-                    <button
-                      type="button"
-                      onClick={() => isEditing ? setEditingId(null) : startEdit(appt)}
-                      style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                        <span style={{ fontSize: dimmed ? 13 : 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>
-                          {APPT_LABELS[appt.appointment_type] ?? appt.appointment_type}
-                        </span>
-                        <span style={{ fontSize: 12, color: dueColor, flexShrink: 0 }}>{dueLabel}</span>
-                      </div>
-                      {appt.last_completed_date && !isEditing && (
-                        <div style={{ marginTop: 3, fontSize: 11, color: 'var(--color-text-dim)' }}>
-                          Last done: {fmtDate(appt.last_completed_date)}
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => startEdit(appt)}
+                        style={{
+                          width: '100%',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 0,
+                          textAlign: 'left',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          minHeight: hasNextDue ? 72 : 56,
+                          paddingLeft: 'var(--space-lg)',
+                          paddingRight: 'var(--space-lg)',
+                          gap: 8,
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        <div style={{ flexGrow: 1 }}>
+                          <div style={{ fontSize: 18, fontWeight: 700, color: hasNextDue ? 'var(--color-text-primary)' : 'var(--color-navy)' }}>
+                            {APPT_LABELS[appt.appointment_type] ?? appt.appointment_type}
+                          </div>
+                          {hasNextDue && (
+                            <div style={{ fontSize: 16, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                              Last done: {fmtApptDate(appt.last_completed_date)}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </button>
+                        {hasNextDue ? (
+                          <div style={{ flexShrink: 0, textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                            <span style={{ fontSize: 12, color: 'var(--color-amber)', whiteSpace: 'nowrap' }}>{dueLabel}</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 16, color: 'var(--color-text-muted)', flexShrink: 0 }}>Not scheduled</span>
+                        )}
+                      </button>
+                    )}
 
                     {isEditing && (
-                      <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                      <div style={{
+                        padding: 'var(--space-lg)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 'var(--space-md)',
+                      }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>
                           {APPT_LABELS[appt.appointment_type] ?? appt.appointment_type}
                         </div>
 
                         <div>
-                          <div className="section-label" style={{ marginBottom: 4 }}>Last completed</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-primary)', marginBottom: 6 }}>
+                            Last Completed
+                          </div>
                           <input
                             type="date"
                             value={editLastCompleted}
@@ -2251,53 +2445,116 @@ export default function App() {
                                 setEditNextDue(addMonths(e.target.value, appt.interval_months))
                               }
                             }}
-                            style={{ width: '100%', padding: '8px 10px', borderRadius: 8 }}
+                            style={{
+                              fontSize: 16,
+                              color: 'var(--color-text-primary)',
+                              width: '100%',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              padding: 'var(--space-sm) var(--space-md)',
+                              background: 'var(--color-surface)',
+                              boxSizing: 'border-box',
+                            }}
                           />
                         </div>
+
                         <div>
-                          <div className="section-label" style={{ marginBottom: 4 }}>Next due (auto-computed, overridable)</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-primary)', marginBottom: 2 }}>
+                            Next Due
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
+                            (Auto-computed, overridable)
+                          </div>
                           <input
                             type="datetime-local"
                             value={editNextDue}
                             onChange={e => setEditNextDue(e.target.value)}
-                            style={{ width: '100%', padding: '8px 10px', borderRadius: 8 }}
+                            style={{
+                              fontSize: 16,
+                              color: 'var(--color-text-primary)',
+                              width: '100%',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              padding: 'var(--space-sm) var(--space-md)',
+                              background: 'var(--color-surface)',
+                              boxSizing: 'border-box',
+                            }}
                           />
                         </div>
+
                         <div>
-                          <div className="section-label" style={{ marginBottom: 4 }}>Notes</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-primary)', marginBottom: 6 }}>
+                            Notes
+                          </div>
                           <textarea
                             value={editNotes}
                             onChange={e => setEditNotes(e.target.value)}
-                            rows={2}
-                            style={{ width: '100%', padding: '8px 10px', borderRadius: 8, resize: 'vertical' }}
+                            rows={3}
+                            style={{
+                              fontSize: 16,
+                              color: 'var(--color-text-primary)',
+                              width: '100%',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              padding: 'var(--space-sm) var(--space-md)',
+                              background: 'var(--color-surface)',
+                              resize: 'vertical',
+                              boxSizing: 'border-box',
+                            }}
                           />
                         </div>
 
                         <button
                           type="button"
-                          className="btn-primary"
                           onClick={() => handleMarkDone(appt)}
                           disabled={apptSaving}
-                          style={{ height: 40, fontSize: 13 }}
+                          style={{
+                            width: '100%',
+                            background: 'var(--color-navy)',
+                            color: 'white',
+                            fontSize: 16,
+                            fontWeight: 600,
+                            borderRadius: 'var(--radius-full)',
+                            height: 52,
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
                         >
-                          {apptSaving ? 'Saving…' : 'Mark as done today'}
+                          {apptSaving ? 'Saving…' : 'Mark as Done Today'}
                         </button>
 
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
                           <button
                             type="button"
-                            className="btn-secondary"
                             onClick={() => handleSaveAppt(appt)}
                             disabled={apptSaving}
-                            style={{ flex: 1, height: 40, fontSize: 13 }}
+                            style={{
+                              flex: 1,
+                              background: 'var(--color-navy)',
+                              color: 'white',
+                              borderRadius: 'var(--radius-full)',
+                              height: 44,
+                              fontSize: 16,
+                              fontWeight: 600,
+                              border: 'none',
+                              cursor: 'pointer',
+                            }}
                           >
                             {apptSaving ? 'Saving…' : 'Save'}
                           </button>
                           <button
                             type="button"
-                            className="btn-secondary"
                             onClick={() => setEditingId(null)}
-                            style={{ flex: 1, height: 40, fontSize: 13 }}
+                            style={{
+                              flex: 1,
+                              background: 'var(--color-surface)',
+                              color: 'var(--color-text-primary)',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-full)',
+                              height: 44,
+                              fontSize: 16,
+                              cursor: 'pointer',
+                            }}
                           >
                             Cancel
                           </button>
