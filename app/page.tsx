@@ -111,9 +111,9 @@ function IconHistory() {
 
 const TABS: { id: Tab; label: string; Icon: React.FC }[] = [
   { id: 'today',    label: 'Today',           Icon: IconToday },
-  { id: 'calendar', label: 'Health Calendar', Icon: IconCalendar },
   { id: 'coach',    label: 'Coach',           Icon: IconCoach },
   { id: 'dashboard',label: 'Dashboard',       Icon: IconDashboard },
+  { id: 'calendar', label: 'Health Calendar', Icon: IconCalendar },
 ]
 
 // ─── Greeting (copied from GoalsTab) ─────────────────────────────
