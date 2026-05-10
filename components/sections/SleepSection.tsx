@@ -37,12 +37,12 @@ function Field({
     <div>
       <div
         style={{
-          fontSize: 11,
-          fontWeight: 500,
-          letterSpacing: '0.08em',
+          fontSize: 'var(--fs-label)',
+          fontWeight: 'var(--fw-bold)',
+          letterSpacing: 'var(--ls-label-bold)',
           textTransform: 'uppercase',
           color: 'var(--color-text-secondary)',
-          marginBottom: 6,
+          marginBottom: 'var(--space-xs)',
         }}
       >
         {label}
@@ -84,14 +84,14 @@ function NumInput({
       placeholder={placeholder}
       style={{
         width,
-        height: 44,
-        padding: '0 12px',
+        minHeight: 48,
+        padding: 'var(--space-sm) var(--space-md)',
         fontFamily: 'var(--font-mono)',
-        fontSize: 20,
+        fontSize: 'var(--fs-body)',
         color: 'var(--color-text-primary)',
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
-        borderRadius: 8,
+        borderRadius: 'var(--radius-md)',
         outline: 'none',
       }}
     />
@@ -101,6 +101,7 @@ function NumInput({
 export default function SleepSection({ data, onChange, onSave, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
+  const [closeTick, setCloseTick] = useState(0)
   const { h, m } = durationToHM(data.duration_min)
   const isComplete = data.hrv != null || data.duration_min != null
 
@@ -121,6 +122,7 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
     try {
       await onSave()
       setLocalSaved(true)
+      setCloseTick((t) => t + 1)
       setTimeout(() => setLocalSaved(false), 2000)
     } catch {
       setSaveError(true)
@@ -153,13 +155,14 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
       title="Sleep"
       isComplete={isComplete}
       rightSlot={summary}
+      forceClose={closeTick}
       icon={
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path d="M15 10.5A7 7 0 017.5 3a6.5 6.5 0 100 12A7 7 0 0115 10.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
 
         {/* Bedtime */}
         <Field label="Bedtime">
@@ -168,14 +171,14 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
             value={data.bedtime ?? '21:45'}
             onChange={(e) => set('bedtime', e.target.value || null)}
             style={{
-              height: 44,
-              padding: '0 12px',
+              minHeight: 48,
+              padding: 'var(--space-sm) var(--space-md)',
               fontFamily: 'var(--font-mono)',
-              fontSize: 20,
+              fontSize: 'var(--fs-body)',
               color: 'var(--color-text-primary)',
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border)',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-md)',
               outline: 'none',
             }}
           />
@@ -190,14 +193,14 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
               width={72}
               placeholder="—"
             />
-            <span style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>h</span>
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--fs-label)' }}>h</span>
             <NumInput
               value={m === '' ? null : Number(m)}
               onChange={(v) => setDuration(h, v == null ? '' : String(v))}
               width={72}
               placeholder="—"
             />
-            <span style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>min</span>
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--fs-label)' }}>min</span>
           </div>
         </Field>
 

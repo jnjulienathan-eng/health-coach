@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useId } from 'react'
+import { useState, useId, useEffect } from 'react'
 
 interface SectionProps {
   title: string
@@ -10,6 +10,7 @@ interface SectionProps {
   rightSlot?: React.ReactNode   // e.g. macro bars shown in header when collapsed
   icon?: React.ReactNode        // SVG icon for the navy rounded-square container
   accent?: boolean              // amber left-border accent (Training accordion)
+  forceClose?: number           // increment to close the accordion after successful save
   children: React.ReactNode
 }
 
@@ -21,10 +22,15 @@ export default function Section({
   rightSlot,
   icon,
   accent = false,
+  forceClose = 0,
   children,
 }: SectionProps) {
   const [open, setOpen] = useState(defaultOpen)
   const id = useId()
+
+  useEffect(() => {
+    if (forceClose > 0) setOpen(false)
+  }, [forceClose])
 
   return (
     <div

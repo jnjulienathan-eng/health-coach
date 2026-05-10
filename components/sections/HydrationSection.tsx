@@ -55,6 +55,7 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
   })
   const [saved,     setSaved]     = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [closeTick, setCloseTick] = useState(0)
 
   // Sync when data changes (e.g. day navigation)
   useEffect(() => {
@@ -98,6 +99,7 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
     try {
       await onSave()
       setSaved(true)
+      setCloseTick((t) => t + 1)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed')
     }
@@ -124,13 +126,14 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
       title="Hydration"
       isComplete={totalMl > 0}
       rightSlot={summary}
+      forceClose={closeTick}
       icon={
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path d="M9 2C9 2 4 8 4 11.5a5 5 0 0010 0C14 8 9 2 9 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
 
         {/* ── Cup row + extra input ────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -165,7 +168,7 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
 
           {/* Extra ml */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>+</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)' }}>+</span>
             <input
               type="number"
               inputMode="numeric"
@@ -176,25 +179,25 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
               placeholder="0"
               aria-label="Extra ml beyond cups"
               style={{
-                width:      58,
-                height:     36,
-                padding:    '0 8px',
-                fontSize:   13,
-                textAlign:  'right',
-                color:      'var(--color-text-primary)',
-                background: 'var(--color-bg)',
-                border:     '1px solid var(--color-border)',
-                borderRadius: 8,
-                fontFamily: 'var(--font-mono)',
-                outline:    'none',
+                width:        64,
+                minHeight:    48,
+                padding:      'var(--space-sm) var(--space-md)',
+                fontSize:     'var(--fs-body)',
+                textAlign:    'right',
+                color:        'var(--color-text-primary)',
+                background:   'var(--color-surface)',
+                border:       '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                fontFamily:   'var(--font-mono)',
+                outline:      'none',
               }}
             />
-            <span style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>ml</span>
+            <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-dim)' }}>ml</span>
           </div>
         </div>
 
         {/* ── Target hint ──────────────────────────────────────── */}
-        <div style={{ fontSize: 12, color: 'var(--color-text-dim)' }}>
+        <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-dim)' }}>
           {targetCups} cups = {target}ml target
           {!isTrainingDay && (
             <span> · 6th cup is bonus</span>
@@ -204,10 +207,10 @@ export default function HydrationSection({ data, sessions, onChange, onSave, sav
         {/* ── Total ────────────────────────────────────────────── */}
         <div
           style={{
-            fontSize:    14,
-            fontFamily:  'var(--font-mono)',
-            color:       totalColor,
-            fontWeight:  500,
+            fontSize:   'var(--fs-body)',
+            fontFamily: 'var(--font-mono)',
+            color:      totalColor,
+            fontWeight: 'var(--fw-semibold)',
           }}
         >
           {totalMl}ml / {target}ml

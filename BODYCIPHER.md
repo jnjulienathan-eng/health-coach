@@ -60,6 +60,23 @@ _Last updated: May 4, 2026 (Session 3 — notifications complete)_
 
 Default active tab: 0 (Today). GoalsTab, DashboardTab, and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
 
+### Today Tab (updated May 10, 2026 — accordion interior restyling complete)
+
+**Accordion open/expanded state — design pass (May 10, 2026):**
+All six Today tab accordions restyled to match DESIGN.md tokens:
+- Field labels: `--fs-label` (12px), `--fw-bold` (700), `--ls-label-bold` (0.05em), uppercase, `--color-text-secondary`
+- All text inputs, number inputs, textareas: `minHeight: 48px`, padding `--space-sm`/`--space-md`, `font-size: --fs-body` (16px), `border-radius: --radius-md`, `1px solid --color-border`
+- Field container gap: `--space-md` (16px) throughout
+- Save buttons: `btn-primary` class (height 52px, `--color-navy`, `--radius-lg` after globals.css update)
+- `components/ui/Section.tsx` now accepts optional `forceClose?: number` prop — when incremented, closes the accordion
+- Auto-close after successful save wired into all five save handlers (Sleep, Training, Hydration, Supplements, Context)
+- `globals.css`: `btn-primary` border-radius updated from `--radius-md` to `--radius-lg`; toggle checked colour updated from `--color-navy` to `--color-amber` (per DESIGN.md Toggle Row spec)
+- Supplement `StackAccordion`: redesigned to match DESIGN.md Toggle Row spec — supplement name `--fs-body`, dose `--fs-label-sm` below name, `--color-border-subtle` dividers, min-height 56px per row, amber toggle when checked
+- `HormoneCard`: border highlights amber when taken (was primary-colour), background is always `--color-surface` (removed primary-light tint)
+- NutritionSection: no save handler — no auto-close; macro summary card background changed from `--color-bg` to `--color-surface`
+
+---
+
 ### Today Tab (updated April 30, 2026)
 
 **Structure (top to bottom):**

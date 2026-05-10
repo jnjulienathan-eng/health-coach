@@ -200,7 +200,7 @@ body {
   background: var(--color-navy);
   color: #fff;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   font-family: var(--font-sans);
   font-size: var(--fs-body);
   font-weight: var(--fw-semibold);
@@ -385,7 +385,7 @@ input[type='range']::-moz-range-thumb {
   box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
 .toggle:checked {
-  background: var(--color-navy);
+  background: var(--color-amber);
 }
 .toggle:checked::after {
   transform: translateX(18px);

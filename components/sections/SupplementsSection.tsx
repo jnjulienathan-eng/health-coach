@@ -159,12 +159,12 @@ function StackLabel({ text }: { text: string }) {
   return (
     <div
       style={{
-        fontSize: 11,
-        fontWeight: 500,
-        letterSpacing: '0.08em',
+        fontSize: 'var(--fs-label)',
+        fontWeight: 'var(--fw-bold)',
+        letterSpacing: 'var(--ls-label-bold)',
         textTransform: 'uppercase',
         color: 'var(--color-text-secondary)',
-        marginBottom: 10,
+        marginBottom: 'var(--space-xs)',
       }}
     >
       {text}
@@ -190,7 +190,7 @@ function StackAccordion({
   const anyOn = masterOn && items.some((item) => !exceptions.includes(item))
 
   return (
-    <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+    <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -199,41 +199,40 @@ function StackAccordion({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '12px 14px',
+          padding: 'var(--space-sm) var(--space-md)',
+          minHeight: 52,
           background: 'none',
           border: 'none',
           cursor: 'pointer',
           fontFamily: 'var(--font-sans)',
         }}
       >
-        <span style={{ fontSize: 13, color: anyOn ? 'var(--color-success)' : 'var(--color-text-dim)' }}>
+        <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)', color: anyOn ? 'var(--color-status-optimal)' : 'var(--color-text-muted)' }}>
           {anyOn ? 'Taken' : 'Not taken'}
         </span>
-        <span
-          style={{
-            fontSize: 14,
-            color: 'var(--color-text-dim)',
-            transform: open ? 'rotate(90deg)' : 'none',
-            transition: 'transform 200ms',
-          }}
+        <svg
+          width="16" height="16" viewBox="0 0 16 16" fill="none"
+          className={`chevron${open ? ' open' : ''}`}
+          style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}
         >
-          ›
-        </span>
+          <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
 
       {open && (
-        <div style={{ borderTop: '1px solid var(--color-border)' }}>
+        <div style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '10px 14px',
-              borderBottom: '1px solid var(--color-border)',
-              background: 'var(--color-bg)',
+              padding: 'var(--space-sm) var(--space-md)',
+              minHeight: 56,
+              borderBottom: '1px solid var(--color-border-subtle)',
+              background: 'var(--color-surface)',
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+            <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-text-primary)' }}>
               Take all
             </span>
             <input
@@ -247,6 +246,7 @@ function StackAccordion({
           {items.map((item, idx) => {
             const on = masterOn && !exceptions.includes(item)
             const skipped = masterOn && exceptions.includes(item)
+            const { name: itemName, dose: itemDose } = parseDose(item)
             return (
               <div
                 key={item}
@@ -254,25 +254,33 @@ function StackAccordion({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  borderBottom: idx < items.length - 1 ? '1px solid var(--color-border)' : 'none',
-                  background: on ? 'var(--color-surface)' : 'var(--color-bg)',
+                  padding: 'var(--space-sm) var(--space-md)',
+                  minHeight: 56,
+                  borderBottom: idx < items.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
+                  background: 'var(--color-surface)',
                 }}
               >
-                <EditableLabel
-                  label={item}
-                  textStyle={{
-                    fontSize: 14,
-                    color: skipped ? 'var(--color-text-dim)' : 'var(--color-text-primary)',
-                    textDecoration: skipped ? 'line-through' : 'none',
-                  }}
-                />
+                <div>
+                  <div
+                    style={{
+                      fontSize: 'var(--fs-body)',
+                      color: skipped ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+                      textDecoration: skipped ? 'line-through' : 'none',
+                    }}
+                  >
+                    {itemName}
+                  </div>
+                  {itemDose && (
+                    <div style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                      {itemDose}
+                    </div>
+                  )}
+                </div>
                 <input
                   type="checkbox"
                   checked={on}
                   onChange={() => onItemToggle(item)}
                   className="toggle"
-                  style={{ transform: 'scale(0.85)' }}
                   aria-label={`${item} taken`}
                 />
               </div>
@@ -287,6 +295,7 @@ function StackAccordion({
 export default function SupplementsSection({ data, onChange, onSave, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
+  const [closeTick, setCloseTick] = useState(0)
 
   const isComplete = data.morning_stack_taken || data.evening_stack_taken
 
@@ -319,6 +328,7 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
     try {
       await onSave()
       setLocalSaved(true)
+      setCloseTick((t) => t + 1)
       setTimeout(() => setLocalSaved(false), 2000)
     } catch {
       setSaveError(true)
@@ -350,6 +360,7 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
       title="Supplements"
       isComplete={isComplete}
       rightSlot={summary}
+      forceClose={closeTick}
       icon={
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.5" />
@@ -357,7 +368,7 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
         </svg>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
 
         {/* ── Hormone toggles ────────────────────────────────────── */}
         <div>
@@ -459,15 +470,16 @@ function HormoneCard({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '14px 16px',
-        background: taken ? 'var(--color-primary-light)' : 'var(--color-surface)',
-        border: `1px solid ${taken ? 'var(--color-primary)' : 'var(--color-border)'}`,
-        borderRadius: 10,
-        transition: 'background 200ms, border-color 200ms',
+        padding: 'var(--space-sm) var(--space-md)',
+        minHeight: 64,
+        background: 'var(--color-surface)',
+        border: `1px solid ${taken ? 'var(--color-amber)' : 'var(--color-border)'}`,
+        borderRadius: 'var(--radius-md)',
+        transition: 'border-color 200ms',
       }}
     >
       <div>
-        <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+        <div style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)', color: 'var(--color-text-primary)' }}>
           {label}
         </div>
         <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -484,17 +496,18 @@ function HormoneCard({
             }}
             style={{
               width: 64,
-              fontSize: 13,
+              minHeight: 36,
+              fontSize: 'var(--fs-body)',
               fontFamily: 'var(--font-mono)',
               color: 'var(--color-text-primary)',
-              background: 'var(--color-bg)',
+              background: 'var(--color-surface)',
               border: '1px solid var(--color-border)',
-              borderRadius: 6,
-              padding: '2px 6px',
+              borderRadius: 'var(--radius-sm)',
+              padding: 'var(--space-xs) var(--space-sm)',
               outline: 'none',
             }}
           />
-          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{doseUnit}</span>
+          <span style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)' }}>{doseUnit}</span>
         </div>
       </div>
       <input

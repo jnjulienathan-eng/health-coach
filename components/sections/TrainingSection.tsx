@@ -92,6 +92,7 @@ function formatStartTime(startTime: string | null | undefined): string | null {
 export default function TrainingSection({ data, onChange, onSave, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
+  const [closeTick, setCloseTick] = useState(0)
   const [showCustomForm, setShowCustomForm] = useState(false)
   const [customName, setCustomName] = useState('')
   const [customMin, setCustomMin] = useState<number>(30)
@@ -127,6 +128,7 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
     try {
       await onSave()
       setLocalSaved(true)
+      setCloseTick((t) => t + 1)
       setTimeout(() => setLocalSaved(false), 2000)
     } catch {
       setSaveError(true)
@@ -152,24 +154,25 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
       isComplete={isComplete}
       rightSlot={summary}
       accent
+      forceClose={closeTick}
       icon={
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path d="M10 2L5 9h5l-1 7 6-8h-5l1-6z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
 
         {/* Quick-add row */}
         <div>
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '0.08em',
+              fontSize: 'var(--fs-label)',
+              fontWeight: 'var(--fw-bold)',
+              letterSpacing: 'var(--ls-label-bold)',
               textTransform: 'uppercase',
               color: 'var(--color-text-secondary)',
-              marginBottom: 10,
+              marginBottom: 'var(--space-xs)',
             }}
           >
             Add session
@@ -225,41 +228,41 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
               {/* Name + duration + kcal row */}
               <div style={{ display: 'flex', gap: 10 }}>
                 <div style={{ flex: 2 }}>
-                  <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 6 }}>Activity</div>
+                  <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-xs)' }}>Activity</div>
                   <input
                     type="text"
                     value={customName}
                     onChange={(e) => setCustomName(e.target.value)}
                     placeholder="e.g. Yoga, Pilates…"
-                    style={{ width: '100%', height: 44, padding: '0 12px', fontSize: 14, color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' }}
+                    style={{ width: '100%', minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--fs-body)', color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', outline: 'none', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' }}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 6 }}>Minutes</div>
+                  <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-xs)' }}>Minutes</div>
                   <input
                     type="number"
                     inputMode="numeric"
                     value={customMin}
                     onChange={(e) => setCustomMin(e.target.value === '' ? 0 : parseInt(e.target.value))}
-                    style={{ width: '100%', height: 44, padding: '0 10px', fontFamily: 'var(--font-mono)', fontSize: 20, color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }}
+                    style={{ width: '100%', minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-body)', color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', outline: 'none', boxSizing: 'border-box' }}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 6 }}>Kcal</div>
+                  <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-xs)' }}>Kcal</div>
                   <input
                     type="number"
                     inputMode="numeric"
                     value={customCal ?? ''}
                     onChange={(e) => setCustomCal(e.target.value === '' ? null : parseInt(e.target.value))}
                     placeholder="—"
-                    style={{ width: '100%', height: 44, padding: '0 10px', fontFamily: 'var(--font-mono)', fontSize: 20, color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }}
+                    style={{ width: '100%', minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-body)', color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', outline: 'none', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
 
               {/* Zone 3+ minutes */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+                <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-xs)' }}>
                   Zone 3+ min <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--color-text-dim)' }}>optional</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -271,9 +274,9 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
                     placeholder="—"
                     min={0}
                     max={120}
-                    style={{ width: 72, height: 44, padding: '0 10px', fontFamily: 'var(--font-mono)', fontSize: 20, color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }}
+                    style={{ width: 72, minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-body)', color: 'var(--color-text-primary)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', outline: 'none', boxSizing: 'border-box' }}
                   />
-                  <span style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>min</span>
+                  <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--fs-label)' }}>min</span>
                   {(() => {
                     const intensity = zone3Intensity(customZone3)
                     return intensity ? (
@@ -364,9 +367,9 @@ function SessionCard({
     <div
       style={{
         background: 'var(--color-surface)',
-        border: '1px solid var(--color-navy)',
-        borderRadius: 10,
-        padding: 14,
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-md)',
+        padding: 'var(--space-md)',
       }}
     >
       {/* Header row */}
@@ -383,8 +386,8 @@ function SessionCard({
           <div>
             <span
               style={{
-                fontSize: 15,
-                fontWeight: 500,
+                fontSize: 'var(--fs-body)',
+                fontWeight: 'var(--fw-semibold)',
                 color: 'var(--color-text-primary)',
               }}
             >
@@ -416,16 +419,16 @@ function SessionCard({
       </div>
 
       {/* Duration + Calories */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 'var(--space-md)', marginBottom: 'var(--space-md)' }}>
         <div style={{ flex: 1 }}>
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '0.08em',
+              fontSize: 'var(--fs-label)',
+              fontWeight: 'var(--fw-bold)',
+              letterSpacing: 'var(--ls-label-bold)',
               textTransform: 'uppercase',
               color: 'var(--color-text-secondary)',
-              marginBottom: 6,
+              marginBottom: 'var(--space-xs)',
             }}
           >
             Duration
@@ -442,30 +445,30 @@ function SessionCard({
               }
               style={{
                 width: 64,
-                height: 44,
-                padding: '0 10px',
+                minHeight: 48,
+                padding: 'var(--space-sm) var(--space-md)',
                 fontFamily: 'var(--font-mono)',
-                fontSize: 20,
+                fontSize: 'var(--fs-body)',
                 color: 'var(--color-text-primary)',
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border)',
-                borderRadius: 8,
+                borderRadius: 'var(--radius-md)',
                 outline: 'none',
               }}
             />
-            <span style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>min</span>
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--fs-label)' }}>min</span>
           </div>
         </div>
 
         <div style={{ flex: 1 }}>
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '0.08em',
+              fontSize: 'var(--fs-label)',
+              fontWeight: 'var(--fw-bold)',
+              letterSpacing: 'var(--ls-label-bold)',
               textTransform: 'uppercase',
               color: 'var(--color-text-secondary)',
-              marginBottom: 6,
+              marginBottom: 'var(--space-xs)',
             }}
           >
             Calories
@@ -493,18 +496,18 @@ function SessionCard({
               placeholder="—"
               style={{
                 width: 64,
-                height: 44,
-                padding: '0 10px',
+                minHeight: 48,
+                padding: 'var(--space-sm) var(--space-md)',
                 fontFamily: 'var(--font-mono)',
-                fontSize: 20,
+                fontSize: 'var(--fs-body)',
                 color: 'var(--color-text-primary)',
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border)',
-                borderRadius: 8,
+                borderRadius: 'var(--radius-md)',
                 outline: 'none',
               }}
             />
-            <span style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>kcal</span>
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--fs-label)' }}>kcal</span>
           </div>
         </div>
       </div>
@@ -513,12 +516,12 @@ function SessionCard({
       <div>
         <div
           style={{
-            fontSize: 11,
-            fontWeight: 500,
-            letterSpacing: '0.08em',
+            fontSize: 'var(--fs-label)',
+            fontWeight: 'var(--fw-bold)',
+            letterSpacing: 'var(--ls-label-bold)',
             textTransform: 'uppercase',
             color: 'var(--color-text-secondary)',
-            marginBottom: 8,
+            marginBottom: 'var(--space-xs)',
           }}
         >
           Zone 3+ min
@@ -546,18 +549,18 @@ function SessionCard({
             max={120}
             style={{
               width: 72,
-              height: 44,
-              padding: '0 10px',
+              minHeight: 48,
+              padding: 'var(--space-sm) var(--space-md)',
               fontFamily: 'var(--font-mono)',
-              fontSize: 20,
+              fontSize: 'var(--fs-body)',
               color: 'var(--color-text-primary)',
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border)',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-md)',
               outline: 'none',
             }}
           />
-          <span style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>min</span>
+          <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--fs-label)' }}>min</span>
           {intensity && (
             <span style={{ fontSize: 13, fontWeight: 500, color: INTENSITY_COLORS[intensity] }}>
               {intensity}

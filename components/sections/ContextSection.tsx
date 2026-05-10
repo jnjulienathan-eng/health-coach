@@ -27,6 +27,7 @@ const SYMPTOMS: Symptom[] = [
 export default function ContextSection({ data, cycleDay, onChange, onSave, onResetCycle, onCycleDayChange, saving }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
+  const [closeTick, setCloseTick] = useState(0)
 
   const change = (d: ContextData) => { setLocalSaved(false); setSaveError(false); onChange(d) }
 
@@ -45,6 +46,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
     try {
       await onSave()
       setLocalSaved(true)
+      setCloseTick((t) => t + 1)
       setTimeout(() => setLocalSaved(false), 2000)
     } catch {
       setSaveError(true)
@@ -70,6 +72,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
       title="Context"
       isComplete={isComplete}
       rightSlot={summary}
+      forceClose={closeTick}
       icon={
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <rect x="2" y="4" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
@@ -77,18 +80,18 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
         </svg>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
 
         {/* ── Cycle day ─────────────────────────────────────────── */}
         <div>
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '0.08em',
+              fontSize: 'var(--fs-label)',
+              fontWeight: 'var(--fw-bold)',
+              letterSpacing: 'var(--ls-label-bold)',
               textTransform: 'uppercase',
               color: 'var(--color-text-secondary)',
-              marginBottom: 12,
+              marginBottom: 'var(--space-xs)',
             }}
           >
             Cycle day
@@ -132,12 +135,12 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
               type="button"
               onClick={onResetCycle}
               style={{
-                padding: '10px 16px',
+                padding: 'var(--space-sm) var(--space-md)',
                 background: 'var(--color-surface)',
                 border: '1.5px solid var(--color-danger)',
-                borderRadius: 10,
-                fontSize: 13,
-                fontWeight: 500,
+                borderRadius: 'var(--radius-md)',
+                fontSize: 'var(--fs-label)',
+                fontWeight: 'var(--fw-semibold)',
                 color: 'var(--color-danger)',
                 cursor: 'pointer',
                 lineHeight: 1.3,
@@ -156,12 +159,12 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
         <div>
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '0.08em',
+              fontSize: 'var(--fs-label)',
+              fontWeight: 'var(--fw-bold)',
+              letterSpacing: 'var(--ls-label-bold)',
               textTransform: 'uppercase',
               color: 'var(--color-text-secondary)',
-              marginBottom: 10,
+              marginBottom: 'var(--space-xs)',
             }}
           >
             Symptoms
@@ -188,7 +191,7 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
             justifyContent: 'space-between',
           }}
         >
-          <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>
+          <span style={{ fontSize: 'var(--fs-body)', color: 'var(--color-text-primary)' }}>
             Travelling today
           </span>
           <input
@@ -204,12 +207,12 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
         <div>
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '0.08em',
+              fontSize: 'var(--fs-label)',
+              fontWeight: 'var(--fw-bold)',
+              letterSpacing: 'var(--ls-label-bold)',
               textTransform: 'uppercase',
               color: 'var(--color-text-secondary)',
-              marginBottom: 8,
+              marginBottom: 'var(--space-xs)',
             }}
           >
             Notes
@@ -221,12 +224,12 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
             rows={4}
             style={{
               width: '100%',
-              padding: '12px',
-              fontSize: 14,
+              padding: 'var(--space-sm) var(--space-md)',
+              fontSize: 'var(--fs-body)',
               color: 'var(--color-text-primary)',
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border)',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-md)',
               outline: 'none',
               resize: 'none',
               fontFamily: 'var(--font-sans)',

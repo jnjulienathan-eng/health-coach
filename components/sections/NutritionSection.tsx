@@ -214,7 +214,7 @@ function MealCard({
       style={{
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
-        borderRadius: 10,
+        borderRadius: 'var(--radius-md)',
         overflow: 'hidden',
       }}
     >
@@ -538,15 +538,15 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
         </svg>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
 
         {/* Macro summary bar */}
         <div
           style={{
-            padding: 14,
-            background: 'var(--color-bg)',
+            padding: 'var(--space-md)',
+            background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
-            borderRadius: 10,
+            borderRadius: 'var(--radius-md)',
             display: 'flex', flexDirection: 'column', gap: 10,
             position: 'sticky', top: 0, zIndex: 5,
           }}
@@ -628,7 +628,7 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border)',
-              borderRadius: 8, cursor: 'pointer',
+              borderRadius: 'var(--radius-md)', cursor: 'pointer',
               color: 'var(--color-text-secondary)',
               flexShrink: 0,
             }}
