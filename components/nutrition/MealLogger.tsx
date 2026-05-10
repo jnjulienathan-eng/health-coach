@@ -14,6 +14,7 @@
 // a short bottom sheet; the rest fill the sheet to near full height.
 
 import { animate, AnimatePresence, motion, useAnimationControls } from 'framer-motion'
+import { ImagePlus, Mic } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // ─── Types (mirrors API responses) ────────────────────────────────────────
@@ -2407,6 +2408,36 @@ function ScreenPhotoEstimate({
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recognizing, setRecognizing] = useState(false)
+  const recognitionRef = useRef<any>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
+
+  const speechSupported = typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+  const toggleMic = () => {
+    if (recognizing) {
+      recognitionRef.current?.stop()
+      return
+    }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const rec = new SR()
+    rec.lang = 'en-US'
+    rec.interimResults = false
+    rec.onresult = (e: any) => {
+      const transcript: string = e.results[0]?.[0]?.transcript ?? ''
+      setDescription(prev => prev ? `${prev} ${transcript}` : transcript)
+    }
+    rec.onend = () => setRecognizing(false)
+    rec.onerror = () => setRecognizing(false)
+    recognitionRef.current = rec
+    rec.start()
+    setRecognizing(true)
+  }
+
+  useEffect(() => {
+    return () => { recognitionRef.current?.stop() }
+  }, [])
 
   const canEstimate = !loading && (imageFile != null || description.trim().length > 0)
 
@@ -2466,28 +2497,52 @@ function ScreenPhotoEstimate({
 
         <div>
           <FieldLabel>Photo <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></FieldLabel>
-          <label
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 14px',
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 8, cursor: 'pointer',
-              fontSize: 13, color: imageFile ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-            }}
-          >
-            <CameraIcon />
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {imageFile ? imageFile.name : 'Take or choose a photo'}
-            </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <label
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8, cursor: 'pointer',
+                fontSize: 13, color: imageFile ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+              }}
+            >
+              <CameraIcon />
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {imageFile ? imageFile.name : 'Take or choose a photo'}
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={e => setImageFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => galleryInputRef.current?.click()}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8, cursor: 'pointer',
+                fontSize: 13, color: 'var(--color-text-secondary)',
+              }}
+            >
+              <ImagePlus size={18} />
+              <span>Choose from library</span>
+            </button>
             <input
+              ref={galleryInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               style={{ display: 'none' }}
               onChange={e => setImageFile(e.target.files?.[0] ?? null)}
             />
-          </label>
+          </div>
           {imageFile && (
             <button
               type="button"
@@ -2500,7 +2555,25 @@ function ScreenPhotoEstimate({
         </div>
 
         <div>
-          <FieldLabel>Description <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></FieldLabel>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+              Description <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+            </div>
+            {speechSupported && (
+              <button
+                type="button"
+                onClick={toggleMic}
+                aria-label={recognizing ? 'Stop dictation' : 'Start dictation'}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                  color: recognizing ? 'var(--color-amber)' : 'var(--color-text-muted)',
+                  display: 'flex', alignItems: 'center',
+                }}
+              >
+                <Mic size={20} />
+              </button>
+            )}
+          </div>
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value)}
