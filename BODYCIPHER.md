@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 10, 2026 (Long-term Goals cards design-aligned)_
+_Last updated: May 11, 2026 (Vaccinations section added to Health Calendar tab)_
 
 ---
 
@@ -211,7 +211,7 @@ Glucose stability expanded state design (not yet built):
 - CGM toggle: when off, card greys out with note "Enable CGM to track glucose."
 - Build: targeted edit to GoalsTab.tsx only. No new API routes. No DB migrations.
 
-**Health calendar section (design Step 5 complete — May 10, 2026)**
+**Health calendar section (design Step 5 complete — May 10, 2026; vaccinations section added — May 11, 2026)**
 - **Hero card** at top of tab: navy card (`--color-navy`) with circular amber ring (80×80px SVG, 3px stroke, 70% opacity), type-specific icon (inline SVG, lucide-style, 28px), "UPCOMING EVENT" label, appointment name (24px, white), date (16px, 70% white), and amber days-remaining pill. Surfaces the single nearest appointment where `next_due_date` is not null. Days remaining computed in Europe/Berlin local date. Fallback: "All appointments up to date." on a navy card.
 - **Appointment rows — State A (next_due_date not null):** `--color-surface` bg, 1px `--color-border` border, `--radius-lg`, `--shadow-card`, min-height 72px. Name (18px bold, `--color-text-primary`) on left with "Last done: DD Mon YYYY" below; due date (12px amber, nowrap) + ChevronDown (18px, muted) stacked on right.
 - **Appointment rows — State B (next_due_date null):** Same card style, min-height 56px, single line: name (18px bold, navy) left + "Not scheduled" (16px muted) right. No chevron.
@@ -450,10 +450,14 @@ Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
 
 ### `health_appointments`
 
-- id (uuid PK), user_id (text DEFAULT 'julie'), appointment_type (text), interval_months (int), last_completed_date (**text** — stores datetime-local strings directly, not date/timestamptz), next_due_date (**text** — same), notes (text), created_at, updated_at
+- id (uuid PK), user_id (text DEFAULT 'julie'), appointment_type (text), interval_months (int, **nullable** — NOT NULL constraint dropped), last_completed_date (**text** — stores datetime-local strings directly, not date/timestamptz), next_due_date (**text** — same), notes (text), created_at, updated_at
+- **New columns (migration applied before feature/vaccinations):** `category text` ('appointment' | 'vaccination'), `doses_in_series integer` (nullable), `doses_received integer` (nullable)
 - **Date columns are text type** — avoids timezone truncation. Stores datetime-local strings directly.
 - RLS disabled.
-- 9 default rows seeded on first load: dermatologist (6mo), dentist (6mo), gynaecologist (12mo), full_bloodwork (12mo), breast_scan (12mo), thyroid_scan (12mo), eye_optometrist (12mo), bone_density_scan (24mo), colonoscopy (120mo).
+- 9 default appointment rows seeded on first load: dermatologist (6mo), dentist (6mo), gynaecologist (12mo), full_bloodwork (12mo), breast_scan (12mo), thyroid_scan (12mo), eye_optometrist (12mo), bone_density_scan (24mo), colonoscopy (120mo).
+- 7 vaccination rows seeded (category = 'vaccination'): fsme, shingrix, flu, covid_booster, hepatitis_b, tetanus, typhoid.
+- **Vaccination status logic (rendered in Health Calendar tab):** Seasonal suppression for flu/covid_booster in months Apr–Sep (shows "Next: Oct [year]"). Then: Overdue / Upcoming ≤42 days / Future scheduled / Protected (single-dose + last_completed + projected future) / Not scheduled fallback.
+- **Health Calendar rendering:** All vaccination rows are split from appointment rows client-side using `category === 'vaccination'`. Vaccinations appear in a separate VACCINATIONS section below the appointments list. The hero card only surfaces appointment rows (`category !== 'vaccination'`).
 
 ### `biomarker_readings`
 

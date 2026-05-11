@@ -15,6 +15,7 @@ import ContextSection from '@/components/sections/ContextSection'
 import CoachTab from '@/components/CoachTab'
 import SplashScreen from '@/components/SplashScreen'
 import { enableNotifications } from '@/components/SwRegister'
+import { Syringe } from 'lucide-react'
 
 // ─── Date utilities ───────────────────────────────────────────────
 function todayStr() {
@@ -341,6 +342,55 @@ const APPT_LABELS: Record<string, string> = {
   eye_optometrist:  'Eye & Optometrist',
 }
 
+const VACC_LABELS: Record<string, string> = {
+  fsme:          'FSME / Tick-borne encephalitis',
+  shingrix:      'Shingrix (Shingles)',
+  flu:           'Flu',
+  covid_booster: 'COVID Booster',
+  hepatitis_b:   'Hepatitis B',
+  tetanus:       'Tetanus / Tdap',
+  typhoid:       'Typhoid',
+}
+
+function vaccinationStatus(appt: import('@/lib/types').HealthAppointment): { label: string; color: string } {
+  const today = new Date()
+  const month = today.getMonth() + 1
+
+  // 1. Seasonal suppression for flu and covid_booster (months 4–9)
+  if ((appt.appointment_type === 'flu' || appt.appointment_type === 'covid_booster') && month >= 4 && month <= 9) {
+    return { label: `Next: Oct ${today.getFullYear()}`, color: 'var(--color-text-muted)' }
+  }
+
+  if (appt.next_due_date) {
+    const due = new Date(appt.next_due_date.includes('T') ? appt.next_due_date : appt.next_due_date + 'T00:00:00')
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const diffDays = Math.round((due.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24))
+
+    // 2. Overdue
+    if (diffDays < 0) return { label: 'Overdue', color: 'var(--color-status-low)' }
+
+    // 3. Upcoming — within 42 days
+    if (diffDays <= 42) {
+      const label = due.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      return { label, color: 'var(--color-amber)' }
+    }
+
+    // 4. Future scheduled
+    const monYear = due.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    return { label: `Next: ${monYear}`, color: 'var(--color-text-muted)' }
+  }
+
+  // 5. Protected: single-dose / booster type with last_completed_date and interval
+  if (appt.doses_in_series == null && appt.last_completed_date && appt.interval_months != null) {
+    const base = new Date(appt.last_completed_date.includes('T') ? appt.last_completed_date : appt.last_completed_date + 'T00:00:00')
+    base.setMonth(base.getMonth() + appt.interval_months)
+    if (base > today) return { label: 'Protected', color: 'var(--color-status-optimal)' }
+  }
+
+  // 6. Fallback
+  return { label: 'Not scheduled', color: 'var(--color-text-muted)' }
+}
+
 function addMonths(dateStr: string, months: number): string {
   const d = new Date(dateStr + 'T00:00:00')
   d.setMonth(d.getMonth() + months)
@@ -350,8 +400,8 @@ function addMonths(dateStr: string, months: number): string {
   return `${y}-${mo}-${dy}T00:00`
 }
 
-function nextDueDateFromLast(lastCompleted: string | null, intervalMonths: number): Date | null {
-  if (!lastCompleted) return null
+function nextDueDateFromLast(lastCompleted: string | null, intervalMonths: number | null): Date | null {
+  if (!lastCompleted || intervalMonths == null) return null
   const d = new Date(lastCompleted + 'T00:00:00')
   d.setMonth(d.getMonth() + intervalMonths)
   return d
@@ -1293,15 +1343,20 @@ export default function App() {
   const fourMonthsOut = new Date(now)
   fourMonthsOut.setMonth(fourMonthsOut.getMonth() + 4)
 
-  const allAppts = [...(goalsData?.appointments ?? [])].sort((a, b) => {
-    if (!a.next_due_date && !b.next_due_date) return 0
-    if (!a.next_due_date) return 1
-    if (!b.next_due_date) return -1
-    return a.next_due_date < b.next_due_date ? -1 : 1
-  })
+  const allAppts = [...(goalsData?.appointments ?? [])]
+    .filter(a => a.category !== 'vaccination')
+    .sort((a, b) => {
+      if (!a.next_due_date && !b.next_due_date) return 0
+      if (!a.next_due_date) return 1
+      if (!b.next_due_date) return -1
+      return a.next_due_date < b.next_due_date ? -1 : 1
+    })
+
+  const vaccList = [...(goalsData?.appointments ?? [])]
+    .filter(a => a.category === 'vaccination')
 
   function isApptDimmed(appt: HealthAppointment): boolean {
-    if (appt.interval_months <= 6) return false
+    if ((appt.interval_months ?? 0) <= 6) return false
     if (!appt.last_completed_date) return false
     if (!appt.next_due_date) return true
     return new Date(appt.next_due_date + 'T00:00:00') > fourMonthsOut
@@ -1318,7 +1373,7 @@ export default function App() {
 
   async function handleMarkDone(appt: HealthAppointment) {
     const today = new Date().toISOString().split('T')[0]
-    const nextDue = addMonths(today, appt.interval_months)
+    const nextDue = appt.interval_months != null ? addMonths(today, appt.interval_months) : null
     setApptSaving(true)
     try {
       await saveHealthAppointment({ id: appt.id, last_completed_date: today, next_due_date: nextDue })
@@ -1335,7 +1390,7 @@ export default function App() {
   async function handleSaveAppt(appt: HealthAppointment) {
     setApptSaving(true)
     try {
-      const nextDue = editNextDue || (editLastCompleted ? addMonths(editLastCompleted, appt.interval_months) : null)
+      const nextDue = editNextDue || (editLastCompleted && appt.interval_months != null ? addMonths(editLastCompleted, appt.interval_months) : null)
       await saveHealthAppointment({
         id: appt.id,
         last_completed_date: editLastCompleted || null,
@@ -2543,7 +2598,7 @@ export default function App() {
                             value={editLastCompleted}
                             onChange={e => {
                               setEditLastCompleted(e.target.value)
-                              if (e.target.value) {
+                              if (e.target.value && appt.interval_months != null) {
                                 setEditNextDue(addMonths(e.target.value, appt.interval_months))
                               }
                             }}
@@ -2666,6 +2721,233 @@ export default function App() {
                   </div>
                 )
               })
+            )}
+
+            {/* ── VACCINATIONS ─────────────────────────────────── */}
+            {vaccList.length > 0 && (
+              <>
+                <div style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  color: 'var(--color-text-secondary)',
+                  paddingLeft: 4,
+                  marginTop: 16,
+                  marginBottom: 8,
+                }}>
+                  Vaccinations
+                </div>
+                {vaccList.map(vacc => {
+                  const isEditing = editingId === vacc.id
+                  const status = vaccinationStatus(vacc)
+                  const vaccName = VACC_LABELS[vacc.appointment_type] ?? vacc.appointment_type
+                  return (
+                    <div
+                      key={vacc.id}
+                      style={{
+                        marginBottom: 8,
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        borderLeft: isEditing ? '4px solid var(--color-amber)' : '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-lg)',
+                        boxShadow: 'var(--shadow-card)',
+                      }}
+                    >
+                      {!isEditing && (
+                        <button
+                          type="button"
+                          onClick={() => startEdit(vacc)}
+                          style={{
+                            width: '100%',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: 0,
+                            textAlign: 'left',
+                            display: 'flex',
+                            alignItems: 'center',
+                            minHeight: 72,
+                            paddingLeft: 'var(--space-lg)',
+                            paddingRight: 'var(--space-lg)',
+                            gap: 12,
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          <div style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '50%',
+                            background: 'var(--color-border)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            <Syringe size={20} color="var(--color-text-secondary)" />
+                          </div>
+
+                          <div style={{ flexGrow: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                              {vaccName}
+                            </div>
+                            {vacc.doses_in_series != null && (
+                              <div style={{ fontSize: 16, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                                Dose {vacc.doses_received ?? 0} of {vacc.doses_in_series} complete
+                              </div>
+                            )}
+                          </div>
+
+                          <span style={{ fontSize: 14, fontWeight: 600, color: status.color, flexShrink: 0, textAlign: 'right' }}>
+                            {status.label}
+                          </span>
+                        </button>
+                      )}
+
+                      {isEditing && (
+                        <div style={{
+                          padding: 'var(--space-lg)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 'var(--space-md)',
+                        }}>
+                          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                            {vaccName}
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-primary)', marginBottom: 6 }}>
+                              Last Completed
+                            </div>
+                            <input
+                              type="date"
+                              value={editLastCompleted}
+                              onChange={e => {
+                                setEditLastCompleted(e.target.value)
+                                if (e.target.value && vacc.interval_months != null) {
+                                  setEditNextDue(addMonths(e.target.value, vacc.interval_months))
+                                }
+                              }}
+                              style={{
+                                fontSize: 16,
+                                color: 'var(--color-text-primary)',
+                                width: '100%',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-md)',
+                                padding: 'var(--space-sm) var(--space-md)',
+                                background: 'var(--color-surface)',
+                                boxSizing: 'border-box',
+                              }}
+                            />
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-primary)', marginBottom: 2 }}>
+                              Next Due
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
+                              (Auto-computed, overridable)
+                            </div>
+                            <input
+                              type="datetime-local"
+                              value={editNextDue}
+                              onChange={e => setEditNextDue(e.target.value)}
+                              style={{
+                                fontSize: 16,
+                                color: 'var(--color-text-primary)',
+                                width: '100%',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-md)',
+                                padding: 'var(--space-sm) var(--space-md)',
+                                background: 'var(--color-surface)',
+                                boxSizing: 'border-box',
+                              }}
+                            />
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-primary)', marginBottom: 6 }}>
+                              Notes
+                            </div>
+                            <textarea
+                              value={editNotes}
+                              onChange={e => setEditNotes(e.target.value)}
+                              rows={3}
+                              style={{
+                                fontSize: 16,
+                                color: 'var(--color-text-primary)',
+                                width: '100%',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-md)',
+                                padding: 'var(--space-sm) var(--space-md)',
+                                background: 'var(--color-surface)',
+                                resize: 'vertical',
+                                boxSizing: 'border-box',
+                              }}
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleMarkDone(vacc)}
+                            disabled={apptSaving}
+                            style={{
+                              width: '100%',
+                              background: 'var(--color-navy)',
+                              color: 'white',
+                              fontSize: 16,
+                              fontWeight: 600,
+                              borderRadius: 'var(--radius-lg)',
+                              height: 52,
+                              border: 'none',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {apptSaving ? 'Saving…' : 'Mark as Done Today'}
+                          </button>
+
+                          <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveAppt(vacc)}
+                              disabled={apptSaving}
+                              style={{
+                                flex: 1,
+                                background: 'var(--color-navy)',
+                                color: 'white',
+                                borderRadius: 'var(--radius-lg)',
+                                height: 44,
+                                fontSize: 16,
+                                fontWeight: 600,
+                                border: 'none',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {apptSaving ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              style={{
+                                flex: 1,
+                                background: 'var(--color-surface)',
+                                color: 'var(--color-text-primary)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-lg)',
+                                height: 44,
+                                fontSize: 16,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
             )}
 
           </div>

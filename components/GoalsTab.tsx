@@ -100,8 +100,8 @@ function goalScoreLabel(score: number): string {
   return 'Low'
 }
 
-function nextDueDateFromLast(lastCompleted: string | null, intervalMonths: number): Date | null {
-  if (!lastCompleted) return null
+function nextDueDateFromLast(lastCompleted: string | null, intervalMonths: number | null): Date | null {
+  if (!lastCompleted || intervalMonths == null) return null
   const d = new Date(lastCompleted + 'T00:00:00')
   d.setMonth(d.getMonth() + intervalMonths)
   return d
@@ -381,7 +381,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
   })
 
   function isApptDimmed(appt: HealthAppointment): boolean {
-    if (appt.interval_months <= 6) return false
+    if ((appt.interval_months ?? 0) <= 6) return false
     if (!appt.last_completed_date) return false
     if (!appt.next_due_date) return true
     return new Date(appt.next_due_date + 'T00:00:00') > fourMonthsOut
@@ -399,7 +399,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
 
   async function handleMarkDone(appt: HealthAppointment) {
     const today = new Date().toISOString().split('T')[0]
-    const nextDue = addMonths(today, appt.interval_months)
+    const nextDue = appt.interval_months != null ? addMonths(today, appt.interval_months) : null
     setSaving(true)
     try {
       await saveHealthAppointment({ id: appt.id, last_completed_date: today, next_due_date: nextDue })
@@ -416,7 +416,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
   async function handleSaveAppt(appt: HealthAppointment) {
     setSaving(true)
     try {
-      const nextDue = editNextDue || (editLastCompleted ? addMonths(editLastCompleted, appt.interval_months) : null)
+      const nextDue = editNextDue || (editLastCompleted && appt.interval_months != null ? addMonths(editLastCompleted, appt.interval_months) : null)
       await saveHealthAppointment({
         id: appt.id,
         last_completed_date: editLastCompleted || null,
@@ -1675,7 +1675,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
                       value={editLastCompleted}
                       onChange={e => {
                         setEditLastCompleted(e.target.value)
-                        if (e.target.value) {
+                        if (e.target.value && appt.interval_months != null) {
                           setEditNextDue(addMonths(e.target.value, appt.interval_months))
                         }
                       }}

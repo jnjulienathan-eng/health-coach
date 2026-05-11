@@ -175,12 +175,15 @@ export interface HealthAppointment {
   id: string
   user_id: string
   appointment_type: string
-  interval_months: number
+  interval_months: number | null
   last_completed_date: string | null  // YYYY-MM-DD
   next_due_date: string | null        // YYYY-MM-DD
   notes: string | null
   created_at: string | null
   updated_at: string | null
+  category: 'appointment' | 'vaccination' | null
+  doses_in_series: number | null
+  doses_received: number | null
 }
 
 export interface TrainingLoadResult {
