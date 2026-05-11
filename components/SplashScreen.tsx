@@ -46,10 +46,11 @@ export default function SplashScreen({ onDismiss }: Props) {
         }
 
         .splash-overlay {
+          --splash-bg: #0B1120;
           position: fixed;
           inset: 0;
           z-index: 9999;
-          background: #0a0a0a;
+          background: var(--splash-bg);
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -87,12 +88,24 @@ export default function SplashScreen({ onDismiss }: Props) {
           transform: translateY(8px);
           animation: text-rise 700ms ease-out forwards;
           animation-delay: 1600ms;
+          font-family: var(--font-sans), 'Manrope', system-ui, sans-serif;
+          font-size: 20px;
+          font-weight: var(--fw-bold);
+          letter-spacing: 5px;
+          color: #ffffff;
+          margin-top: 24px;
         }
         .splash-tagline {
           opacity: 0;
           transform: translateY(8px);
           animation: text-rise 700ms ease-out forwards;
           animation-delay: 1600ms;
+          font-family: var(--font-sans), 'Manrope', system-ui, sans-serif;
+          font-size: 11px;
+          font-weight: var(--fw-medium);
+          letter-spacing: 5px;
+          color: #ffffff;
+          margin-top: 8px;
         }
       `}</style>
 
@@ -116,30 +129,11 @@ export default function SplashScreen({ onDismiss }: Props) {
           <circle className="splash-dot-right" id="dot-right" cx="428" cy="160" r="5.5" fill="#E8940A"/>
         </svg>
 
-        <div
-          className="splash-wordmark"
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 20,
-            fontWeight: 700,
-            letterSpacing: 5,
-            color: '#ffffff',
-            marginTop: 24,
-          }}
-        >
+        <div className="splash-wordmark">
           BODYCIPHER
         </div>
 
-        <div
-          className="splash-tagline"
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 11,
-            letterSpacing: 5,
-            color: '#E8940A',
-            marginTop: 8,
-          }}
-        >
+        <div className="splash-tagline">
           DECODE YOUR BODY
         </div>
       </div>
