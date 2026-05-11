@@ -2444,7 +2444,10 @@ export default function App() {
 
             {/* Hero card */}
             {(() => {
-              const heroAppt = allAppts.find(a => a.next_due_date)
+              const combined = [...allAppts, ...vaccList]
+                .filter(a => a.next_due_date)
+                .sort((a, b) => (a.next_due_date! < b.next_due_date! ? -1 : 1))
+              const heroAppt = combined[0] ?? null
               if (!heroAppt) {
                 return (
                   <div style={{
@@ -2462,9 +2465,16 @@ export default function App() {
                   </div>
                 )
               }
+              const isVacc = heroAppt.category === 'vaccination'
               const heroNextDue = heroAppt.next_due_date!
               const heroDue = new Date(heroNextDue.includes('T') ? heroNextDue : heroNextDue + 'T00:00:00')
               const daysRemaining = calcDaysRemaining(getTodayBerlin(), heroDue)
+              const heroName = isVacc
+                ? (VACC_LABELS[heroAppt.appointment_type] ?? heroAppt.appointment_type)
+                : (APPT_LABELS[heroAppt.appointment_type] ?? heroAppt.appointment_type)
+              const heroBadgeLabel = isVacc
+                ? vaccinationStatus(heroAppt).label
+                : `${daysRemaining} days remaining`
               return (
                 <div style={{
                   background: 'var(--color-navy)',
@@ -2479,13 +2489,15 @@ export default function App() {
                     <svg width="80" height="80" viewBox="0 0 80 80" style={{ position: 'absolute', top: 0, left: 0 }}>
                       <circle cx="40" cy="40" r="37" fill="none" stroke="var(--color-amber)" strokeWidth="3" opacity="0.7" />
                     </svg>
-                    <ApptIcon type={heroAppt.appointment_type} />
+                    {isVacc
+                      ? <Syringe size={28} color="var(--color-amber)" />
+                      : <ApptIcon type={heroAppt.appointment_type} />}
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-amber)', marginBottom: 4 }}>
                     Upcoming Event
                   </div>
                   <div style={{ fontSize: 24, fontWeight: 700, color: 'white' }}>
-                    {APPT_LABELS[heroAppt.appointment_type] ?? heroAppt.appointment_type}
+                    {heroName}
                   </div>
                   <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
                     {formatHeroDate(heroDue)}
@@ -2500,7 +2512,7 @@ export default function App() {
                     padding: '4px 12px',
                     marginTop: 'var(--space-sm)',
                   }}>
-                    {daysRemaining} days remaining
+                    {heroBadgeLabel}
                   </div>
                 </div>
               )

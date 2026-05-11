@@ -457,7 +457,7 @@ Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
 - 9 default appointment rows seeded on first load: dermatologist (6mo), dentist (6mo), gynaecologist (12mo), full_bloodwork (12mo), breast_scan (12mo), thyroid_scan (12mo), eye_optometrist (12mo), bone_density_scan (24mo), colonoscopy (120mo).
 - 7 vaccination rows seeded (category = 'vaccination'): fsme, shingrix, flu, covid_booster, hepatitis_b, tetanus, typhoid.
 - **Vaccination status logic (rendered in Health Calendar tab):** Seasonal suppression for flu/covid_booster in months Apr–Sep (shows "Next: Oct [year]"). Then: Overdue / Upcoming ≤42 days / Future scheduled / Protected (single-dose + last_completed + projected future) / Not scheduled fallback.
-- **Health Calendar rendering:** All vaccination rows are split from appointment rows client-side using `category === 'vaccination'`. Vaccinations appear in a separate VACCINATIONS section below the appointments list. The hero card only surfaces appointment rows (`category !== 'vaccination'`).
+- **Health Calendar rendering:** All vaccination rows are split from appointment rows client-side using `category === 'vaccination'`. Vaccinations appear in a separate VACCINATIONS section below the appointments list. The hero card surfaces whichever item across both appointments and vaccinations has the nearest `next_due_date`; vaccination hero items render their name via VACC_LABELS, a Syringe icon, and their badge label via vaccinationStatus().
 
 ### `biomarker_readings`
 
