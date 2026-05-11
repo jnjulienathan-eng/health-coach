@@ -1846,7 +1846,7 @@ export default function App() {
                         return (
                           <>
                             <line x1={cx} y1="18" x2={cx} y2="36" stroke="var(--color-navy)" strokeWidth="2" />
-                            <text x={cx} y="38" textAnchor="middle" style={{ fontSize: 'var(--fs-label)', fill: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                            <text x={cx} y="15" textAnchor="middle" style={{ fontSize: 'var(--fs-label)', fill: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
                               target
                             </text>
                           </>
@@ -1886,6 +1886,7 @@ export default function App() {
                     <div className="section-label" style={{ marginBottom: 8 }}>Recent readings</div>
                     {(() => {
                       const { linePath, fillPath, points } = buildVo2Sparkline(vo2Sparkline)
+                      const labelStep = Math.ceil(points.length / 5) || 1
                       return (
                         <svg viewBox="0 0 280 76" width="100%" style={{ display: 'block' }}>
                           <defs>
@@ -1911,18 +1912,21 @@ export default function App() {
                           {points.map((p, i) => (
                             <circle key={i} cx={p.x} cy={p.y} r="3" fill="var(--color-navy)" />
                           ))}
-                          {points.map((p, i) => (
-                            <text
-                              key={i}
-                              x={p.x}
-                              y="72"
-                              textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}
-                              fontSize="8"
-                              style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}
-                            >
-                              {fmtSparkDate(p.date)}
-                            </text>
-                          ))}
+                          {points.map((p, i) => {
+                            if (i % labelStep !== 0 && i !== points.length - 1) return null
+                            return (
+                              <text
+                                key={i}
+                                x={p.x}
+                                y="72"
+                                textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}
+                                fontSize="8"
+                                style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}
+                              >
+                                {fmtSparkDate(p.date)}
+                              </text>
+                            )
+                          })}
                         </svg>
                       )
                     })()}
