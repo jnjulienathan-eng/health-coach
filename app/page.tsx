@@ -441,12 +441,12 @@ function calcDaysRemaining(todayStr: string, dueDate: Date): number {
   return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-function ApptIcon({ type }: { type: string }) {
+function ApptIcon({ type, color = 'var(--color-amber)', size = 28 }: { type: string; color?: string; size?: number }) {
   const s: React.SVGProps<SVGSVGElement> = {
-    width: 28, height: 28,
+    width: size, height: size,
     viewBox: '0 0 24 24',
     fill: 'none',
-    stroke: 'var(--color-amber)',
+    stroke: color,
     strokeWidth: 2,
     strokeLinecap: 'round',
     strokeLinejoin: 'round',
@@ -2444,11 +2444,17 @@ export default function App() {
 
             {/* Hero card */}
             {(() => {
-              const combined = [...allAppts, ...vaccList]
-                .filter(a => a.next_due_date)
+              const todayBerlin = getTodayBerlin()
+              const cutoff = new Date(todayBerlin + 'T00:00:00')
+              cutoff.setDate(cutoff.getDate() + 42)
+              const cutoffStr = cutoff.toISOString().slice(0, 10)
+
+              const upcomingItems = [...allAppts, ...vaccList]
+                .filter(a => a.next_due_date && a.next_due_date.slice(0, 10) <= cutoffStr)
                 .sort((a, b) => (a.next_due_date! < b.next_due_date! ? -1 : 1))
-              const heroAppt = combined[0] ?? null
-              if (!heroAppt) {
+                .slice(0, 3)
+
+              if (upcomingItems.length === 0) {
                 return (
                   <div style={{
                     background: 'var(--color-navy)',
@@ -2465,16 +2471,7 @@ export default function App() {
                   </div>
                 )
               }
-              const isVacc = heroAppt.category === 'vaccination'
-              const heroNextDue = heroAppt.next_due_date!
-              const heroDue = new Date(heroNextDue.includes('T') ? heroNextDue : heroNextDue + 'T00:00:00')
-              const daysRemaining = calcDaysRemaining(getTodayBerlin(), heroDue)
-              const heroName = isVacc
-                ? (VACC_LABELS[heroAppt.appointment_type] ?? heroAppt.appointment_type)
-                : (APPT_LABELS[heroAppt.appointment_type] ?? heroAppt.appointment_type)
-              const heroBadgeLabel = isVacc
-                ? vaccinationStatus(heroAppt).label
-                : `${daysRemaining} days remaining`
+
               return (
                 <div style={{
                   background: 'var(--color-navy)',
@@ -2485,35 +2482,58 @@ export default function App() {
                   marginBottom: 'var(--space-md)',
                   boxSizing: 'border-box',
                 }}>
-                  <div style={{ width: 80, height: 80, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-                    <svg width="80" height="80" viewBox="0 0 80 80" style={{ position: 'absolute', top: 0, left: 0 }}>
-                      <circle cx="40" cy="40" r="37" fill="none" stroke="var(--color-amber)" strokeWidth="3" opacity="0.7" />
-                    </svg>
-                    {isVacc
-                      ? <Syringe size={28} color="var(--color-amber)" />
-                      : <ApptIcon type={heroAppt.appointment_type} />}
+                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-amber)', marginBottom: 'var(--space-md)' }}>
+                    Upcoming
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-amber)', marginBottom: 4 }}>
-                    Upcoming Event
-                  </div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: 'white' }}>
-                    {heroName}
-                  </div>
-                  <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
-                    {formatHeroDate(heroDue)}
-                  </div>
-                  <div style={{
-                    display: 'inline-flex',
-                    background: 'var(--color-amber)',
-                    color: 'var(--color-navy)',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    borderRadius: 'var(--radius-full)',
-                    padding: '4px 12px',
-                    marginTop: 'var(--space-sm)',
-                  }}>
-                    {heroBadgeLabel}
-                  </div>
+                  {upcomingItems.map((item, idx) => {
+                    const isVacc = item.category === 'vaccination'
+                    const itemName = isVacc
+                      ? (VACC_LABELS[item.appointment_type] ?? item.appointment_type)
+                      : (APPT_LABELS[item.appointment_type] ?? item.appointment_type)
+                    const nd = item.next_due_date!
+                    const dueDate = new Date(nd.includes('T') ? nd : nd + 'T00:00:00')
+                    const dateLabel = dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                    return (
+                      <div key={item.id}>
+                        {idx > 0 && (
+                          <div style={{ borderTop: '1px solid var(--color-border)', opacity: 0.25, margin: '12px 0' }} />
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                          <div style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '50%',
+                            background: 'var(--color-amber)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            {isVacc
+                              ? <Syringe size={18} color="var(--color-navy)" />
+                              : <ApptIcon type={item.appointment_type} color="var(--color-navy)" size={18} />}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {itemName}
+                            </div>
+                          </div>
+                          <div style={{
+                            background: 'var(--color-amber)',
+                            color: 'var(--color-navy)',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            borderRadius: 'var(--radius-full)',
+                            padding: '4px 10px',
+                            flexShrink: 0,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {dateLabel}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })()}
