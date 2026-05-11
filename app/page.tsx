@@ -624,7 +624,7 @@ function ScoreCard({ label, score, bullets }: { label: string; score: number; bu
           {bullets.map((b, i) => (
             <div key={i} style={{ fontSize: 10, lineHeight: 1.4, color: b.ok ? 'var(--color-text-secondary)' : 'var(--color-text-muted)', display: 'flex', gap: 4 }}>
               <span style={{ flexShrink: 0 }}>{b.ok ? '✓' : '✗'}</span>
-              <span>{b.text}</span>
+              <span style={{ minWidth: 0 }}>{b.text}</span>
             </div>
           ))}
         </div>

@@ -207,7 +207,7 @@ function StackAccordion({
           fontFamily: 'var(--font-sans)',
         }}
       >
-        <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)', color: anyOn ? 'var(--color-status-optimal)' : 'var(--color-text-muted)' }}>
+        <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-medium)', color: anyOn ? 'var(--color-navy)' : 'var(--color-text-muted)' }}>
           {anyOn ? 'Taken' : 'Not taken'}
         </span>
         <svg

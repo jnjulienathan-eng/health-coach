@@ -60,6 +60,13 @@ _Last updated: May 11, 2026 (Vaccinations section added to Health Calendar tab)_
 
 Default active tab: 0 (Today). GoalsTab, DashboardTab, and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
 
+### Today Tab (updated May 11, 2026 — UI polish fixes)
+
+**UI fixes (May 11, 2026):**
+- Score card bullet items: added `minWidth: 0` to the text span inside each bullet's flex row so long lines (e.g. "Nutrition: 126g protein, 60g fiber") wrap rather than overflow the card.
+- Macro progress bar track: colour changed from `--color-primary-light` (light green) to `--color-navy-tint` (`#E8EEF7`, a very light blue tint of dark navy). New token `--color-navy-tint` added to `:root` in `globals.css`.
+- Supplements StackAccordion "Taken" label: colour changed from `--color-status-optimal` (green) to `--color-navy` (dark navy). "Not taken" remains `--color-text-muted`.
+
 ### Today Tab (updated May 11, 2026 — hero photo added)
 
 **Hero photo (May 11, 2026):**

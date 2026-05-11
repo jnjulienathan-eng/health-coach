@@ -10,6 +10,7 @@
   --color-surface:        #FFFFFF;
   --color-primary:        #001F3F;
   --color-primary-light:  #E8F5EE;
+  --color-navy-tint:      #E8EEF7;
   --color-primary-dark:   #2C7A52;
   --color-accent:         #FFBF00;
   --color-amber:          #FFBF00;
@@ -437,7 +438,7 @@ input[type='range']::-moz-range-thumb {
 /* ─── Macro progress bars ───────────────────────────────────────── */
 .macro-bar-track {
   height: 6px;
-  background: var(--color-primary-light);
+  background: var(--color-navy-tint);
   border-radius: 3px;
   overflow: hidden;
 }
