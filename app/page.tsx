@@ -1058,6 +1058,21 @@ export default function App() {
   // ── Goals data + VO2 state (from GoalsTab) ───────────────────────
   const [goalsData,            setGoalsData]            = useState<GoalsData | null>(null)
   const [greeting]                                       = useState(() => getGreeting())
+  const [heroImage]                                      = useState(() => {
+    const images = [
+      '/images/hero/state-easy-blackforest.jpg',
+      '/images/hero/state-easy-bovic.jpg',
+      '/images/hero/state-easy-mushrooms.jpg',
+      '/images/hero/state-hard-iceland.jpg',
+      '/images/hero/state-moderate-scotland.jpg',
+      '/images/hero/state-moderate.jpg',
+      '/images/hero/state-nodata.jpg',
+      '/images/hero/state-rest-cat.jpg',
+      '/images/hero/state-rest-norway.jpg',
+      '/images/hero/state-rest.jpg',
+    ]
+    return images[Math.floor(Math.random() * images.length)]
+  })
   const [vo2RollingAvg,        setVo2RollingAvg]        = useState<number | null>(null)
   const [vo2Expanded,          setVo2Expanded]          = useState(false)
   const [vo2Sparkline,         setVo2Sparkline]         = useState<BiomarkerReading[]>([])
@@ -1435,77 +1450,115 @@ export default function App() {
         {/* ── TODAY TAB ────────────────────────────────────────── */}
         {activeTab === 'today' && (
           <>
-            {/* Date navigator */}
-            <div
-              className="flex items-center justify-between mb-5"
-              style={{ minHeight: '48px' }}
-            >
-              <button
-                type="button"
-                onClick={() => setCurrentDate(shiftDay(currentDate, -1))}
-                aria-label="Previous day"
-                style={{
-                  width: 36, height: 36,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--color-text-dim)',
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 20,
-                }}
-              >
-                ‹
-              </button>
+            {/* Hero: background photo + date navigator + greeting */}
+            <div style={{
+              position: 'relative',
+              height: 320,
+              marginLeft: -20,
+              marginRight: -20,
+              marginTop: -20,
+              overflow: 'hidden',
+              backgroundImage: `url(${heroImage})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+            }}>
+              {/* Gradient overlay */}
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(to bottom, transparent, rgba(11, 17, 32, 0.75))',
+                pointerEvents: 'none',
+              }} />
 
-              <div className="text-center flex-1">
-                <div
+              {/* Date navigator */}
+              <div
+                className="flex items-center justify-between"
+                style={{ minHeight: '48px', position: 'relative', zIndex: 1, padding: '12px 20px 0' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setCurrentDate(shiftDay(currentDate, -1))}
+                  aria-label="Previous day"
                   style={{
-                    fontSize: 15,
-                    fontWeight: 500,
-                    color: 'var(--color-text-primary)',
-                    letterSpacing: '-0.01em',
+                    width: 36, height: 36,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'white',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: 20,
                   }}
                 >
-                  {formatDate(currentDate)}
-                </div>
-                {!isToday && (
-                  <button
-                    type="button"
-                    onClick={() => setCurrentDate(todayStr())}
+                  ‹
+                </button>
+
+                <div className="text-center flex-1">
+                  <div
                     style={{
-                      fontSize: 11,
-                      color: 'var(--color-primary)',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      marginTop: 2,
-                      fontFamily: 'var(--font-mono)',
+                      fontSize: 15,
+                      fontWeight: 500,
+                      color: 'white',
+                      letterSpacing: '-0.01em',
                     }}
                   >
-                    → today
-                  </button>
-                )}
+                    {formatDate(currentDate)}
+                  </div>
+                  {!isToday && (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentDate(todayStr())}
+                      style={{
+                        fontSize: 11,
+                        color: 'white',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        marginTop: 2,
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    >
+                      → today
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentDate(shiftDay(currentDate, 1))}
+                  disabled={isToday}
+                  aria-label="Next day"
+                  style={{
+                    width: 36, height: 36,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: isToday ? 'rgba(255,255,255,0.35)' : 'white',
+                    background: 'none', border: 'none',
+                    cursor: isToday ? 'default' : 'pointer',
+                    fontSize: 20,
+                  }}
+                >
+                  ›
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setCurrentDate(shiftDay(currentDate, 1))}
-                disabled={isToday}
-                aria-label="Next day"
-                style={{
-                  width: 36, height: 36,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: isToday ? 'var(--color-border)' : 'var(--color-text-dim)',
-                  background: 'none', border: 'none',
-                  cursor: isToday ? 'default' : 'pointer',
-                  fontSize: 20,
-                }}
-              >
-                ›
-              </button>
+              {/* Greeting */}
+              <div style={{
+                position: 'relative',
+                zIndex: 1,
+                padding: '0 20px 20px',
+                fontSize: 'var(--fs-display)',
+                fontWeight: 'var(--fw-bold)',
+                color: 'white',
+                lineHeight: 1.2,
+                maxWidth: '90%',
+              }}>
+                {greeting}
+              </div>
             </div>
 
             {/* Yesterday sleep banner */}
             {showYesterday && !skipYesterday && (
-              <div className="yesterday-prompt">
+              <div className="yesterday-prompt" style={{ marginTop: 16 }}>
                 <div>
                   <div className="section-label" style={{ color: 'var(--color-primary)' }}>
                     Complete yesterday&apos;s sleep
@@ -1553,19 +1606,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Greeting (from GoalsTab) */}
-            <div style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: 'var(--color-text-primary)',
-              marginBottom: 16,
-              lineHeight: 1.45,
-            }}>
-              {greeting}
-            </div>
-
             {/* Score cards (from DashboardTab) */}
-            <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'flex-start', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'flex-start', marginTop: 16, marginBottom: 16 }}>
               <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(entry, todayScored?.nutrition)} />
               <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(entry)} />
               <button

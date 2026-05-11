@@ -60,6 +60,19 @@ _Last updated: May 11, 2026 (Vaccinations section added to Health Calendar tab)_
 
 Default active tab: 0 (Today). GoalsTab, DashboardTab, and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
 
+### Today Tab (updated May 11, 2026 — hero photo added)
+
+**Hero photo (May 11, 2026):**
+Full-width hero container replaces the standalone date navigator and greeting. Sits at the very top of the Today tab, above the score cards.
+- Height: 320px. Negative margins (`-20px` left/right/top) break out of the main container padding to reach full width.
+- Background: random image selected on mount from 10 images in `/public/images/hero/`. Stored in `heroImage` state (useState initializer — runs once, does not change on re-render).
+- Images: state-easy-blackforest, state-easy-bovic, state-easy-mushrooms, state-hard-iceland, state-moderate-scotland, state-moderate, state-nodata, state-rest-cat, state-rest-norway, state-rest. `state-easy.jpg` and `state-hard.jpg` deleted (removed from git).
+- Gradient overlay: `linear-gradient(to bottom, transparent, rgba(11, 17, 32, 0.75))` — full hero height.
+- Date navigator: same logic, restyled white text + white chevrons. `‹/›` disabled state uses `rgba(255,255,255,0.35)`.
+- Greeting: same rotating message logic, restyled to `--fs-display` / `--fw-bold` / white, positioned at bottom of hero with `padding: 0 20px 20px`.
+- Yesterday sleep banner: moved to below the hero (was between date nav and greeting). Gets `marginTop: 16` inline.
+- Score cards: `marginTop: 16` added (was relying on greeting's `marginBottom`).
+
 ### Today Tab (updated May 10, 2026 — Long-term Goals cards design-aligned)
 
 **Long-term Goals design pass (May 10, 2026):**
@@ -92,10 +105,9 @@ All six Today tab accordions restyled to match DESIGN.md tokens:
 ### Today Tab (updated April 30, 2026)
 
 **Structure (top to bottom):**
-1. Date navigator
-2. Yesterday sleep banner (conditional)
-3. **Greeting** — time-aware rotating message (logic copied from GoalsTab, no API call, initialised once per session)
-4. **Score cards row** — Behavior Score, Outcome Score, Training Load (detailed versions with bullet points; copied from DashboardTab; data fetched via `GET /api/scores` + `loadRecentEntries(30)`)
+1. **Hero container** (320px, full-width) — random background photo + gradient overlay + date navigator (white) + greeting (white, `--fs-display`, bottom of hero)
+2. Yesterday sleep banner (conditional, below hero)
+3. **Score cards row** — Behavior Score, Outcome Score, Training Load (detailed versions with bullet points; copied from DashboardTab; data fetched via `GET /api/scores` + `loadRecentEntries(30)`)
 5. Daily logging accordions (Sleep, Training, Nutrition, Hydration, Supplements, Context) — unchanged
 6. **Long-term Goals section** — VO2 Max (spectrum bar + sparkline), Cardiovascular Health (LDL/HDL spectrums + ratio trend), Glucose Stability (7-day fasting avg + HbA1c); copied from GoalsTab
 7. Saved confirmation toast
