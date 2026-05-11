@@ -220,7 +220,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 **Long-term goals section**
 Three collapsible cards:
 
-- **VO2 Max** — spectrum bar (Poor <23 / Fair 23–27 / Good 28–32 / Excellent 33–36 / Superior 37+). Current value marker. Target at 40. Inline entry form. Reads from biomarker_readings (marker = 'vo2_max'). **Display value is a 30-day rolling average** (`getVo2Rolling30DayAvg()` in lib/db.ts), formatted to 1 decimal place via `parseFloat(avg.toFixed(1))`. Single latest reading is still used to pre-fill the manual entry form.
+- **VO2 Max** — spectrum bar (Poor <23 / Fair 23–27 / Good 28–32 / Excellent 33–36 / Superior 37+). Current value marker. Target at 40. Inline entry form. Reads from biomarker_readings (marker = 'vo2_max'). **Display value is a 30-day rolling average** (`getVo2Rolling30DayAvg()` in lib/db.ts), formatted to 1 decimal place via `parseFloat(avg.toFixed(1))`. Single latest reading is still used to pre-fill the manual entry form. **Sparkline** (`getVo2SparklineData()` in lib/db.ts): fetches up to 90 most-recent readings ordered descending, then reverses to chronological order for the SVG. (Bug fix May 11 2026: was ordered ascending .limit(6), silently cutting off all readings after the 6th oldest.)
 - **Cardiovascular health** — LDL:HDL ratio headline, spectrum bars, sparkline. Manual entry bottom sheet. Reads from biomarker_readings.
 - **Glucose stability** — Collapsed state: built and live. 🔍 CHECK: 7-day rolling fasting glucose average from daily_entries. CGM toggle. **Expanded state: designed but NOT YET BUILT.**
 

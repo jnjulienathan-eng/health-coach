@@ -476,11 +476,11 @@ export async function getVo2SparklineData(): Promise<BiomarkerReading[]> {
     .select('*')
     .eq('user_id', 'julie')
     .eq('marker', 'vo2_max')
-    .order('recorded_on', { ascending: true })
-    .limit(6)
+    .order('recorded_on', { ascending: false })
+    .limit(90)
 
   if (error) throw error
-  return (data ?? []) as BiomarkerReading[]
+  return ((data ?? []) as BiomarkerReading[]).reverse()
 }
 
 // ─── getVo2Rolling30DayAvg ────────────────────────────────────────
