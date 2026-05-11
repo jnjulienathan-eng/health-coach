@@ -114,7 +114,7 @@ const TABS: { id: Tab; label: string; Icon: React.FC }[] = [
   { id: 'today',    label: 'Today',           Icon: IconToday },
   { id: 'coach',    label: 'Coach',           Icon: IconCoach },
   { id: 'dashboard',label: 'Dashboard',       Icon: IconDashboard },
-  { id: 'calendar', label: 'Health Calendar', Icon: IconCalendar },
+  { id: 'calendar', label: 'Health Log', Icon: IconCalendar },
 ]
 
 // ─── Greeting (copied from GoalsTab) ─────────────────────────────
@@ -1546,7 +1546,7 @@ export default function App() {
                 position: 'relative',
                 zIndex: 1,
                 padding: '0 20px 20px',
-                fontSize: 'var(--fs-display)',
+                fontSize: 'clamp(1.6rem, 5vw, 2.4rem)',
                 fontWeight: 'var(--fw-bold)',
                 color: 'white',
                 lineHeight: 1.2,

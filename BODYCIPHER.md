@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 11, 2026 (VO2 Max sparkline: target label below bar, date labels split to two lines)_
+_Last updated: May 11, 2026 (UI fixes: app icon navy bg, hero greeting clamp, tab label rename)_
 
 ---
 
@@ -54,11 +54,17 @@ _Last updated: May 11, 2026 (VO2 Max sparkline: target label below bar, date lab
 | Index | Label | Component | Status |
 |---|---|---|---|
 | 0 | Today | Daily logging accordions (inline in app/page.tsx) | Live |
-| 1 | Health Calendar | Hero card + appointment list (inline in app/page.tsx) | Live — design Step 5 complete |
+| 1 | Health Log | Hero card + appointment list (inline in app/page.tsx) | Live — design Step 5 complete |
 | 2 | Coach | `CoachTab` | Live |
 | 3 | Dashboard | Inline in app/page.tsx (charts + history list) | Live — design Step 6 complete |
 
 Default active tab: 0 (Today). GoalsTab, DashboardTab, and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
+
+### UI fixes (May 11, 2026 — BUGs 5, 6, 7)
+
+- **BUG 5 — App icon:** `scripts/generate-icon.mjs` background colour updated from `#0a0a0a` to `#0B1120` (dark navy). `public/apple-touch-icon.png` regenerated.
+- **BUG 6 — Hero greeting overflow:** `app/page.tsx` greeting `fontSize` changed from `var(--fs-display)` to `clamp(1.6rem, 5vw, 2.4rem)` so it scales down on long messages.
+- **BUG 7 — Tab label:** Tab index 1 label changed from "Health Calendar" to "Health Log" in `app/page.tsx`.
 
 ### Today Tab (updated May 11, 2026 — UI polish fixes)
 

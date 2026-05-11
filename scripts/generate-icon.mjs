@@ -14,7 +14,7 @@ const INNER = ICON_SIZE - PADDING * 2 // 132px usable area
 const svg = `
 <svg width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="0 0 ${ICON_SIZE} ${ICON_SIZE}" xmlns="http://www.w3.org/2000/svg">
   <!-- background -->
-  <rect width="${ICON_SIZE}" height="${ICON_SIZE}" fill="#0a0a0a"/>
+  <rect width="${ICON_SIZE}" height="${ICON_SIZE}" fill="#0B1120"/>
 
   <!-- mark scaled to fit inside the padded area.
        Original content occupies viewBox 220 36 220 250.
