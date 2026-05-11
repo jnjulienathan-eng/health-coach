@@ -1835,7 +1835,7 @@ export default function App() {
                   )}
 
                   <div style={{ paddingRight: 8 }}>
-                    <svg viewBox="0 0 280 38" width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                    <svg viewBox="0 0 280 50" width="100%" style={{ display: 'block', overflow: 'visible' }}>
                       <rect x="0" y="22" width="280" height="10" rx="5" fill="var(--color-border)" />
                       {vo2RollingAvg !== null && (() => {
                         const cx = Math.min(vo2RollingAvg, VO2_SCALE_MAX) / VO2_SCALE_MAX * 280
@@ -1846,7 +1846,7 @@ export default function App() {
                         return (
                           <>
                             <line x1={cx} y1="18" x2={cx} y2="36" stroke="var(--color-navy)" strokeWidth="2" />
-                            <text x={cx} y="15" textAnchor="middle" style={{ fontSize: 'var(--fs-label)', fill: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                            <text x={cx} y="44" textAnchor="middle" fontSize="8" style={{ fill: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
                               target
                             </text>
                           </>
@@ -1914,17 +1914,13 @@ export default function App() {
                           ))}
                           {points.map((p, i) => {
                             if (i % labelStep !== 0 && i !== points.length - 1) return null
+                            const anchor = i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'
+                            const [mon, day] = fmtSparkDate(p.date).split(' ')
                             return (
-                              <text
-                                key={i}
-                                x={p.x}
-                                y="72"
-                                textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}
-                                fontSize="8"
-                                style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}
-                              >
-                                {fmtSparkDate(p.date)}
-                              </text>
+                              <g key={i}>
+                                <text x={p.x} y="63" textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{mon}</text>
+                                <text x={p.x} y="73" textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{day}</text>
+                              </g>
                             )
                           })}
                         </svg>

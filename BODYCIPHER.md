@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 11, 2026 (VO2 Max sparkline label decimation + target label repositioned above bar)_
+_Last updated: May 11, 2026 (VO2 Max sparkline: target label below bar, date labels split to two lines)_
 
 ---
 
@@ -220,7 +220,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 **Long-term goals section**
 Three collapsible cards:
 
-- **VO2 Max** — spectrum bar (Poor <23 / Fair 23–27 / Good 28–32 / Excellent 33–36 / Superior 37+). Current value marker. Target at 40. Inline entry form. Reads from biomarker_readings (marker = 'vo2_max'). **Display value is a 30-day rolling average** (`getVo2Rolling30DayAvg()` in lib/db.ts), formatted to 1 decimal place via `parseFloat(avg.toFixed(1))`. Single latest reading is still used to pre-fill the manual entry form. **Sparkline** (`getVo2SparklineData()` in lib/db.ts): fetches up to 90 most-recent readings ordered descending, then reverses to chronological order for the SVG. (Bug fix May 11 2026: was ordered ascending .limit(6), silently cutting off all readings after the 6th oldest.) Date labels use decimation: `step = Math.ceil(points.length / 5)`, labels rendered at `i % step === 0` plus always the last index — keeps ~5–6 visible labels regardless of dataset size. Target tick label rendered at SVG y=15 (above the bar), not y=38 (below the bar).
+- **VO2 Max** — spectrum bar (Poor <23 / Fair 23–27 / Good 28–32 / Excellent 33–36 / Superior 37+). Current value marker. Target at 40. Inline entry form. Reads from biomarker_readings (marker = 'vo2_max'). **Display value is a 30-day rolling average** (`getVo2Rolling30DayAvg()` in lib/db.ts), formatted to 1 decimal place via `parseFloat(avg.toFixed(1))`. Single latest reading is still used to pre-fill the manual entry form. **Sparkline** (`getVo2SparklineData()` in lib/db.ts): fetches up to 90 most-recent readings ordered descending, then reverses to chronological order for the SVG. (Bug fix May 11 2026: was ordered ascending .limit(6), silently cutting off all readings after the 6th oldest.) Date labels use decimation: `step = Math.ceil(points.length / 5)`, labels rendered at `i % step === 0` plus always the last index — keeps ~5–6 visible labels regardless of dataset size. Target tick label rendered at SVG y=44 (below the tick, 8px gap after tick end at y=36); spectrum bar SVG viewBox height extended from 38 to 50 to accommodate it. Date labels on sparkline split into two stacked `<text>` elements: month at y=63, day number at y=73 — halves horizontal label width to eliminate overlap.
 - **Cardiovascular health** — LDL:HDL ratio headline, spectrum bars, sparkline. Manual entry bottom sheet. Reads from biomarker_readings.
 - **Glucose stability** — Collapsed state: built and live. 🔍 CHECK: 7-day rolling fasting glucose average from daily_entries. CGM toggle. **Expanded state: designed but NOT YET BUILT.**
 
