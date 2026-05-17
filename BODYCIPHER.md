@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 17, 2026 (ScreenPhotoEstimate unified composer redesign)_
+_Last updated: May 17, 2026 (ScreenPhotoEstimate unified composer redesign; "Estimate with Claude" added to Add ingredient screen)_
 
 ---
 
@@ -159,6 +159,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 - **Voice dictation on description field (Session F, May 10, 2026):** Mic icon button added to the Description label row in `ScreenPhotoEstimate`. Uses Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`). Tapping starts recognition; result appended to existing description text. Tapping again stops an active session. Button is hidden entirely if the browser does not support speech recognition. Recognizing state shown via amber icon colour. Implemented in `components/nutrition/MealLogger.tsx`.
 - **Photo library picker (Session F, May 10, 2026):** `ImagePlus` button added alongside the existing camera button in `ScreenPhotoEstimate`. Camera button (`capture="environment"`) unchanged. Library button triggers a separate hidden `<input type="file" accept="image/*">` (no `capture` attribute) — opens the photo gallery on iOS, file picker on desktop. Both inputs share the same `imageFile` state and `setImageFile` handler. `lucide-react` package added as a dependency.
 - **ScreenPhotoEstimate unified composer redesign (May 17, 2026):** The two separate Photo and Description sections replaced with a single composer card (`--color-surface`, `--radius-lg`, `--shadow-card`, `--space-md` padding). Card structure top-to-bottom: (1) photo thumbnail (max 180px, `object-fit: cover`, `--radius-md`, absolute-positioned × button to clear) — only rendered when `imageFile` is set; (2) auto-expanding textarea (rows 3 min, right-padding 44px) with mic button pinned inside bottom-right corner (same speech recognition logic); (3) toolbar row (1px `--color-border` top border) with camera icon label (44px, `capture="environment"` hidden input inside) and library icon button (44px, triggers `galleryInputRef`). No section labels. All state, handlers, hidden inputs, and the Estimate macros button are unchanged.
+- **"Estimate with Claude" ingredient mode (May 17, 2026):** `ScreenSearch` (the "Add ingredient" screen reached via "+ Add another" from Building meal) now shows an "Estimate with Claude" `btn-secondary` button alongside "Create a recipe" and "Browse Library" when `context === 'meal'`. Tapping it sets `photoEstimateAsIngredient = true` and navigates to `photoEstimate` screen. `ScreenPhotoEstimate` gained two props: `ingredientMode?: boolean` and `onAddIngredient?: (item: BuildingItem) => void`. In ingredient mode, after the estimate API returns, an inline results step is shown (macro card with "Claude estimate · confidence" badge, "Per serving (100g)" breakdown) instead of navigating to ScreenConfirm. The "Add to meal" button POSTs to `/api/nutrition/food-item` with `source: 'ai_estimate'` and the estimated macros as `nutrients_per_100g`, then calls `onAddIngredient({ food_item, weight_grams: 100 })` which appends the item to `items[]` in the main component and navigates to `building`. Back on the results step clears `ingredientEstimate` and returns to the input step. Back on the input step returns to `search`. `/api/nutrition/food-item` POST route updated: `'ai_estimate'` added to the source type annotation and validation allowlist. `FoodItem.source` type updated in `MealLogger.tsx` (both the interface and `EditingMealProp` inline shape). `food_items.source` allowlist in BODYCIPHER.md: add `'ai_estimate'`. No weight entry screen for AI-estimated items — 100g weight is assumed and the math is correct (macros = nutrients_per_100g × 100 / 100).
 - Legacy daily_entries.nutrition JSONB fields are dead — do not read or write from any new code.
 
 **Hydration section**
@@ -274,7 +275,7 @@ Glucose stability expanded state design (not yet built):
 
 **`food_items`** — ingredient library.
 - id (uuid PK), user_id (text), fdc_id (text, nullable), name (text), nutrients_per_100g (jsonb), source (text), use_count (int), created_at
-- source allowlist: 'usda' | 'openfoodfacts' | 'recipe' | 'recipe_deleted' | 'custom'
+- source allowlist: 'usda' | 'openfoodfacts' | 'recipe' | 'recipe_deleted' | 'custom' | 'ai_estimate'
 - Macro overrides applied via PATCH /api/nutrition/food-item — merges into nutrients_per_100g, preserving raw USDA array.
 
 **`meal_logs`** — one row per meal occasion.

@@ -31,7 +31,7 @@ interface FoodItem {
   id: string
   name: string
   fdc_id: string | null
-  source: 'usda' | 'open_food_facts' | 'custom' | 'recipe' | 'recipe_deleted'
+  source: 'usda' | 'open_food_facts' | 'custom' | 'recipe' | 'recipe_deleted' | 'ai_estimate'
   nutrients_per_100g: NutrientsPer100g
 }
 
@@ -88,7 +88,7 @@ interface EditingMealProp {
       id: string
       name: string
       fdc_id: string | null
-      source: 'usda' | 'open_food_facts' | 'custom' | 'recipe' | 'recipe_deleted'
+      source: 'usda' | 'open_food_facts' | 'custom' | 'recipe' | 'recipe_deleted' | 'ai_estimate'
       nutrients_per_100g: {
         calories: number | null
         protein:  number | null
@@ -266,6 +266,8 @@ export default function MealLogger({ onClose, onSaved, currentDate, initialScree
 
   // Photo estimation result (non-null when coming from ScreenPhotoEstimate)
   const [estimateResult, setEstimateResult] = useState<EstimateResult | null>(null)
+  // True when ScreenPhotoEstimate was opened from ScreenSearch (ingredient mode)
+  const [photoEstimateAsIngredient, setPhotoEstimateAsIngredient] = useState(false)
 
   // Lock body scroll while logger is open
   useEffect(() => {
@@ -582,6 +584,10 @@ const startNewTemplate = () => {
                       setLibraryReturnScreen('search')
                       setScreen('library')
                     } : undefined}
+                    onEstimateWithClaude={editingRecipe === null ? () => {
+                      setPhotoEstimateAsIngredient(true)
+                      setScreen('photoEstimate')
+                    } : undefined}
                     onBack={() => {
                       if (editingRecipe !== null) setScreen('recipeBuilder')
                       else if (items.length > 0) setScreen('building')
@@ -706,11 +712,21 @@ const startNewTemplate = () => {
                 return (
                   <ScreenPhotoEstimate
                     key="photoEstimate"
-                    onBack={() => setScreen('menu')}
+                    ingredientMode={photoEstimateAsIngredient}
+                    onBack={() => {
+                      const wasIngredient = photoEstimateAsIngredient
+                      setPhotoEstimateAsIngredient(false)
+                      setScreen(wasIngredient ? 'search' : 'menu')
+                    }}
                     onEstimated={(result) => {
                       setEstimateResult(result)
                       setMealName(result.meal_name)
                       setScreen('confirm')
+                    }}
+                    onAddIngredient={(item) => {
+                      setItems(prev => [...prev, item])
+                      setPhotoEstimateAsIngredient(false)
+                      setScreen('building')
                     }}
                   />
                 )
@@ -810,7 +826,7 @@ interface MacroEditFields {
 }
 
 function ScreenSearch({
-  context = 'meal', hasItems, onPick, onScan, onCreateRecipe, onBrowseLibrary, onBack,
+  context = 'meal', hasItems, onPick, onScan, onCreateRecipe, onBrowseLibrary, onEstimateWithClaude, onBack,
 }: {
   context?: 'meal' | 'recipe'
   hasItems: boolean
@@ -818,6 +834,7 @@ function ScreenSearch({
   onScan: () => void
   onCreateRecipe: () => void
   onBrowseLibrary?: () => void
+  onEstimateWithClaude?: () => void
   onBack: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -1074,6 +1091,16 @@ function ScreenSearch({
                 style={{ fontSize: 12, padding: '6px 12px' }}
               >
                 Browse Library
+              </button>
+            )}
+            {onEstimateWithClaude && (
+              <button
+                type="button"
+                onClick={onEstimateWithClaude}
+                className="btn-secondary"
+                style={{ fontSize: 12, padding: '6px 12px' }}
+              >
+                Estimate with Claude
               </button>
             )}
           </div>
@@ -2400,9 +2427,13 @@ function ScreenRecipeBuilder({
 function ScreenPhotoEstimate({
   onBack,
   onEstimated,
+  ingredientMode = false,
+  onAddIngredient,
 }: {
   onBack: () => void
   onEstimated: (result: EstimateResult) => void
+  ingredientMode?: boolean
+  onAddIngredient?: (item: BuildingItem) => void
 }) {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [description, setDescription] = useState('')
@@ -2411,6 +2442,10 @@ function ScreenPhotoEstimate({
   const [recognizing, setRecognizing] = useState(false)
   const recognitionRef = useRef<any>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
+  // Ingredient mode: holds the estimate result while showing the confirmation step
+  const [ingredientEstimate, setIngredientEstimate] = useState<EstimateResult | null>(null)
+  const [addingIngredient, setAddingIngredient] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
 
   const speechSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
@@ -2477,12 +2512,130 @@ function ScreenPhotoEstimate({
         setError(j.error ?? 'Estimation failed. Please try again.')
         return
       }
-      onEstimated(j)
+      if (ingredientMode) {
+        setIngredientEstimate(j)
+      } else {
+        onEstimated(j)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Estimation failed. Please try again.')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleAddToMeal = async () => {
+    if (!ingredientEstimate || !onAddIngredient) return
+    setAddingIngredient(true)
+    setAddError(null)
+    try {
+      const name = description.trim().slice(0, 50) || 'Estimated item'
+      const res = await fetch('/api/nutrition/food-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          source: 'ai_estimate',
+          nutrients_per_100g: {
+            calories: ingredientEstimate.calories,
+            protein: ingredientEstimate.protein_g,
+            carbs: ingredientEstimate.carbs_g,
+            fat: ingredientEstimate.fat_g,
+            fiber: ingredientEstimate.fiber_g,
+          },
+        }),
+      })
+      const j = await res.json() as { food_item?: FoodItem; error?: string }
+      if (!res.ok || !j.food_item) {
+        setAddError(j.error ?? 'Could not save ingredient')
+        return
+      }
+      onAddIngredient({ food_item: j.food_item, weight_grams: 100 })
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : 'Could not save ingredient')
+    } finally {
+      setAddingIngredient(false)
+    }
+  }
+
+  // Ingredient mode — results step: show estimated macros + "Add to meal" button
+  if (ingredientMode && ingredientEstimate) {
+    const macros = [
+      { label: 'Calories', value: `${ingredientEstimate.calories} kcal` },
+      { label: 'Protein',  value: `${ingredientEstimate.protein_g}g` },
+      { label: 'Carbs',    value: `${ingredientEstimate.carbs_g}g` },
+      { label: 'Fat',      value: `${ingredientEstimate.fat_g}g` },
+      { label: 'Fiber',    value: `${ingredientEstimate.fiber_g}g` },
+    ]
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
+        transition={{ duration: 0.18 }}
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+      >
+        <Header title="Estimated macros" onBack={() => setIngredientEstimate(null)} backLabel="Back" />
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            {description.trim().slice(0, 50) || 'Estimated item'}
+          </div>
+
+          <div style={{
+            background: 'var(--color-surface)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-card)',
+            padding: 'var(--space-md)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+                Per serving (100g)
+              </span>
+              <span style={{
+                fontSize: 10, fontWeight: 500,
+                background: 'var(--color-amber-light, rgba(255,180,0,0.12))',
+                color: 'var(--color-amber)',
+                padding: '2px 6px', borderRadius: 999,
+              }}>
+                Claude estimate · {ingredientEstimate.confidence}
+              </span>
+            </div>
+            {macros.map(({ label, value }, i) => (
+              <div
+                key={label}
+                style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  fontSize: 13, padding: '6px 0',
+                  borderBottom: i < macros.length - 1 ? '1px solid var(--color-border)' : 'none',
+                }}
+              >
+                <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)' }}>{value}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 11, color: 'var(--color-text-dim)', lineHeight: 1.5 }}>
+            Stored as 100g at these values. 100g will be added to your meal.
+          </div>
+
+          {addError && (
+            <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{addError}</div>
+          )}
+        </div>
+
+        <Footer>
+          <button
+            type="button"
+            onClick={handleAddToMeal}
+            disabled={addingIngredient}
+            className="btn-primary"
+            style={{ width: '100%', opacity: addingIngredient ? 0.5 : 1 }}
+          >
+            {addingIngredient ? 'Adding…' : 'Add to meal'}
+          </button>
+        </Footer>
+      </motion.div>
+    )
   }
 
   return (
