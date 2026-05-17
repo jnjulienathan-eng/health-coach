@@ -2495,23 +2495,131 @@ function ScreenPhotoEstimate({
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        <div>
-          <FieldLabel>Photo <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></FieldLabel>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <label
+        {/* Unified composer card */}
+        <div style={{
+          background: 'var(--color-surface)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-card)',
+          padding: 'var(--space-md)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0,
+        }}>
+          {/* Photo preview — only shown when a file is selected */}
+          {imageFile && (
+            <div style={{ position: 'relative', marginBottom: 12 }}>
+              <img
+                src={URL.createObjectURL(imageFile)}
+                alt="Meal preview"
+                style={{
+                  width: '100%',
+                  maxHeight: 180,
+                  objectFit: 'cover',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'block',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setImageFile(null)}
+                aria-label="Remove photo"
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.55)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontSize: 18,
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          {/* Textarea with mic button pinned inside bottom-right */}
+          <div style={{ position: 'relative' }}>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              onInput={e => {
+                const el = e.currentTarget
+                el.style.height = 'auto'
+                el.style.height = `${el.scrollHeight}px`
+              }}
+              rows={3}
+              placeholder="Describe your meal — e.g. grilled salmon fillet approx 150g, roasted vegetables..."
               style={{
-                flex: 1, display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px',
-                background: 'var(--color-surface)',
+                width: '100%',
+                padding: '10px 44px 10px 12px',
+                fontSize: 'var(--fs-body)',
+                color: 'var(--color-text-primary)',
+                background: 'transparent',
                 border: '1px solid var(--color-border)',
-                borderRadius: 8, cursor: 'pointer',
-                fontSize: 13, color: imageFile ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                borderRadius: 'var(--radius-md)',
+                outline: 'none',
+                resize: 'none',
+                fontFamily: 'var(--font-sans)',
+                boxSizing: 'border-box',
+              }}
+            />
+            {speechSupported && (
+              <button
+                type="button"
+                onClick={toggleMic}
+                aria-label={recognizing ? 'Stop dictation' : 'Start dictation'}
+                style={{
+                  position: 'absolute',
+                  bottom: 8,
+                  right: 8,
+                  width: 32,
+                  height: 32,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: recognizing ? 'var(--color-amber)' : 'var(--color-text-secondary)',
+                  padding: 0,
+                }}
+              >
+                <Mic size={18} />
+              </button>
+            )}
+          </div>
+
+          {/* Toolbar row with camera + library buttons */}
+          <div style={{
+            display: 'flex',
+            gap: 4,
+            marginTop: 8,
+            paddingTop: 8,
+            borderTop: '1px solid var(--color-border)',
+          }}>
+            <label
+              aria-label="Take a photo"
+              style={{
+                width: 44,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: 'var(--color-text-secondary)',
+                borderRadius: 'var(--radius-md)',
               }}
             >
               <CameraIcon />
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {imageFile ? imageFile.name : 'Take a photo'}
-              </span>
               <input
                 type="file"
                 accept="image/*"
@@ -2523,17 +2631,22 @@ function ScreenPhotoEstimate({
             <button
               type="button"
               onClick={() => galleryInputRef.current?.click()}
+              aria-label="Choose from library"
               style={{
-                flex: 1, display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px',
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 8, cursor: 'pointer',
-                fontSize: 13, color: 'var(--color-text-secondary)',
+                width: 44,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--color-text-secondary)',
+                borderRadius: 'var(--radius-md)',
+                padding: 0,
               }}
             >
               <ImagePlus size={18} />
-              <span>Choose from library</span>
             </button>
             <input
               ref={galleryInputRef}
@@ -2543,51 +2656,6 @@ function ScreenPhotoEstimate({
               onChange={e => setImageFile(e.target.files?.[0] ?? null)}
             />
           </div>
-          {imageFile && (
-            <button
-              type="button"
-              onClick={() => setImageFile(null)}
-              style={{ marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--color-text-dim)', padding: 0 }}
-            >
-              Remove photo
-            </button>
-          )}
-        </div>
-
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
-              Description <span style={{ color: 'var(--color-text-dim)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
-            </div>
-            {speechSupported && (
-              <button
-                type="button"
-                onClick={toggleMic}
-                aria-label={recognizing ? 'Stop dictation' : 'Start dictation'}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-                  color: recognizing ? 'var(--color-amber)' : 'var(--color-text-muted)',
-                  display: 'flex', alignItems: 'center',
-                }}
-              >
-                <Mic size={20} />
-              </button>
-            )}
-          </div>
-          <textarea
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            rows={3}
-            placeholder="e.g. grilled salmon fillet approx 150g, roasted vegetables, small amount of rice"
-            style={{
-              width: '100%', padding: '10px 12px', fontSize: 13,
-              color: 'var(--color-text-primary)',
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 8, outline: 'none', resize: 'none',
-              fontFamily: 'var(--font-sans)',
-            }}
-          />
         </div>
 
         {error && (

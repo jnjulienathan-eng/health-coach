@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 11, 2026 (UI fixes: app icon navy bg, hero greeting clamp, tab label rename)_
+_Last updated: May 17, 2026 (ScreenPhotoEstimate unified composer redesign)_
 
 ---
 
@@ -158,6 +158,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 - **Nutrition accordion checkmark logic (updated April 28, 2026):** Green checkmark = protein ≥ 130g AND fiber ≥ 30g (both primary targets hit). Amber circle = meals logged but targets not fully met. No indicator = nothing logged. Reads from `daily_nutrition_summary` via the existing `day.summary` fetch. Implemented via `isPartial` prop on `components/ui/Section.tsx`.
 - **Voice dictation on description field (Session F, May 10, 2026):** Mic icon button added to the Description label row in `ScreenPhotoEstimate`. Uses Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`). Tapping starts recognition; result appended to existing description text. Tapping again stops an active session. Button is hidden entirely if the browser does not support speech recognition. Recognizing state shown via amber icon colour. Implemented in `components/nutrition/MealLogger.tsx`.
 - **Photo library picker (Session F, May 10, 2026):** `ImagePlus` button added alongside the existing camera button in `ScreenPhotoEstimate`. Camera button (`capture="environment"`) unchanged. Library button triggers a separate hidden `<input type="file" accept="image/*">` (no `capture` attribute) — opens the photo gallery on iOS, file picker on desktop. Both inputs share the same `imageFile` state and `setImageFile` handler. `lucide-react` package added as a dependency.
+- **ScreenPhotoEstimate unified composer redesign (May 17, 2026):** The two separate Photo and Description sections replaced with a single composer card (`--color-surface`, `--radius-lg`, `--shadow-card`, `--space-md` padding). Card structure top-to-bottom: (1) photo thumbnail (max 180px, `object-fit: cover`, `--radius-md`, absolute-positioned × button to clear) — only rendered when `imageFile` is set; (2) auto-expanding textarea (rows 3 min, right-padding 44px) with mic button pinned inside bottom-right corner (same speech recognition logic); (3) toolbar row (1px `--color-border` top border) with camera icon label (44px, `capture="environment"` hidden input inside) and library icon button (44px, triggers `galleryInputRef`). No section labels. All state, handlers, hidden inputs, and the Estimate macros button are unchanged.
 - Legacy daily_entries.nutrition JSONB fields are dead — do not read or write from any new code.
 
 **Hydration section**
