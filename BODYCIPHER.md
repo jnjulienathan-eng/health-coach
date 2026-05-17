@@ -350,6 +350,7 @@ After every meal_log save, edit, or delete:
 | /api/nutrition/estimate | POST | Anthropic Vision. image base64 + description → JSON macros + confidence. No DB write. |
 | /api/nutrition/barcode | GET ?code= | Open Food Facts lookup. Null on not-found or sparse data. |
 | /api/nutrition/templates | GET/POST/PUT/DELETE | Data preserved. UI hidden. Do not surface to user. |
+| /api/nutrition/recipe/quick-import | POST | Create a macro-only recipe from per-serving macro values. Auth placeholder (x-mcp-secret / MCP_SECRET) to be added in a subsequent session. Requires `ALTER TABLE recipes ADD COLUMN IF NOT EXISTS ingredients_text text` migration. |
 
 ### Logging flow (built — do not redesign)
 
