@@ -122,32 +122,36 @@ export async function POST(req: Request) {
   }
 
   // ── Lookup ──────────────────────────────────────────────────────────────
-  try {
-    if (fdcId) {
-      const { data: existing, error: lookupErr } = await supabase
-        .from('food_items')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('fdc_id', fdcId)
-        .maybeSingle()
+  // ai_estimate items are unique estimation events — never deduplicate them.
+  // For all other sources, look up an existing row to avoid duplicates.
+  if (source !== 'ai_estimate') {
+    try {
+      if (fdcId) {
+        const { data: existing, error: lookupErr } = await supabase
+          .from('food_items')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('fdc_id', fdcId)
+          .maybeSingle()
 
-      if (lookupErr) return fail('lookup-by-fdc', lookupErr)
-      if (existing)  return Response.json({ food_item: existing })
-    } else {
-      const { data: existing, error: lookupErr } = await supabase
-        .from('food_items')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('source', source)
-        .ilike('name', name)
-        .is('fdc_id', null)
-        .maybeSingle()
+        if (lookupErr) return fail('lookup-by-fdc', lookupErr)
+        if (existing)  return Response.json({ food_item: existing })
+      } else {
+        const { data: existing, error: lookupErr } = await supabase
+          .from('food_items')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('source', source)
+          .ilike('name', name)
+          .is('fdc_id', null)
+          .maybeSingle()
 
-      if (lookupErr) return fail('lookup-by-name', lookupErr)
-      if (existing)  return Response.json({ food_item: existing })
+        if (lookupErr) return fail('lookup-by-name', lookupErr)
+        if (existing)  return Response.json({ food_item: existing })
+      }
+    } catch (e) {
+      return fail('lookup', e)
     }
-  } catch (e) {
-    return fail('lookup', e)
   }
 
   // ── Insert ──────────────────────────────────────────────────────────────
