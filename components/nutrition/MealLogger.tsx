@@ -142,6 +142,7 @@ interface RecipeBuilderState {
   servingGrams: string
   cookedGrams: string
   isRaw: boolean
+  ingredients_text?: string | null
 }
 
 // Shape returned by GET /api/nutrition/templates
@@ -485,6 +486,7 @@ const startNewTemplate = () => {
       servingGrams: recipe.default_serving_grams != null ? String(recipe.default_serving_grams) : '',
       cookedGrams: recipe.total_cooked_grams != null ? String(recipe.total_cooked_grams) : '',
       isRaw: recipe.is_raw === true,
+      ingredients_text: recipe.ingredients_text,
     })
     setItems(built)
     setScreen('recipeBuilder')
@@ -2411,6 +2413,15 @@ function ScreenRecipeBuilder({
             </div>
             <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 4 }}>
               Weigh the finished pot. Leave blank now, add after cooking.
+            </div>
+          </div>
+        )}
+
+        {recipeState.ingredients_text && (
+          <div style={{ marginBottom: 16 }}>
+            <FieldLabel>Ingredients</FieldLabel>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+              {recipeState.ingredients_text}
             </div>
           </div>
         )}
