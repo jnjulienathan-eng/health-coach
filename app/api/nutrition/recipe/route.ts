@@ -102,6 +102,7 @@ export async function GET() {
   }
 
   const out = recipes.map(r => ({ ...r, ingredients: byRecipe[r.id as string] ?? [] }))
+  console.log('[recipe GET] ingredients_text sample:', out.slice(0, 3).map(r => ({ name: (r as Record<string, unknown>).name, ingredients_text: (r as Record<string, unknown>).ingredients_text })))
   return Response.json({ recipes: out })
 }
 

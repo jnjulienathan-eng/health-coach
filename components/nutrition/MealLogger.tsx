@@ -1976,7 +1976,10 @@ function ScreenLibrary({
       const recipeRes = await fetch('/api/nutrition/recipe')
       const recipeJ = await recipeRes.json() as { recipes?: RecipeRow[]; error?: string }
       if (recipeJ.error) setError(recipeJ.error)
-      else setRecipes(recipeJ.recipes ?? [])
+      else {
+        console.log('[Library] recipes from API:', (recipeJ.recipes ?? []).map(r => ({ id: r.id, name: r.name, ingredients_text: r.ingredients_text })))
+        setRecipes(recipeJ.recipes ?? [])
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load')
     } finally {
