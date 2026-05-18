@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 18, 2026 (fix: ai_estimate food_item lookup bypass — always insert fresh row)_
+_Last updated: May 18, 2026 (feat: ingredients_text displayed in Library recipe cards and detail view)_
 
 ---
 
@@ -352,6 +352,8 @@ After every meal_log save, edit, or delete:
 | /api/nutrition/barcode | GET ?code= | Open Food Facts lookup. Null on not-found or sparse data. |
 | /api/nutrition/templates | GET/POST/PUT/DELETE | Data preserved. UI hidden. Do not surface to user. |
 | /api/nutrition/recipe/quick-import | POST | Create a macro-only recipe from per-serving macro values. Auth placeholder (x-mcp-secret / MCP_SECRET) to be added in a subsequent session. Requires `ALTER TABLE recipes ADD COLUMN IF NOT EXISTS ingredients_text text` migration. |
+
+**ingredients_text display (added May 18, 2026):** `ingredients_text` (nullable text column on `recipes`) is now surfaced in the Library UI. GET /api/nutrition/recipe select includes `ingredients_text`. In the recipe card (list view): a single-line truncated preview renders below the macros row when `ingredients_text` is present and the recipe is not a draft. A chevron button (▼) at the card's right edge toggles an expanded detail section showing the full `ingredients_text` under an "Ingredients" label (`pre-wrap`, `--color-text-secondary`). Chevron rotates 180° when expanded. Only rendered when `ingredients_text` is non-null.
 
 ### Logging flow (built — do not redesign)
 

@@ -111,6 +111,7 @@ interface RecipeIngredientRow {
 interface RecipeRow {
   id: string
   name: string
+  ingredients_text: string | null
   status: 'draft' | 'active'
   total_servings: number
   total_cooked_grams: number | null
@@ -1966,6 +1967,7 @@ function ScreenLibrary({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<{ type: 'recipe'; id: string } | null>(null)
+  const [expandedRecipeId, setExpandedRecipeId] = useState<string | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -2067,36 +2069,67 @@ const pickRecipeFoodItem = (recipe: RecipeRow): FoodItem | null => {
                           display: 'flex', flexDirection: 'column', gap: 8,
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => !isDraft && foodItem && onUseRecipe(foodItem, recipe.default_serving_grams ?? null)}
-                          disabled={isDraft || !foodItem}
-                          style={{
-                            background: 'none', border: 'none', padding: 0, textAlign: 'left',
-                            cursor: isDraft || !foodItem ? 'default' : 'pointer', width: '100%',
-                          }}
-                        >
-                          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {recipe.name}
-                          </div>
-                          {isDraft ? (
-                            <span style={{
-                              display: 'inline-block', marginTop: 4,
-                              fontSize: 10, padding: '2px 7px', borderRadius: 4,
-                              background: 'rgba(245,158,11,0.15)', color: '#d97706',
-                              fontWeight: 500, letterSpacing: '0.04em',
-                            }}>
-                              Incomplete — add cooked weight or mark as raw
-                            </span>
-                          ) : displayMacros ? (
-                            <div style={{ marginTop: 4 }}>
-                              <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginBottom: 2 }}>
-                                {hasServing ? `per serving (${recipe.default_serving_grams}g)` : 'per 100g'}
-                              </div>
-                              <MacroLine totals={displayMacros} dim />
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => !isDraft && foodItem && onUseRecipe(foodItem, recipe.default_serving_grams ?? null)}
+                            disabled={isDraft || !foodItem}
+                            style={{
+                              background: 'none', border: 'none', padding: 0, textAlign: 'left',
+                              cursor: isDraft || !foodItem ? 'default' : 'pointer', flex: 1, minWidth: 0,
+                            }}
+                          >
+                            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {recipe.name}
                             </div>
-                          ) : null}
-                        </button>
+                            {isDraft ? (
+                              <span style={{
+                                display: 'inline-block', marginTop: 4,
+                                fontSize: 10, padding: '2px 7px', borderRadius: 4,
+                                background: 'rgba(245,158,11,0.15)', color: '#d97706',
+                                fontWeight: 500, letterSpacing: '0.04em',
+                              }}>
+                                Incomplete — add cooked weight or mark as raw
+                              </span>
+                            ) : displayMacros ? (
+                              <div style={{ marginTop: 4 }}>
+                                <div style={{ fontSize: 10, color: 'var(--color-text-dim)', marginBottom: 2 }}>
+                                  {hasServing ? `per serving (${recipe.default_serving_grams}g)` : 'per 100g'}
+                                </div>
+                                <MacroLine totals={displayMacros} dim />
+                              </div>
+                            ) : null}
+                            {!isDraft && recipe.ingredients_text && (
+                              <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {recipe.ingredients_text}
+                              </div>
+                            )}
+                          </button>
+                          {recipe.ingredients_text && (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedRecipeId(expandedRecipeId === recipe.id ? null : recipe.id)}
+                              aria-label={expandedRecipeId === recipe.id ? 'Collapse ingredients' : 'Show ingredients'}
+                              style={{ background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', color: 'var(--color-text-dim)', flexShrink: 0, marginTop: 2 }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                                style={{ transform: expandedRecipeId === recipe.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', display: 'block' }}
+                              >
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {expandedRecipeId === recipe.id && recipe.ingredients_text && (
+                          <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 8, marginTop: 4 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-text-secondary)', marginBottom: 4 }}>
+                              Ingredients
+                            </div>
+                            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                              {recipe.ingredients_text}
+                            </div>
+                          </div>
+                        )}
 
                         {isConfirming ? (
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
