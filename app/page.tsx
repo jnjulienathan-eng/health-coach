@@ -2865,7 +2865,7 @@ export default function App() {
                             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>
                               {vaccName}
                             </div>
-                            {vacc.doses_in_series != null && (
+                            {vacc.doses_in_series != null && vacc.doses_in_series > 1 && (
                               <div style={{ fontSize: 16, color: 'var(--color-text-secondary)', marginTop: 2 }}>
                                 Dose {vacc.doses_received ?? 0} of {vacc.doses_in_series} complete
                               </div>

@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 18, 2026 (feat: ingredients_text displayed in recipe detail view / ScreenRecipeBuilder)_
+_Last updated: May 27, 2026 (fix: vaccination card "Dose X of Y complete" label only shown when doses_in_series > 1)_
 
 ---
 
@@ -488,6 +488,7 @@ Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
 - 9 default appointment rows seeded on first load: dermatologist (6mo), dentist (6mo), gynaecologist (12mo), full_bloodwork (12mo), breast_scan (12mo), thyroid_scan (12mo), eye_optometrist (12mo), bone_density_scan (24mo), colonoscopy (120mo).
 - 7 vaccination rows seeded (category = 'vaccination'): fsme, shingrix, flu, covid_booster, hepatitis_b, tetanus, typhoid.
 - **Vaccination status logic (rendered in Health Calendar tab):** Seasonal suppression for flu/covid_booster in months Apr–Sep (shows "Next: Oct [year]"). Then: Overdue / Upcoming ≤42 days / Future scheduled / Protected (single-dose + last_completed + projected future) / Not scheduled fallback.
+- **Dose progress label:** "Dose X of Y complete" sub-label on the vaccination card is only rendered when `doses_in_series > 1`. Null or 1 → label absent entirely. (Fix applied May 27, 2026.)
 - **Health Calendar rendering:** All vaccination rows are split from appointment rows client-side using `category === 'vaccination'`. Vaccinations appear in a separate VACCINATIONS section below the appointments list. The hero card surfaces whichever item across both appointments and vaccinations has the nearest `next_due_date`; vaccination hero items render their name via VACC_LABELS, a Syringe icon, and their badge label via vaccinationStatus().
 
 ### `biomarker_readings`
