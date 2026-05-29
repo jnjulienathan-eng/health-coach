@@ -87,10 +87,6 @@ export async function POST(req: NextRequest) {
     const body: ImportPayload = await req.json()
     const metrics: Metric[] = body?.data?.metrics ?? []
     const workouts: Workout[] = body?.data?.workouts ?? []
-    console.log('[health-import] DEBUG metric count:', metrics.length)
-    console.log('[health-import] DEBUG metric names:', JSON.stringify(metrics.map(m => m.name)))
-    console.log('[health-import] DEBUG workout count:', workouts.length)
-
     const supabase = supaAdmin()
     let metricsImported = 0
     let workoutsImported = 0
@@ -102,6 +98,7 @@ export async function POST(req: NextRequest) {
       sleep_duration_min?: number
       bedtime?: string
       active_calories?: number
+      basal_calories?: number
     }
     const byDate: Record<string, DayMetrics> = {}
     const vo2MaxByDate: Record<string, number> = {}
@@ -125,6 +122,9 @@ export async function POST(req: NextRequest) {
         } else if (metric.name === 'active_energy' && point.qty !== undefined) {
           const kcal = metric.units === 'kJ' ? kjToKcal(point.qty) : Math.round(point.qty)
           byDate[date].active_calories = kcal
+        } else if (metric.name === 'basal_energy_burned' && point.qty !== undefined) {
+          const kcal = metric.units === 'kJ' ? kjToKcal(point.qty) : Math.round(point.qty)
+          byDate[date].basal_calories = kcal
         } else if (metric.name === 'vo2_max' && point.qty !== undefined) {
           vo2MaxByDate[date] = point.qty
         }
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
       // Fetch existing row to apply COALESCE: manual entries always win.
       const { data: existing } = await supabase
         .from('daily_entries')
-        .select('rhr, sleep_duration_min, bedtime, active_calories')
+        .select('rhr, sleep_duration_min, bedtime, active_calories, basal_calories')
         .eq('user_id', 'julie')
         .eq('date', date)
         .maybeSingle()
@@ -182,6 +182,15 @@ export async function POST(req: NextRequest) {
           written.push('active_calories')
         } else {
           skipped.push('active_calories (manual value exists)')
+        }
+      }
+
+      if (incoming.basal_calories !== undefined) {
+        if (row?.basal_calories == null) {
+          upsert.basal_calories = incoming.basal_calories
+          written.push('basal_calories')
+        } else {
+          skipped.push('basal_calories (manual value exists)')
         }
       }
 

@@ -446,12 +446,13 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 ### `daily_entries`
 
 Sleep: sleep_duration_min, hrv, rhr, bedtime, rested, nap_minutes, fasting_glucose_mmol
-Training: cycled_today, cycling_minutes, cycling_calories (cycling transport only — training sessions in separate table), **active_calories** (integer, nullable — written by /api/health-import from Health Auto Export active_energy metric; migration: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS active_calories integer`)
-**Health Auto Export → daily_entries mapping (as of April 30, 2026):**
+Training: cycled_today, cycling_minutes, cycling_calories (cycling transport only — training sessions in separate table), **active_calories** (integer, nullable — written by /api/health-import from Health Auto Export active_energy metric; migration: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS active_calories integer`), **basal_calories** (integer, nullable — written by /api/health-import from Health Auto Export basal_energy_burned metric; migration: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS basal_calories integer`)
+**Health Auto Export → daily_entries mapping (as of May 29, 2026):**
 - `resting_heart_rate` → `rhr` (integer, bpm)
 - `sleep_analysis` → `sleep_duration_min` (integer, minutes) and `bedtime` (HH:MM string). HAE sends aggregated format — `totalSleep` is decimal hours (multiply × 60, round to integer); `inBedStart` is the sleep onset datetime ("YYYY-MM-DD HH:MM:SS +offset"), HH:MM portion extracted as bedtime. Both fields use COALESCE — only written if DB value is currently null (manual entry wins). Updated May 4, 2026.
 - `active_energy` → `active_calories` (integer, kcal; converts kJ if needed)
-All three fields use COALESCE — only written if the DB value is currently null (manual entries always win).
+- `basal_energy_burned` → `basal_calories` (integer, kcal; converts kJ if needed)
+All four fields use COALESCE — only written if the DB value is currently null (manual entries always win).
 
 **Health Auto Export → biomarker_readings mapping (as of May 4, 2026):**
 - `vo2_max` → `biomarker_readings` with marker = `'vo2_max'`, unit = `'ml/kg/min'`. Inserted only if no existing row for that user_id + marker + recorded_on (23505 unique-violation = skip). No overwrite of existing values.
