@@ -86,8 +86,10 @@ export async function POST(req: NextRequest) {
   try {
     const body: ImportPayload = await req.json()
     const metrics: Metric[] = body?.data?.metrics ?? []
-    console.log('[health-import] metric names received:', metrics.map((m: Metric) => m.name).join(', '))
     const workouts: Workout[] = body?.data?.workouts ?? []
+    console.log('[health-import] DEBUG metric count:', metrics.length)
+    console.log('[health-import] DEBUG metric names:', JSON.stringify(metrics.map(m => m.name)))
+    console.log('[health-import] DEBUG workout count:', workouts.length)
 
     const supabase = supaAdmin()
     let metricsImported = 0
