@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body: ImportPayload = await req.json()
+    console.log('[health-import] RAW PAYLOAD:', JSON.stringify(body).slice(0, 2000))
     const metrics: Metric[] = body?.data?.metrics ?? []
     const workouts: Workout[] = body?.data?.workouts ?? []
     const supabase = supaAdmin()
