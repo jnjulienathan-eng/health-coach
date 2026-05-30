@@ -178,20 +178,22 @@ export async function POST(req: NextRequest) {
       }
 
       if (incoming.active_calories !== undefined) {
-        if (row?.active_calories == null) {
+        const storedActive = row?.active_calories as number | null | undefined
+        if (storedActive == null || incoming.active_calories > storedActive) {
           upsert.active_calories = incoming.active_calories
           written.push('active_calories')
         } else {
-          skipped.push('active_calories (manual value exists)')
+          skipped.push(`active_calories (stored ${storedActive} >= incoming ${incoming.active_calories})`)
         }
       }
 
       if (incoming.basal_calories !== undefined) {
-        if (row?.basal_calories == null) {
+        const storedBasal = row?.basal_calories as number | null | undefined
+        if (storedBasal == null || incoming.basal_calories > storedBasal) {
           upsert.basal_calories = incoming.basal_calories
           written.push('basal_calories')
         } else {
-          skipped.push('basal_calories (manual value exists)')
+          skipped.push(`basal_calories (stored ${storedBasal} >= incoming ${incoming.basal_calories})`)
         }
       }
 

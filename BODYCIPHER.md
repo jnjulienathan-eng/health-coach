@@ -51,7 +51,7 @@ _Last updated: May 30, 2026 (feat: dynamic nutrition targets + training energy s
 
 ### Dynamic Nutrition Targets (May 2026)
 
-Daily calorie total = `basal_calories + active_calories` from `daily_entries`. If either field is null, show `—` throughout — no fallback numbers. Fat target = `ROUND((calories × 0.40) / 9)`g. Carbs target = `ROUND((calories × 0.30) / 4)`g. Protein (135g) and Fiber (32g) are fixed. `basal_calories` and `active_calories` are always overwritten by the webhook — no conditional spread. Training section shows Basal / Active / Total energy strip above quick-add pills. Nutrition section shows surplus/deficit line below Calories bar (`--color-status-optimal` when under, `--color-amber` when over, `--fs-label`, only rendered when both consumed and total are non-null and consumed > 0).
+Daily calorie total = `basal_calories + active_calories` from `daily_entries`. If either field is null, show `—` throughout — no fallback numbers. Fat target = `ROUND((calories × 0.40) / 9)`g. Carbs target = `ROUND((calories × 0.30) / 4)`g. Protein (135g) and Fiber (32g) are fixed. `basal_calories` and `active_calories` use "overwrite if higher" — the webhook writes the incoming value only when the stored value is null or the incoming value is greater, so the figure updates through the day without a smaller or zero value overwriting a real reading. Training section shows Basal / Active / Total energy strip above quick-add pills. Nutrition section shows surplus/deficit line below Calories bar (`--color-status-optimal` when under, `--color-amber` when over, `--fs-label`, only rendered when both consumed and total are non-null and consumed > 0).
 
 **Files changed:**
 - `lib/types.ts`: `basal_calories` and `active_calories` added to `DailyEntry` interface and `emptyEntry()`.
@@ -461,9 +461,9 @@ Training: cycled_today, cycling_minutes, cycling_calories (cycling transport onl
 **Health Auto Export → daily_entries mapping (as of May 29, 2026):**
 - `resting_heart_rate` → `rhr` (integer, bpm)
 - `sleep_analysis` → `sleep_duration_min` (integer, minutes) and `bedtime` (HH:MM string). HAE sends aggregated format — `totalSleep` is decimal hours (multiply × 60, round to integer); `inBedStart` is the sleep onset datetime ("YYYY-MM-DD HH:MM:SS +offset"), HH:MM portion extracted as bedtime. Both fields use COALESCE — only written if DB value is currently null (manual entry wins). Updated May 4, 2026.
-- `active_energy` → `active_calories` (integer, kcal; converts kJ if needed)
-- `basal_energy_burned` → `basal_calories` (integer, kcal; converts kJ if needed)
-All four fields use COALESCE — only written if the DB value is currently null (manual entries always win).
+- `active_energy` → `active_calories` (integer, kcal; converts kJ if needed). Uses "overwrite if higher" — written when DB value is null or incoming value is greater; a smaller or zero value never overwrites a real stored reading.
+- `basal_energy_burned` → `basal_calories` (integer, kcal; converts kJ if needed). Same "overwrite if higher" rule as active_calories.
+`rhr`, `sleep_duration_min`, and `bedtime` use COALESCE — only written if the DB value is currently null (manual entries always win). `active_calories` and `basal_calories` use "overwrite if higher" as described above. Updated May 30, 2026.
 
 **Health Auto Export → biomarker_readings mapping (as of May 4, 2026):**
 - `vo2_max` → `biomarker_readings` with marker = `'vo2_max'`, unit = `'ml/kg/min'`. Inserted only if no existing row for that user_id + marker + recorded_on (23505 unique-violation = skip). No overwrite of existing values.
