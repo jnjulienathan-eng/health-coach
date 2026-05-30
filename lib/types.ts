@@ -98,6 +98,8 @@ export interface DailyEntry {
   supplements: SupplementsData
   context: ContextData
   hydration_ml: number | null
+  basal_calories: number | null    // written by /api/health-import
+  active_calories: number | null   // written by /api/health-import
 }
 
 // ─── Defaults ────────────────────────────────────────────────────
@@ -157,6 +159,8 @@ export function emptyEntry(date: string): DailyEntry {
     supplements: emptySupplements(),
     context: emptyContext(),
     hydration_ml: null,
+    basal_calories: null,
+    active_calories: null,
   }
 }
 

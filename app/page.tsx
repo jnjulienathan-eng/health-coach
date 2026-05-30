@@ -1654,10 +1654,14 @@ export default function App() {
                   onChange={(training) => update({ training })}
                   onSave={() => save('training')}
                   saving={saving}
+                  basalCalories={entry.basal_calories}
+                  activeCalories={entry.active_calories}
                 />
                 <NutritionSection
                   currentDate={currentDate}
                   sessions={entry.training.sessions}
+                  basalCalories={entry.basal_calories}
+                  activeCalories={entry.active_calories}
                 />
                 <HydrationSection
                   data={entry.hydration_ml}

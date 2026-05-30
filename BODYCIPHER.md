@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 27, 2026 (fix: vaccination card "Dose X of Y complete" label only shown when doses_in_series > 1)_
+_Last updated: May 30, 2026 (feat: dynamic nutrition targets + training energy strip)_
 
 ---
 
@@ -48,6 +48,17 @@ _Last updated: May 27, 2026 (fix: vaccination card "Dose X of Y complete" label 
 ---
 
 ## CURRENT STATE — WHAT IS BUILT
+
+### Dynamic Nutrition Targets (May 2026)
+
+Daily calorie total = `basal_calories + active_calories` from `daily_entries`. If either field is null, show `—` throughout — no fallback numbers. Fat target = `ROUND((calories × 0.40) / 9)`g. Carbs target = `ROUND((calories × 0.30) / 4)`g. Protein (135g) and Fiber (32g) are fixed. `basal_calories` and `active_calories` are always overwritten by the webhook — no conditional spread. Training section shows Basal / Active / Total energy strip above quick-add pills. Nutrition section shows surplus/deficit line below Calories bar (`--color-status-optimal` when under, `--color-amber` when over, `--fs-label`, only rendered when both consumed and total are non-null and consumed > 0).
+
+**Files changed:**
+- `lib/types.ts`: `basal_calories` and `active_calories` added to `DailyEntry` interface and `emptyEntry()`.
+- `lib/db.ts`: both fields extracted in `rowToEntry()`.
+- `app/page.tsx`: both fields passed as props to `TrainingSection` and `NutritionSection`.
+- `components/sections/NutritionSection.tsx`: `getDailyCalorieTarget()` removed; dynamic calorie/fat/carbs targets computed from props; `MacroBar` accepts nullable target; surplus/deficit line added below Calories bar.
+- `components/sections/TrainingSection.tsx`: energy strip (Basal / Active / Total) added above quick-add pills.
 
 ### Navigation (4 tabs — restructured April 30, 2026)
 

@@ -10,6 +10,8 @@ interface Props {
   onChange: (data: TrainingData) => void
   onSave: () => void
   saving?: boolean
+  basalCalories?: number | null
+  activeCalories?: number | null
 }
 
 const ACTIVITIES: {
@@ -89,7 +91,7 @@ function formatStartTime(startTime: string | null | undefined): string | null {
   }
 }
 
-export default function TrainingSection({ data, onChange, onSave, saving }: Props) {
+export default function TrainingSection({ data, onChange, onSave, saving, basalCalories = null, activeCalories = null }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const [closeTick, setCloseTick] = useState(0)
@@ -162,6 +164,30 @@ export default function TrainingSection({ data, onChange, onSave, saving }: Prop
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+
+        {/* Energy strip */}
+        {(() => {
+          const total = (basalCalories != null && activeCalories != null) ? basalCalories + activeCalories : null
+          const fmt = (n: number | null) => n != null ? n.toLocaleString() + ' kcal' : '—'
+          return (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-md)' }}>
+              {([
+                { label: 'Basal',  value: fmt(basalCalories) },
+                { label: 'Active', value: fmt(activeCalories) },
+                { label: 'Total',  value: fmt(total) },
+              ] as { label: string; value: string }[]).map(({ label, value }) => (
+                <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+                    {label}
+                  </span>
+                  <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color: 'var(--color-navy)' }}>
+                    {value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
 
         {/* Quick-add row */}
         <div>

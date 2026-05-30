@@ -10,6 +10,8 @@ import MealLogger from '@/components/nutrition/MealLogger'
 interface Props {
   currentDate: string
   sessions?: TrainingSession[]
+  basalCalories?: number | null
+  activeCalories?: number | null
 }
 
 // ─── API types ────────────────────────────────────────────────────────────
@@ -68,16 +70,6 @@ interface DayResponse {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
-function getDailyCalorieTarget(sessions: TrainingSession[]): number {
-  if (sessions.length === 0) return 1800
-  const totalZone3 = sessions.reduce((sum, s) => sum + (s.zone3_plus_minutes ?? 0), 0)
-  const sessionCount = sessions.length
-  if (sessionCount >= 2 && totalZone3 >= 30) return 2500
-  if (sessionCount >= 2 || totalZone3 >= 16) return 2300
-  if (totalZone3 >= 6) return 2100
-  return 1950
-}
-
 function pickFoodItem(it: MealItem): FoodItemLite | null {
   if (!it.food_items) return null
   return Array.isArray(it.food_items) ? it.food_items[0] ?? null : it.food_items
@@ -132,12 +124,12 @@ function MacroBar({
 }: {
   label: string
   value: number
-  target: { min: number; max: number }
+  target: { min: number; max: number } | null
   flagBelow?: number
   flagAbove?: number
   unit?: string
 }) {
-  const pct = Math.min(100, (value / target.max) * 100)
+  const pct = target != null ? Math.min(100, (value / target.max) * 100) : 0
   const isUnder = flagBelow != null && value > 0 && value < flagBelow
   const isOver  = flagAbove != null && value > flagAbove
   const fillClass = isUnder ? 'under' : isOver ? 'over' : 'on-track'
@@ -154,7 +146,7 @@ function MacroBar({
         <span style={{ fontFamily: 'var(--font-mono)', color: numColor }}>
           {r(value)}{unit}
           <span style={{ color: 'var(--color-text-dim)', fontFamily: 'var(--font-sans)' }}>
-            {' / '}{target.max}{unit}
+            {' / '}{target != null ? `${target.max}${unit}` : '—'}
           </span>
         </span>
       </div>
@@ -448,7 +440,7 @@ function MealCard({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────
-export default function NutritionSection({ currentDate, sessions = [] }: Props) {
+export default function NutritionSection({ currentDate, sessions = [], basalCalories = null, activeCalories = null }: Props) {
   const [day, setDay] = useState<DayResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -456,7 +448,9 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
   const [loggerInitialScreen, setLoggerInitialScreen] = useState<'menu' | 'library'>('menu')
   const [editingMealId, setEditingMealId] = useState<string | null>(null)
 
-  const calorieTarget = getDailyCalorieTarget(sessions)
+  const dailyCalories = (basalCalories != null && activeCalories != null)
+    ? basalCalories + activeCalories
+    : null
 
   const fetchDay = useCallback(async () => {
     setLoading(true)
@@ -489,7 +483,17 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
   const targetsHit = hasData
     && (totals.protein ?? 0) >= MACRO_TARGETS.protein.min
     && (totals.fiber   ?? 0) >= MACRO_TARGETS.fiber.min
-  const calorieTargetRange = { min: Math.round(calorieTarget * 0.9), max: calorieTarget }
+
+  // Dynamic macro targets derived from basal + active calories
+  const fatTarget    = dailyCalories != null ? { min: 0, max: Math.round((dailyCalories * 0.40) / 9) } : null
+  const carbsTarget  = dailyCalories != null ? { min: 0, max: Math.round((dailyCalories * 0.30) / 4) } : null
+  const calorieTargetRange = dailyCalories != null ? { min: Math.round(dailyCalories * 0.9), max: dailyCalories } : null
+
+  // Surplus / deficit
+  const consumedCalories = totals.calories
+  const calorieDiff = (consumedCalories != null && consumedCalories > 0 && dailyCalories != null)
+    ? consumedCalories - dailyCalories
+    : null
 
   // Compact summary used in the collapsed Section header
   const summaryBars = totals.protein != null && totals.protein > 0 ? (
@@ -566,14 +570,12 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
           <MacroBar
             label="Carbs"
             value={totals.carbs ?? 0}
-            target={MACRO_TARGETS.carbs}
-            flagAbove={(MACRO_TARGETS.carbs as { flagAbove?: number }).flagAbove}
+            target={carbsTarget}
           />
           <MacroBar
             label="Fat"
             value={totals.fat ?? 0}
-            target={MACRO_TARGETS.fat}
-            flagAbove={(MACRO_TARGETS.fat as { flagAbove?: number }).flagAbove}
+            target={fatTarget}
           />
           <MacroBar
             label="Calories"
@@ -581,6 +583,15 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
             target={calorieTargetRange}
             unit=" kcal"
           />
+          {calorieDiff != null && (
+            <div style={{
+              fontSize: 'var(--fs-label)',
+              color: calorieDiff <= 0 ? 'var(--color-status-optimal)' : 'var(--color-amber)',
+              marginTop: 2,
+            }}>
+              {Math.abs(Math.round(calorieDiff))} kcal {calorieDiff <= 0 ? 'under' : 'over'}
+            </div>
+          )}
         </div>
 
         {/* Loading / error states */}
