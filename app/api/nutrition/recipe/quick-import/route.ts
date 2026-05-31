@@ -9,16 +9,6 @@
 // nutrients_per_100g directly from the supplied per-serving macro values
 // and default_serving_grams, then creates the food_items + recipes rows.
 //
-// ─── Authentication ──────────────────────────────────────────────────────
-// TODO: add shared-secret header check here before any other logic.
-//
-//   const secret = req.headers.get('x-mcp-secret')
-//   if (!secret || secret !== process.env.MCP_SECRET) {
-//     return Response.json({ error: 'unauthorized' }, { status: 401 })
-//   }
-//
-// MCP_SECRET must be set as a server-side env var in Vercel.
-// ─────────────────────────────────────────────────────────────────────────
 
 import { supaAdmin, nutritionUserId } from '@/lib/nutrition'
 import { SupabaseClient } from '@supabase/supabase-js'

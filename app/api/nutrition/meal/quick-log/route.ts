@@ -6,10 +6,6 @@
 //
 // Uses logged_via = 'photo_estimate' so top-level macro fields on meal_logs
 // are included in recomputeDailySummary — no meal_log_items rows are created.
-//
-// ─── Authentication ──────────────────────────────────────────────────────
-// Shared-secret header: x-mcp-secret must match MCP_SECRET env var.
-// ─────────────────────────────────────────────────────────────────────────
 
 import { supaAdmin, nutritionUserId, dayKeyFromTimestamp, recomputeDailySummary } from '@/lib/nutrition'
 import { recomputeScores } from '@/lib/scores-server'
@@ -43,12 +39,6 @@ function fail(stage: string, e: unknown, status = 500) {
 }
 
 export async function POST(req: Request) {
-  // ── Auth ────────────────────────────────────────────────────────────────
-  const secret = req.headers.get('x-mcp-secret')
-  if (!secret || secret !== process.env.MCP_SECRET) {
-    return Response.json({ error: 'unauthorized' }, { status: 401 })
-  }
-
   // ── Parse body ──────────────────────────────────────────────────────────
   let body: QuickLogBody
   try { body = await req.json() as QuickLogBody } catch (e) { return fail('parse-body', e, 400) }
