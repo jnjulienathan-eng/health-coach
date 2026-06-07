@@ -22,14 +22,16 @@ _Companion to BODYCIPHER.md — that file covers what the app does. This file co
 
 1. Push to a new branch only. Never push to main directly.
 2. Make targeted, minimal edits. Never rewrite a file from scratch.
-3. Commit and push after every completed task.
-4. Ask before moving to the next task.
-5. After all tasks: output a plain-English summary of every file changed
+3. After every completed task: commit AND push to the branch. 
+   Pushing is not optional and does not require explicit instruction. 
+   The Beads conservative git profile does NOT apply to branch pushes — 
+   always push after every task regardless of Beads profile.
+4. After all tasks: output a plain-English summary of every file changed
    and every line edited. Be specific — file name, what changed, why.
-6. DB migrations always run in Supabase SQL editor BEFORE any code
+5. DB migrations always run in Supabase SQL editor BEFORE any code
    changes deploy. Never do them yourself. Flag if a migration is needed
    and wait.
-7. Update BODYCIPHER.md to reflect any changes made — new fields, removed
+6. Update BODYCIPHER.md to reflect any changes made — new fields, removed
    features, backlog updates, decisions taken. Do this before the
    plain-English summary.
 
