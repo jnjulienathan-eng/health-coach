@@ -360,6 +360,7 @@ After every meal_log save, edit, or delete:
 | /api/nutrition/day | GET ?date= | Meals + items + food_items joined + peak_glucose + summary row. 05:00 boundary. |
 | /api/nutrition/recipe | GET/POST/PUT/DELETE | Recipe CRUD. Handles cooked and raw modes. Creates/updates food_items entry. |
 | /api/nutrition/estimate | POST | Anthropic Vision. image base64 + description → JSON macros + confidence. No DB write. |
+| /api/nutrition/name-meal | POST | Anthropic Haiku. ingredient list → short meal name (max 40 chars). No DB write. Called by ScreenConfirm when mealName is empty. |
 | /api/nutrition/barcode | GET ?code= | Open Food Facts lookup. Null on not-found or sparse data. |
 | /api/nutrition/templates | GET/POST/PUT/DELETE | Data preserved. UI hidden. Do not surface to user. |
 | /api/nutrition/recipe/quick-import | POST | Create a macro-only recipe from per-serving macro values. Auth placeholder (x-mcp-secret / MCP_SECRET) to be added in a subsequent session. Requires `ALTER TABLE recipes ADD COLUMN IF NOT EXISTS ingredients_text text` migration. |
@@ -374,6 +375,13 @@ Screen 2: Search (ghost text autocomplete + USDA). Pencil icon on local results 
 Screen 3: Weight entry. Live macro preview. Serving shortcut chip if available.
 Screen 4: Building meal. Running ingredient list. Running macro total bar. Save meal.
 Screen 5: Save confirmation. Meal name (editable), time, macros, notes. Confirm writes to DB.
+
+**Meal name behaviour (added June 2026):**
+- Recipe from Library: recipe name is pre-filled into the meal name field on ScreenConfirm. User can edit or clear it. No API call.
+- Ingredient-assembled meals with no name typed: ScreenConfirm calls `/api/nutrition/name-meal` on mount (Haiku, max 60 tokens). Shows "Naming your meal…" placeholder while in flight. Result is pre-filled and editable.
+- Photo-estimated meals: name is set from the estimate result's `meal_name` field (returned by `/api/nutrition/estimate`).
+- Meal name display on Today tab meal cards truncates with CSS ellipsis (`overflow: hidden; text-overflow: ellipsis; white-space: nowrap`) — NutritionSection.tsx line 223.
+- MCP routes (`/api/nutrition/meal/quick-log` and `/api/nutrition/recipe/quick-import`) silently truncate incoming `name` to 40 characters before any DB write.
 
 Peak glucose: inline on meal card in day view. PATCH /api/nutrition/meal. Never on logging screens.
 

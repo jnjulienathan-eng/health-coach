@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   try { body = await req.json() as QuickLogBody } catch (e) { return fail('parse-body', e, 400) }
 
   // ── Validate ────────────────────────────────────────────────────────────
-  const name = (body.name ?? '').trim()
+  const name = (body.name ?? '').trim().slice(0, 40)
   if (!name) {
     return Response.json({ error: 'name is required' }, { status: 400 })
   }

@@ -682,9 +682,10 @@ const startNewTemplate = () => {
                     }}
                     onNewRecipe={startNewRecipe}
                     onEditRecipe={startEditRecipe}
-                    onUseRecipe={(foodItem, servingGrams) => {
+                    onUseRecipe={(foodItem, servingGrams, recipeName) => {
                       const weight = servingGrams ?? 100
                       setItems(prev => [...prev, { food_item: foodItem, weight_grams: weight }])
+                      setMealName(recipeName)
                       setScreen('building')
                     }}
                   />
@@ -1963,7 +1964,7 @@ function ScreenLibrary({
   onBack: () => void
   onNewRecipe: () => void
   onEditRecipe: (recipe: RecipeRow) => void
-  onUseRecipe: (foodItem: FoodItem, servingGrams: number | null) => void
+  onUseRecipe: (foodItem: FoodItem, servingGrams: number | null, recipeName: string) => void
 }) {
   const [recipes, setRecipes] = useState<RecipeRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -2074,7 +2075,7 @@ const pickRecipeFoodItem = (recipe: RecipeRow): FoodItem | null => {
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                           <button
                             type="button"
-                            onClick={() => !isDraft && foodItem && onUseRecipe(foodItem, recipe.default_serving_grams ?? null)}
+                            onClick={() => !isDraft && foodItem && onUseRecipe(foodItem, recipe.default_serving_grams ?? null, recipe.name)}
                             disabled={isDraft || !foodItem}
                             style={{
                               background: 'none', border: 'none', padding: 0, textAlign: 'left',
@@ -2914,6 +2915,27 @@ function ScreenConfirm({
   const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })
   const canSave = !saving && (isEstimate || items.length > 0)
 
+  // Auto-suggest a meal name when none was pre-filled (no recipe or estimate name).
+  const [namingLoading, setNamingLoading] = useState(false)
+  useEffect(() => {
+    if (mealName !== '' || items.length === 0) return
+    let cancelled = false
+    setNamingLoading(true)
+    fetch('/api/nutrition/name-meal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: items.map(it => ({ name: it.food_item.name, weight_grams: it.weight_grams })) }),
+    })
+      .then(r => r.json())
+      .then((j: { name?: string }) => {
+        if (!cancelled && j.name) setMealName(j.name)
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setNamingLoading(false) })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
@@ -2929,7 +2951,7 @@ function ScreenConfirm({
             type="text"
             value={mealName}
             onChange={(e) => setMealName(e.target.value)}
-            placeholder="Auto-named from time of day if blank"
+            placeholder={namingLoading ? 'Naming your meal…' : 'Auto-named from time of day if blank'}
             style={{
               width: '100%', padding: '10px 12px', fontSize: 14,
               color: 'var(--color-text-primary)',
