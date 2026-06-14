@@ -500,7 +500,7 @@ Confirmed columns (verified April 28, 2026):
 ### Activity icons (canonical mapping)
 
 Used consistently in `TrainingSection.tsx` and `HistoryTab.tsx`:
-Run / Outdoor Run / Indoor Run → 🏃 | Walk / Outdoor Walk / Indoor Walk → 🚶 | Cycling / Outdoor Cycling / Indoor Cycling → 🚴 | Swim → 🏊 | Strength / eGym → 🏋️ | Rowing → 🚣 | Elliptical → 〇 | Yoga / Pilates → 🧘 | Hiking → 🥾 | HIIT → ⚡ | anything else → 🏅
+Run / Outdoor Run / Indoor Run → 🏃 | Walk / Outdoor Walk / Indoor Walk → 🚶 | Cycling / Outdoor Cycling / Indoor Cycling → 🚴 | Swim / Pool Swim → 🏊 | Strength / eGym → 🏋️ | Rowing → 🚣 | Elliptical → 〇 | Yoga / Pilates → 🧘 | Hiking → 🥾 | HIIT → ⚡ | anything else → 🏅
 
 Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
 
