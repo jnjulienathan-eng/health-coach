@@ -39,6 +39,7 @@ function activityEmoji(type: string): string {
       return '🚴'
     case 'swim':
     case 'swimming':
+    case 'pool swim':
     case 'pool swimming':
     case 'open water swimming':
       return '🏊'
