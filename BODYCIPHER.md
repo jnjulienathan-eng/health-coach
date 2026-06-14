@@ -187,6 +187,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 **Context section**
 - Fields: cycle day (auto-counter with manual reset), symptoms (multi-select), travelling toggle, notes
 - `hrv_score` field: REMOVED from ContextSection.tsx. Do not re-add.
+- Read-only metrics strip at top of accordion interior: RESTING HR (resting_hr_daytime, bpm) / WALKING HR (walking_hr_avg, bpm) / DISTANCE (walking_running_km, km). Same visual style as TrainingSection energy strip. Shows — when null. No edit controls.
 
 ---
 
@@ -465,14 +466,17 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 
 ### `daily_entries`
 
-Sleep: sleep_duration_min, hrv, rhr, bedtime, rested, nap_minutes, fasting_glucose_mmol
+Sleep: sleep_duration_min, hrv, rhr (manual-only — HAE no longer writes to this), bedtime, rested, nap_minutes, fasting_glucose_mmol
 Training: cycled_today, cycling_minutes, cycling_calories (cycling transport only — training sessions in separate table), **active_calories** (integer, nullable — written by /api/health-import from Health Auto Export active_energy metric; migration: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS active_calories integer`), **basal_calories** (integer, nullable — written by /api/health-import from Health Auto Export basal_energy_burned metric; migration: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS basal_calories integer`)
-**Health Auto Export → daily_entries mapping (as of May 29, 2026):**
-- `resting_heart_rate` → `rhr` (integer, bpm)
+HAE-only fields: **resting_hr_daytime** (integer, nullable — HAE resting_heart_rate, overwrite-if-higher; displayed in Context section), **walking_hr_avg** (integer, nullable — HAE walking_heart_rate_average, overwrite-if-higher; displayed in Context section), **walking_running_km** (numeric 8,2 nullable — HAE walking_running_distance converted to km, overwrite-if-higher; displayed in Context section). Migrations: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS resting_hr_daytime integer; ADD COLUMN IF NOT EXISTS walking_hr_avg integer; ADD COLUMN IF NOT EXISTS walking_running_km numeric(8,2);`
+**Health Auto Export → daily_entries mapping (as of June 14, 2026):**
+- `resting_heart_rate` → `resting_hr_daytime` (integer, bpm). Uses "overwrite if higher". **`rhr` is now manual-only — HAE never writes to it.**
 - `sleep_analysis` → `sleep_duration_min` (integer, minutes) and `bedtime` (HH:MM string). HAE sends aggregated format — `totalSleep` is decimal hours (multiply × 60, round to integer); `inBedStart` is the sleep onset datetime ("YYYY-MM-DD HH:MM:SS +offset"), HH:MM portion extracted as bedtime. Both fields use COALESCE — only written if DB value is currently null (manual entry wins). Updated May 4, 2026.
 - `active_energy` → `active_calories` (integer, kcal; converts kJ if needed). Uses "overwrite if higher" — written when DB value is null or incoming value is greater; a smaller or zero value never overwrites a real stored reading.
 - `basal_energy_burned` → `basal_calories` (integer, kcal; converts kJ if needed). Same "overwrite if higher" rule as active_calories.
-`rhr`, `sleep_duration_min`, and `bedtime` use COALESCE — only written if the DB value is currently null (manual entries always win). `active_calories` and `basal_calories` use "overwrite if higher" as described above. Updated May 30, 2026.
+- `walking_heart_rate_average` → `walking_hr_avg` (integer, bpm). Uses "overwrite if higher".
+- `walking_running_distance` → `walking_running_km` (numeric, 2 decimal places; mi→km converted if HAE sends units = 'mi'). Uses "overwrite if higher".
+`sleep_duration_min` and `bedtime` use COALESCE — only written if the DB value is currently null (manual entries always win). All other HAE-written fields use "overwrite if higher". Updated June 14, 2026.
 
 **Health Auto Export → biomarker_readings mapping (as of May 4, 2026):**
 - `vo2_max` → `biomarker_readings` with marker = `'vo2_max'`, unit = `'ml/kg/min'`. Inserted only if no existing row for that user_id + marker + recorded_on (23505 unique-violation = skip). No overwrite of existing values.
