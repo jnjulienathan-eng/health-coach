@@ -12,6 +12,9 @@ interface Props {
   onResetCycle: () => void
   onCycleDayChange: (day: number | null) => void
   saving?: boolean
+  restingHrDaytime: number | null
+  walkingHrAvg: number | null
+  walkingRunningKm: number | null
 }
 
 const SYMPTOMS: Symptom[] = [
@@ -24,7 +27,7 @@ const SYMPTOMS: Symptom[] = [
   'Other',
 ]
 
-export default function ContextSection({ data, cycleDay, onChange, onSave, onResetCycle, onCycleDayChange, saving }: Props) {
+export default function ContextSection({ data, cycleDay, onChange, onSave, onResetCycle, onCycleDayChange, saving, restingHrDaytime, walkingHrAvg, walkingRunningKm }: Props) {
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const [closeTick, setCloseTick] = useState(0)
@@ -81,6 +84,24 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+
+        {/* ── HR & Distance strip ────────────────────────────────── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-md)' }}>
+          {([
+            { label: 'RESTING HR', value: restingHrDaytime != null ? restingHrDaytime + ' bpm' : '—' },
+            { label: 'WALKING HR', value: walkingHrAvg      != null ? walkingHrAvg      + ' bpm' : '—' },
+            { label: 'DISTANCE',   value: walkingRunningKm  != null ? walkingRunningKm  + ' km'  : '—' },
+          ] as { label: string; value: string }[]).map(({ label, value }) => (
+            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+                {label}
+              </span>
+              <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color: 'var(--color-navy)' }}>
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
 
         {/* ── Cycle day ─────────────────────────────────────────── */}
         <div>

@@ -100,6 +100,9 @@ export interface DailyEntry {
   hydration_ml: number | null
   basal_calories: number | null    // written by /api/health-import
   active_calories: number | null   // written by /api/health-import
+  resting_hr_daytime: number | null  // written by /api/health-import
+  walking_hr_avg: number | null      // written by /api/health-import
+  walking_running_km: number | null  // written by /api/health-import
 }
 
 // ─── Defaults ────────────────────────────────────────────────────
@@ -161,6 +164,9 @@ export function emptyEntry(date: string): DailyEntry {
     hydration_ml: null,
     basal_calories: null,
     active_calories: null,
+    resting_hr_daytime: null,
+    walking_hr_avg: null,
+    walking_running_km: null,
   }
 }
 

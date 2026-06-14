@@ -1684,6 +1684,9 @@ export default function App() {
                   onResetCycle={resetCycleDay}
                   onCycleDayChange={setCycleDay}
                   saving={saving}
+                  restingHrDaytime={entry.resting_hr_daytime}
+                  walkingHrAvg={entry.walking_hr_avg}
+                  walkingRunningKm={entry.walking_running_km}
                 />
               </div>
             )}

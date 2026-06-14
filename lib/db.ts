@@ -100,9 +100,12 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
       // cycle_day persisted as top-level column, surfaced here for runtime use
       ...(r.cycle_day != null ? { cycle_day: r.cycle_day as number } : {}),
     } as DailyEntry['context'],
-    hydration_ml:    (r.hydration_ml    as number | null) ?? null,
-    basal_calories:  (r.basal_calories  as number | null) ?? null,
-    active_calories: (r.active_calories as number | null) ?? null,
+    hydration_ml:        (r.hydration_ml        as number | null) ?? null,
+    basal_calories:      (r.basal_calories      as number | null) ?? null,
+    active_calories:     (r.active_calories     as number | null) ?? null,
+    resting_hr_daytime:  (r.resting_hr_daytime  as number | null) ?? null,
+    walking_hr_avg:      (r.walking_hr_avg      as number | null) ?? null,
+    walking_running_km:  (r.walking_running_km  as number | null) ?? null,
   }
 }
 
