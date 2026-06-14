@@ -95,11 +95,13 @@ export async function POST(req: NextRequest) {
     // ── METRICS → daily_entries ─────────────────────────────────────────────
     // Aggregate all data points by date first, then process each date once.
     type DayMetrics = {
-      rhr?: number
+      resting_hr_daytime?: number
       sleep_duration_min?: number
       bedtime?: string
       active_calories?: number
       basal_calories?: number
+      walking_hr_avg?: number
+      walking_running_km?: number
     }
     const byDate: Record<string, DayMetrics> = {}
     const vo2MaxByDate: Record<string, number> = {}
@@ -110,7 +112,12 @@ export async function POST(req: NextRequest) {
         if (!byDate[date]) byDate[date] = {}
 
         if (metric.name === 'resting_heart_rate') {
-          byDate[date].rhr = Math.round(point.qty ?? 0)
+          byDate[date].resting_hr_daytime = Math.round(point.qty ?? 0)
+        } else if (metric.name === 'walking_heart_rate_average' && point.qty !== undefined) {
+          byDate[date].walking_hr_avg = Math.round(point.qty)
+        } else if (metric.name === 'walking_running_distance' && point.qty !== undefined) {
+          const km = metric.units === 'mi' ? point.qty * 1.60934 : point.qty
+          byDate[date].walking_running_km = Math.round(km * 100) / 100
         } else if (metric.name === 'sleep_analysis') {
           // HAE sends aggregated sleep_analysis — totalSleep is decimal hours, inBedStart is the sleep onset datetime.
           if (point.totalSleep !== undefined) {
@@ -135,27 +142,48 @@ export async function POST(req: NextRequest) {
     for (const [date, incoming] of Object.entries(byDate)) {
       if (!Object.keys(incoming).length) continue
 
-      // Fetch existing row to apply COALESCE: manual entries always win.
+      // Fetch existing row to apply COALESCE and overwrite-if-higher logic.
       const { data: existing } = await supabase
         .from('daily_entries')
-        .select('rhr, sleep_duration_min, bedtime, active_calories, basal_calories')
+        .select('sleep_duration_min, bedtime, active_calories, basal_calories, resting_hr_daytime, walking_hr_avg, walking_running_km')
         .eq('user_id', 'julie')
         .eq('date', date)
         .maybeSingle()
 
       const row = existing as Record<string, unknown> | null
 
-      // Build upsert payload — only include fields that are currently null.
+      // Build upsert payload.
       const upsert: Record<string, unknown> = { user_id: 'julie', date }
       const written: string[] = []
       const skipped: string[] = []
 
-      if (incoming.rhr !== undefined) {
-        if (row?.rhr == null) {
-          upsert.rhr = incoming.rhr
-          written.push('rhr')
+      if (incoming.resting_hr_daytime !== undefined) {
+        const stored = row?.resting_hr_daytime as number | null | undefined
+        if (stored == null || incoming.resting_hr_daytime > stored) {
+          upsert.resting_hr_daytime = incoming.resting_hr_daytime
+          written.push('resting_hr_daytime')
         } else {
-          skipped.push('rhr (manual value exists)')
+          skipped.push(`resting_hr_daytime (stored ${stored} >= incoming ${incoming.resting_hr_daytime})`)
+        }
+      }
+
+      if (incoming.walking_hr_avg !== undefined) {
+        const stored = row?.walking_hr_avg as number | null | undefined
+        if (stored == null || incoming.walking_hr_avg > stored) {
+          upsert.walking_hr_avg = incoming.walking_hr_avg
+          written.push('walking_hr_avg')
+        } else {
+          skipped.push(`walking_hr_avg (stored ${stored} >= incoming ${incoming.walking_hr_avg})`)
+        }
+      }
+
+      if (incoming.walking_running_km !== undefined) {
+        const stored = row?.walking_running_km as number | null | undefined
+        if (stored == null || incoming.walking_running_km > stored) {
+          upsert.walking_running_km = incoming.walking_running_km
+          written.push('walking_running_km')
+        } else {
+          skipped.push(`walking_running_km (stored ${stored} >= incoming ${incoming.walking_running_km})`)
         }
       }
 
