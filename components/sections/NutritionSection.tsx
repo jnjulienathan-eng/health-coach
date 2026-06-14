@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { TrainingSession } from '@/lib/types'
 import { MACRO_TARGETS } from '@/lib/types'
@@ -118,6 +118,24 @@ function formatTime(iso: string): string {
 
 function r(n: number): number { return Math.round(n) }
 
+// Convert a Berlin HH:MM time string into a UTC ISO timestamp, keeping the same
+// calendar date in Berlin as the existing logged_at.
+function buildNewLoggedAt(existingLoggedAt: string, newHHMM: string): string {
+  const berlinDate = new Date(existingLoggedAt).toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
+  const [yy, mm, dd] = berlinDate.split('-').map(Number)
+  const [hh, min] = newHHMM.split(':').map(Number)
+  // Provisional UTC: treat the Berlin HH:MM as if it were UTC
+  const provisional = new Date(Date.UTC(yy, mm - 1, dd, hh, min, 0))
+  // Find what Berlin time that provisional UTC actually corresponds to
+  const actualBerlin = provisional.toLocaleTimeString('en-GB', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin',
+  })
+  const [aHH, aMM] = actualBerlin.split(':').map(Number)
+  // Offset (minutes) between the provisional UTC and desired Berlin time
+  const diff = (aHH * 60 + aMM) - (hh * 60 + min)
+  return new Date(provisional.getTime() - diff * 60_000).toISOString()
+}
+
 // ─── Macro summary bar ────────────────────────────────────────────────────
 function MacroBar({
   label, value, target, flagBelow, flagAbove, unit = 'g',
@@ -159,12 +177,13 @@ function MacroBar({
 
 // ─── Meal card ────────────────────────────────────────────────────────────
 function MealCard({
-  meal, onDelete, onEdit, onGlucoseUpdate,
+  meal, onDelete, onEdit, onGlucoseUpdate, onTimeUpdate,
 }: {
   meal: MealLog
   onDelete: () => void
   onEdit: () => void
   onGlucoseUpdate: (value: number | null) => void
+  onTimeUpdate: (newLoggedAt: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -172,7 +191,31 @@ function MealCard({
   const [glucoseInput, setGlucoseInput] = useState('')
   const [glucoseSaving, setGlucoseSaving] = useState(false)
   const [glucoseError, setGlucoseError] = useState<string | null>(null)
+  const [timeEditing, setTimeEditing] = useState(false)
+  const [timeInput, setTimeInput] = useState('')
+  const timeInputRef = useRef<HTMLInputElement>(null)
   const totals = useMemo(() => macrosForMeal(meal), [meal])
+
+  useEffect(() => {
+    if (timeEditing) timeInputRef.current?.focus()
+  }, [timeEditing])
+
+  const saveTime = async (value: string) => {
+    setTimeEditing(false)
+    if (!value || value === formatTime(meal.logged_at)) return
+    const newLoggedAt = buildNewLoggedAt(meal.logged_at, value)
+    try {
+      const res = await fetch('/api/nutrition/meal', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: meal.id, logged_at: newLoggedAt }),
+      })
+      const j = await res.json() as { ok?: boolean; error?: string }
+      if (res.ok && !j.error) onTimeUpdate(newLoggedAt)
+    } catch {
+      // silent — time display reverts to meal.logged_at
+    }
+  }
 
   const saveGlucose = async () => {
     const numVal = glucoseInput.trim() === '' ? null : Number(glucoseInput)
@@ -223,9 +266,28 @@ function MealCard({
             <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {meal.name}
             </span>
-            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', marginTop: 2 }}>
-              {formatTime(meal.logged_at)}
-            </span>
+            {timeEditing ? (
+              <input
+                ref={timeInputRef}
+                type="time"
+                value={timeInput}
+                onChange={e => setTimeInput(e.target.value)}
+                onBlur={e => saveTime(e.target.value)}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', marginTop: 2,
+                  background: 'none', border: 'none', borderBottom: '1px solid var(--color-border)',
+                  outline: 'none', padding: 0,
+                }}
+              />
+            ) : (
+              <span
+                onClick={e => { e.stopPropagation(); setTimeInput(formatTime(meal.logged_at)); setTimeEditing(true) }}
+                style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)', marginTop: 2, cursor: 'pointer' }}
+              >
+                {formatTime(meal.logged_at)}
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
             {meal.logged_via === 'photo_estimate' && (
@@ -516,6 +578,13 @@ export default function NutritionSection({ currentDate, sessions = [], basalCalo
     })
   }
 
+  const handleTimeUpdate = (id: string, newLoggedAt: string) => {
+    setDay(prev => {
+      if (!prev) return prev
+      return { ...prev, meals: prev.meals.map(m => m.id === id ? { ...m, logged_at: newLoggedAt } : m) }
+    })
+  }
+
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/nutrition/meal?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
@@ -610,7 +679,7 @@ export default function NutritionSection({ currentDate, sessions = [], basalCalo
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <AnimatePresence initial={false}>
             {(day?.meals ?? []).map(m => (
-              <MealCard key={m.id} meal={m} onDelete={() => handleDelete(m.id)} onEdit={() => handleEdit(m)} onGlucoseUpdate={(v) => handleGlucoseUpdate(m.id, v)} />
+              <MealCard key={m.id} meal={m} onDelete={() => handleDelete(m.id)} onEdit={() => handleEdit(m)} onGlucoseUpdate={(v) => handleGlucoseUpdate(m.id, v)} onTimeUpdate={(newAt) => handleTimeUpdate(m.id, newAt)} />
             ))}
           </AnimatePresence>
           {!loading && (day?.meals.length ?? 0) === 0 && (

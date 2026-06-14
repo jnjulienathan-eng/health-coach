@@ -233,7 +233,7 @@ export async function DELETE(req: Request) {
 
 // ─── PATCH (update a single field without recomputing summary) ───────────
 export async function PATCH(req: Request) {
-  let body: { id?: string; peak_glucose_mmol?: number | null }
+  let body: { id?: string; peak_glucose_mmol?: number | null; logged_at?: string | null }
   try { body = await req.json() } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }) }
   if (!body.id) return Response.json({ error: 'id is required' }, { status: 400 })
 
@@ -251,6 +251,7 @@ export async function PATCH(req: Request) {
 
   const updates: Record<string, unknown> = {}
   if (body.peak_glucose_mmol !== undefined) updates.peak_glucose_mmol = body.peak_glucose_mmol
+  if (body.logged_at !== undefined && body.logged_at !== null) updates.logged_at = body.logged_at
   if (Object.keys(updates).length === 0) return Response.json({ ok: true })
 
   const { error: upErr } = await supabase

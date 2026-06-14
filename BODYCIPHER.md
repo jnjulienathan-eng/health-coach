@@ -356,7 +356,7 @@ After every meal_log save, edit, or delete:
 | /api/nutrition/food-item | PATCH | Macro override — merges into nutrients_per_100g |
 | /api/nutrition/meal | POST | Create meal_log + items. Bumps use_count. Upserts summary. |
 | /api/nutrition/meal | PUT | Replace items wholesale. Re-upserts summary. |
-| /api/nutrition/meal | PATCH | Update peak_glucose_mmol only. No summary recompute. |
+| /api/nutrition/meal | PATCH | Update peak_glucose_mmol and/or logged_at (ISO string, time-only edit — date preserved client-side). No summary recompute. |
 | /api/nutrition/meal | DELETE | Delete meal_log (cascades). Re-upserts summary. |
 | /api/nutrition/day | GET ?date= | Meals + items + food_items joined + peak_glucose + summary row. 05:00 boundary. |
 | /api/nutrition/recipe | GET/POST/PUT/DELETE | Recipe CRUD. Handles cooked and raw modes. Creates/updates food_items entry. |
@@ -384,7 +384,8 @@ Screen 5: Save confirmation. Meal name (editable), time, macros, notes. Confirm 
 - Meal name display on Today tab meal cards truncates with CSS ellipsis (`overflow: hidden; text-overflow: ellipsis; white-space: nowrap`) — NutritionSection.tsx line 223.
 - MCP routes (`/api/nutrition/meal/quick-log` and `/api/nutrition/recipe/quick-import`) silently truncate incoming `name` to 40 characters before any DB write.
 
-Peak glucose: inline on meal card in day view. PATCH /api/nutrition/meal. Never on logging screens.
+Peak glucose: inline editable on meal card in day view. PATCH /api/nutrition/meal. Never on logging screens.
+Meal time: inline editable on meal card — tap the time to enter an `<input type="time">`, blur saves via PATCH /api/nutrition/meal with `logged_at` (ISO string). Client reconstructs the correct UTC ISO by converting the Berlin HH:MM back to UTC using `buildNewLoggedAt()` in NutritionSection.tsx. No summary recompute.
 
 ---
 
