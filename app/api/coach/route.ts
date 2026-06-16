@@ -475,7 +475,7 @@ export async function POST(req: NextRequest) {
       const prompt = buildBriefingPrompt(ctx, mode, today, currentDate, nutritionSummary)
 
       const msg = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1200,
         messages: [{ role: 'user', content: prompt }],
       })
@@ -513,7 +513,7 @@ ${ctx}`
       ]
 
       const msg = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1000,
         system: systemPrompt,
         messages,

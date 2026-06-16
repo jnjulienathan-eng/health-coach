@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 256,
       system:
         'You are a precise nutrition expert. Analyse the food in this image and estimate macros for the portion shown. Return ONLY valid JSON with no markdown, no explanation, no backticks. Format: { description: string, protein: number, fiber: number, fat: number, carbs: number, calories: number }. Be realistic with portion sizes. If you cannot identify food clearly, return your best estimate with description noting uncertainty.',

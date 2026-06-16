@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: May 30, 2026 (feat: dynamic nutrition targets + training energy strip)_
+_Last updated: June 16, 2026 (fix: replace deprecated claude-sonnet-4-20250514 with claude-sonnet-4-6)_
 
 ---
 
@@ -201,7 +201,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
   - endofday: 20:00+
 - Returns JSON: {recovery, training, nutrition, insight, question}. Null fields hidden.
 - Reactive chat below briefing cards.
-- Model: claude-sonnet-4-20250514 · max_tokens 2000
+- Model: claude-sonnet-4-6 · max_tokens 2000
 - Coach reads from daily_nutrition_summary (service-role client). Legacy daily_entries.nutrition JSONB is not read.
 - Training sessions loaded via loadSessionsForDates() in getCoachContext so today's sessions are visible to the coach.
 - earlyevening mode populates recovery and training fields and uses "this evening" language.
