@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: June 16, 2026 (docs: document app/api/vision/route.ts in BODYCIPHER.md)_
+_Last updated: June 16, 2026 (chore: delete orphaned app/api/vision route)_
 
 ---
 
@@ -366,7 +366,6 @@ After every meal_log save, edit, or delete:
 | /api/nutrition/templates | GET/POST/PUT/DELETE | Data preserved. UI hidden. Do not surface to user. |
 | /api/nutrition/recipe/quick-import | POST | Create a macro-only recipe from per-serving macro values. Auth placeholder (x-mcp-secret / MCP_SECRET) to be added in a subsequent session. Requires `ALTER TABLE recipes ADD COLUMN IF NOT EXISTS ingredients_text text` migration. |
 | /api/nutrition/meal/quick-log | POST | Log a meal directly from macros (MCP/Claude Desktop). Requires `x-mcp-secret` header matching `MCP_SECRET` env var. Accepts: name, calories, protein, carbs, fat, fiber. Uses `logged_via = 'photo_estimate'`, sets `logged_at` to server timestamp, date computed with 05:00 Berlin boundary. Calls recomputeDailySummary + recomputeScores. No meal_log_items rows created. Added May 2026. |
-| /api/vision | POST | Anthropic Sonnet (claude-sonnet-4-6). Accepts `image` (base64, required), `mealType` (optional string), `mediaType` (optional, defaults to `image/jpeg`). Returns `{ description, protein, fiber, fat, carbs, calories }`. Simpler image-only variant of /api/nutrition/estimate: max_tokens 256, no confidence or meal_name fields, no text-description path. No DB write. **Currently not called from anywhere in the codebase — orphaned route.** |
 
 **ingredients_text display (added May 18, 2026):** `ingredients_text` (nullable text column on `recipes`) is now surfaced in the Library UI. GET /api/nutrition/recipe select includes `ingredients_text`. In the recipe card (list view): a single-line truncated preview renders below the macros row when `ingredients_text` is present and the recipe is not a draft. A chevron button (▼) at the card's right edge toggles an expanded detail section showing the full `ingredients_text` under an "Ingredients" label (`pre-wrap`, `--color-text-secondary`). Chevron rotates 180° when expanded. Only rendered when `ingredients_text` is non-null. In the recipe detail view (`ScreenRecipeBuilder`, opened via Edit): `ingredients_text` is threaded into `RecipeBuilderState` via `startEditRecipe` and rendered as a read-only `pre-wrap` block under a "INGREDIENTS" `FieldLabel`, above the save error and footer macros. Only rendered when non-null. Not editable — managed via the quick-import MCP route.
 
