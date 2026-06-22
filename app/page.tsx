@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling30DayAvg } from '@/lib/db'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling30DayAvg } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
@@ -1088,6 +1088,11 @@ export default function App() {
   // ── Glucose Stability state ───────────────────────────────────────
   const [glucoseExpanded, setGlucoseExpanded] = useState(false)
   const [cgmEnabled,      setCgmEnabled]      = useState(false)
+  const [hba1cEntryOpen,  setHba1cEntryOpen]  = useState(false)
+  const [hba1cValueInput, setHba1cValueInput] = useState('')
+  const [hba1cDateInput,  setHba1cDateInput]  = useState('')
+  const [hba1cSaving,     setHba1cSaving]     = useState(false)
+  const [hba1cError,      setHba1cError]      = useState<string | null>(null)
   const [cardioEntryOpen, setCardioEntryOpen] = useState(false)
   const [cardioLdlValue,  setCardioLdlValue]  = useState('')
   const [cardioHdlValue,  setCardioHdlValue]  = useState('')
@@ -1350,6 +1355,27 @@ export default function App() {
       console.error('Save cardio reading error:', err)
     } finally {
       setCardioSaving(false)
+    }
+  }
+
+  // ── HbA1c save handler ───────────────────────────────────────────
+  async function saveHba1c() {
+    const val = parseFloat(hba1cValueInput)
+    if (!Number.isFinite(val) || val <= 0) return
+    const date = hba1cDateInput || new Date().toISOString().split('T')[0]
+    setHba1cSaving(true)
+    setHba1cError(null)
+    try {
+      await saveHba1cReading(val, date)
+      setHba1cEntryOpen(false)
+      setHba1cValueInput('')
+      setHba1cDateInput('')
+      const fresh = await getGoalsData()
+      setGoalsData(fresh)
+    } catch (e) {
+      setHba1cError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setHba1cSaving(false)
     }
   }
 
@@ -2393,20 +2419,96 @@ export default function App() {
                   </div>
 
                   {/* HbA1c */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
-                        HbA1c
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                          HbA1c
+                        </div>
+                        {hba1c != null && (
+                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                            Lab result · {new Date(hba1c.recorded_on + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {hba1c != null && (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                              <span style={{
+                                fontSize: 'var(--fs-body)',
+                                fontWeight: 'var(--fw-semibold)',
+                                color: hba1c.value < 5.7
+                                  ? 'var(--color-status-optimal)'
+                                  : hba1c.value < 6.5
+                                  ? 'var(--color-amber)'
+                                  : 'var(--color-status-low)',
+                              }}>
+                                {parseFloat(hba1c.value.toFixed(1))}
+                              </span>
+                              <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>%</span>
+                            </div>
+                            <div style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: hba1c.value < 5.7
+                                ? 'var(--color-status-optimal)'
+                                : hba1c.value < 6.5
+                                ? 'var(--color-amber)'
+                                : 'var(--color-status-low)',
+                            }}>
+                              {hba1c.value < 5.7 ? 'Optimal' : hba1c.value < 6.5 ? 'Watch' : 'High'}
+                            </div>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setHba1cEntryOpen(v => !v) }}
+                          style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+                        >
+                          {hba1c != null ? 'Update' : 'Log'}
+                        </button>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                      <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-navy)' }}>
-                        {hba1c != null ? parseFloat(hba1c.value.toFixed(1)) : '—'}
-                      </span>
-                      <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>
-                        {hba1c?.unit ?? '%'}
-                      </span>
-                    </div>
+
+                    {hba1cEntryOpen && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>Value (%)</div>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="3"
+                              max="15"
+                              value={hba1cValueInput}
+                              onChange={e => setHba1cValueInput(e.target.value)}
+                              placeholder="5.3"
+                              style={{ width: '100%', minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--fs-body)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>Date</div>
+                            <input
+                              type="date"
+                              value={hba1cDateInput}
+                              onChange={e => setHba1cDateInput(e.target.value)}
+                              style={{ width: '100%', minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--fs-body)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        </div>
+                        {hba1cError && <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{hba1cError}</div>}
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={saveHba1c}
+                          disabled={hba1cSaving || !hba1cValueInput}
+                          style={{ height: 52, opacity: hba1cSaving ? 0.6 : 1 }}
+                        >
+                          {hba1cSaving ? 'Saving…' : 'Save HbA1c'}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* CGM toggle */}

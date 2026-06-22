@@ -535,6 +535,15 @@ export async function saveCardioReading(ldl: number, hdl: number, date: string):
   if (error) throw error
 }
 
+// ─── saveHba1cReading ─────────────────────────────────────────────
+export async function saveHba1cReading(value: number, recordedOn: string): Promise<void> {
+  const { error } = await supabase
+    .from('biomarker_readings')
+    .insert({ user_id: 'julie', marker: 'hba1c', value, unit: '%', recorded_on: recordedOn })
+
+  if (error) throw error
+}
+
 // ─── fetch30DayHistory ────────────────────────────────────────────
 // Returns 30 days of entries including training sessions, used for
 // Training Load EWMA computation. Sessions are loaded via loadSessionsForDates.

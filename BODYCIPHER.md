@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: June 16, 2026 (chore: delete orphaned app/api/vision route)_
+_Last updated: June 22, 2026 (feat: HbA1c entry flow in Glucose Stability card)_
 
 ---
 
@@ -243,13 +243,12 @@ Three collapsible cards:
 
 - **VO2 Max** — spectrum bar (Poor <23 / Fair 23–27 / Good 28–32 / Excellent 33–36 / Superior 37+). Current value marker. Target at 40. Inline entry form. Reads from biomarker_readings (marker = 'vo2_max'). **Display value is a 30-day rolling average** (`getVo2Rolling30DayAvg()` in lib/db.ts), formatted to 1 decimal place via `parseFloat(avg.toFixed(1))`. Single latest reading is still used to pre-fill the manual entry form. **Sparkline** (`getVo2SparklineData()` in lib/db.ts): fetches up to 90 most-recent readings ordered descending, then reverses to chronological order for the SVG. (Bug fix May 11 2026: was ordered ascending .limit(6), silently cutting off all readings after the 6th oldest.) Date labels use decimation: `step = Math.ceil(points.length / 5)`, labels rendered at `i % step === 0` plus always the last index — keeps ~5–6 visible labels regardless of dataset size. Target tick label rendered at SVG y=44 (below the tick, 8px gap after tick end at y=36); spectrum bar SVG viewBox height extended from 38 to 50 to accommodate it. Date labels on sparkline split into two stacked `<text>` elements: month at y=63, day number at y=73 — halves horizontal label width to eliminate overlap.
 - **Cardiovascular health** — LDL:HDL ratio headline, spectrum bars, sparkline. Manual entry bottom sheet. Reads from biomarker_readings.
-- **Glucose stability** — Collapsed state: built and live. 🔍 CHECK: 7-day rolling fasting glucose average from daily_entries. CGM toggle. **Expanded state: designed but NOT YET BUILT.**
+- **Glucose stability** — Collapsed state: built and live. 7-day rolling fasting glucose average from daily_entries. CGM toggle. **Expanded state: partially built (June 22, 2026).**
 
-Glucose stability expanded state design (not yet built):
-- Fasting glucose spectrum bar: Low <4.0 / Optimal 4.0–5.4 / Good 5.5–6.0 / Watch 6.0+. Marker at 7-day rolling average.
-- HbA1c row: current value, status label, target <5.7%. "Log HbA1c" button → writes to biomarker_readings.
-- CGM toggle: when off, card greys out with note "Enable CGM to track glucose."
-- Build: targeted edit to GoalsTab.tsx only. No new API routes. No DB migrations.
+Glucose stability expanded state (June 22, 2026):
+- Fasting glucose: 7-day avg displayed with colour-coded value (same as collapsed). Spectrum bar not yet built.
+- **HbA1c row (built):** Shows current value colour-coded (Optimal <5.7% / Watch 5.7–6.5% / High ≥6.5%), lab date, and status label. "Log"/"Update" button toggles inline entry form with Value (%) + Date inputs. Saves to `biomarker_readings` via `saveHba1cReading()` in lib/db.ts (marker = 'hba1c', unit = '%'). No migrations — table already had 'hba1c' as a live marker.
+- CGM toggle: present but CGM data not yet connected.
 
 **Health calendar section (design Step 5 complete — May 10, 2026; vaccinations section added — May 11, 2026)**
 - **Hero card** at top of tab: navy card (`--color-navy`) with circular amber ring (80×80px SVG, 3px stroke, 70% opacity), type-specific icon (inline SVG, lucide-style, 28px), "UPCOMING EVENT" label, appointment name (24px, white), date (16px, 70% white), and amber days-remaining pill. Surfaces the single nearest appointment where `next_due_date` is not null. Days remaining computed in Europe/Berlin local date. Fallback: "All appointments up to date." on a navy card.
