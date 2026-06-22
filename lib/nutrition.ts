@@ -94,7 +94,8 @@ export function macrosFor(nutrientsPer100g: Record<string, unknown> | null | und
   const out = emptyMacros()
   for (const k of MACRO_KEYS) {
     const v = n[k]
-    if (typeof v === 'number') out[k] = (v * weightGrams) / 100
+    const num = typeof v === 'number' ? v : parseFloat(v as string)
+    if (Number.isFinite(num)) out[k] = (num * weightGrams) / 100
   }
   return out
 }
