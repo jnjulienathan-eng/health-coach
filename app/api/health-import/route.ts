@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
       basal_calories?: number
       walking_hr_avg?: number
       walking_running_km?: number
+      apple_hrv_avg?: number
     }
     const byDate: Record<string, DayMetrics> = {}
     const vo2MaxByDate: Record<string, number> = {}
@@ -142,6 +143,8 @@ export async function POST(req: NextRequest) {
           byDate[date].basal_calories = kcal
         } else if (metric.name === 'vo2_max' && point.qty !== undefined) {
           vo2MaxByDate[date] = point.qty
+        } else if (metric.name === 'heart_rate_variability' && point.qty !== undefined) {
+          byDate[date].apple_hrv_avg = Math.round(point.qty)
         }
       }
     }
@@ -152,7 +155,7 @@ export async function POST(req: NextRequest) {
       // Fetch existing row to apply COALESCE and overwrite-if-higher logic.
       const { data: existing } = await supabase
         .from('daily_entries')
-        .select('sleep_duration_min, bedtime, active_calories, basal_calories, resting_hr_daytime, walking_hr_avg, walking_running_km')
+        .select('sleep_duration_min, bedtime, active_calories, basal_calories, resting_hr_daytime, walking_hr_avg, walking_running_km, apple_hrv_avg')
         .eq('user_id', 'julie')
         .eq('date', date)
         .maybeSingle()
@@ -230,6 +233,11 @@ export async function POST(req: NextRequest) {
         } else {
           skipped.push(`basal_calories (stored ${storedBasal} >= incoming ${incoming.basal_calories})`)
         }
+      }
+
+      if (incoming.apple_hrv_avg !== undefined) {
+        upsert.apple_hrv_avg = incoming.apple_hrv_avg
+        written.push('apple_hrv_avg')
       }
 
       if (written.length === 0) {
