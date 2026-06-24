@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
         } else if (metric.name === 'vo2_max' && point.qty !== undefined) {
           vo2MaxByDate[date] = point.qty
         } else if (metric.name === 'heart_rate_variability' && point.qty !== undefined) {
-          byDate[date].apple_hrv_avg = Math.round(point.qty)
+          byDate[date].apple_hrv_avg = point.qty
         }
       }
     }
