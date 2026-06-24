@@ -86,6 +86,13 @@ export async function POST(req: NextRequest) {
   try {
     const body: ImportPayload = await req.json()
     console.log('[health-import] RAW PAYLOAD:', JSON.stringify(body).slice(0, 2000))
+    // ── TEMPORARY DIAGNOSTIC — remove once HRV field name is confirmed ────────
+    console.log('[HAE-RAW]', JSON.stringify(body));
+    const names = (body?.data?.metrics ?? []).map(m => ({ name: m.name, units: m.units }));
+    console.log('[HAE-METRICS]', JSON.stringify(names));
+    const hrvMetric = (body?.data?.metrics ?? []).find(m => /variab|hrv/i.test(m.name ?? ''));
+    console.log('[HAE-HRV]', JSON.stringify(hrvMetric ?? 'NOT PRESENT'));
+    // ── END TEMPORARY DIAGNOSTIC ──────────────────────────────────────────────
     const metrics: Metric[] = body?.data?.metrics ?? []
     const workouts: Workout[] = body?.data?.workouts ?? []
     const supabase = supaAdmin()
