@@ -128,15 +128,15 @@ export function behaviorScore(entry: DailyEntry, nutritionSummary?: NutritionSum
 
 // ─── Outcome Score (0–100) ────────────────────────────────────────
 // What your body did: HRV vs baseline, sleep duration+rested, RHR vs baseline
-export function outcomeScore(entry: DailyEntry): number {
+export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 88): number {
   const components: { score: number; weight: number }[] = []
 
-  // 1. HRV vs personal baseline ~88ms — 30%
+  // 1. HRV vs personal baseline (rolling 28-day median, default 88ms) — 30%
   const hrv = entry.sleep.hrv
   if (hrv != null) {
     const s =
       hrv >= 100 ? 100 :
-      hrv >= 88  ? 80 + ((hrv - 88)  / 12) * 20 :
+      hrv >= hrvBaseline  ? 80 + ((hrv - hrvBaseline)  / 12) * 20 :
       hrv >= 70  ? 50 + ((hrv - 70)  / 18) * 30 :
       hrv >= 50  ? 20 + ((hrv - 50)  / 20) * 30 :
       Math.max(0, hrv * 0.4)

@@ -36,7 +36,7 @@ _Last updated: June 22, 2026 (feat: HbA1c entry flow in Glucose Stability card)_
 
 - Early 50s, perimenopause, Munich, Bavaria
 - Athletic, data-driven, health-optimised. Metric units only.
-- HRV baseline ~88ms | RHR baseline ~52 bpm
+- HRV baseline ~88ms default, computed as 28-day rolling median of waking `hrv` when ≥14 readings available | RHR baseline ~52 bpm
 - Sleep target: 7h30–8h30 | Bedtime target: 21:45
 - Protein target: 130–140g/day | Fiber: 30–35g
 - Active calorie target: 600 kcal intentional training, ~900 kcal total
@@ -219,7 +219,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
   - Expanded: white 15% opacity divider, two sub-metric boxes (ACUTE TSU / CHRONIC TSU, white 8% bg), CSS linear-gradient ratio bar (0–0.6 amber / 0.6–0.8 #6DBF8A / 0.8–1.3 status-optimal / 1.3–1.5 amber / 1.5+ status-low), 3px×20px tick marker at current ratio, scale labels (0.6/0.8/1.3/1.5), ratio value (40px/800), 30-day trend SVG (amber line, white 8% optimal band). If fewer than 2 data points: "Not enough data yet" label.
   - Tapping the Training Load score card on the Today tab navigates to Dashboard and opens this card expanded via `trainingLoadExpanded` state. Manual toggle on the Dashboard card clears `trainingLoadExpanded` and resumes normal toggle behaviour.
 - **Charts (design Step 6 + targeted fixes May 10, 2026):** HRV, Sleep, Protein, Fiber, Training minutes all use inline SVGs (no Recharts). Recharts dependency fully removed from Dashboard. ChartCard: `--shadow-card`, title 18px/700/`--color-text-primary`.
-  - HRV line chart (160px SVG): navy polyline, amber dots above baseline / navy dots below, amber dashed baseline at 88ms, "baseline 88ms" label fixed at upper-right corner of SVG (y = SVG_PAD_T + 12, textAnchor end), horizontal grid lines, y-axis labels.
+  - HRV line chart (160px SVG): navy polyline, amber dots above baseline / navy dots below, amber dashed baseline drawn flat at the computed rolling-median value (28-day median of non-null `hrv` in `dashEntries`, fallback 88; see HRV baseline note under Outcome Score), "baseline {value}ms" label (rounded) fixed at upper-right corner of SVG (y = SVG_PAD_T + 12, textAnchor end), horizontal grid lines, y-axis labels.
   - Sleep/Protein/Fiber/Training minutes bar charts (120px SVG, `BarChart2T`): two-tone bars (navy below target, amber above target), amber dashed target line. No right-side target text label on any chart.
   - Targets: Sleep 7.5h, Protein 130g, Fiber 30g, Training 60min.
 - **Training Load collapsed state (May 10, 2026):** Left column shows "TRAINING LOAD" label (12px/700/0.05em/uppercase/amber) above status text (18px/600/white). Color dot + chevron remain on right.
@@ -449,10 +449,12 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 
 | Input | Weight |
 |---|---|
-| HRV vs 88ms baseline | 30% |
+| HRV vs personal baseline (rolling 28-day median, fallback 88ms) | 30% |
 | Sleep duration + Rested score | 30% |
 | RHR vs 52 bpm baseline | 20% |
 | CGM glucose score | 20% (redistributes to 0% if no CGM) |
+
+**HRV baseline (added June 26, 2026):** The HRV-vs-baseline comparison no longer uses a hardcoded 88. It uses a **28-day trailing median of the manual `hrv` column** (`daily_entries.hrv`), computed at runtime (compute-not-store — no DB column, no migration). Falls back to **88** when fewer than 14 non-null readings exist in the window. Computed via `getHrvRolling28DayMedian(asOfDate?)` in `lib/db.ts`; `outcomeScore(entry, hrvBaseline = 88)` in `lib/scores.ts` takes the baseline as a second argument. **NOT computed from `apple_hrv_avg`.** Only the recovery comparison (the `>= baseline` band) is personalised — the absolute framework bands (>100 / 80–100 / 60–80 / <60) used for the train-hard/moderate/easy/rest recommendation are physiological thresholds and remain hardcoded everywhere. **Score recompute is forward-only:** `lib/scores-server.ts → recomputeScores(date)` computes the baseline as of that date; historical stored scores are not bulk-backfilled. The Today-tab Outcome bullet and the Dashboard HRV chart compute the same median client-side from `dashEntries` (same fallback rule) via `hrvBaselineFromEntries()` in `app/page.tsx`; the chart draws a flat dashed line at the current median value (per-point rolling curve deferred). The Coach interpolates the rounded median into its "vs baseline" prompt commentary.
 
 **CGM scoring:**
 - Fasting only: target ≤4.8 mmol/L = full, scales down toward 5.6

@@ -506,6 +506,40 @@ export async function getVo2Rolling30DayAvg(): Promise<number | null> {
   return parseFloat(avg.toFixed(1))
 }
 
+// ─── getHrvRolling28DayMedian ─────────────────────────────────────
+// Personal HRV baseline: 28-day trailing MEDIAN of the manual `hrv`
+// column (daily_entries.hrv), window ending at asOfDate inclusive
+// (default = today in Europe/Berlin). Nulls skipped. Returns 88 (the
+// historical default) when fewer than 14 non-null readings exist.
+// Compute-not-store — no DB column. NOT computed from apple_hrv_avg.
+export async function getHrvRolling28DayMedian(asOfDate?: string): Promise<number> {
+  const endStr = asOfDate
+    ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
+  const start = new Date(endStr + 'T00:00:00Z')
+  start.setUTCDate(start.getUTCDate() - 27) // 28 calendar days inclusive
+  const startStr = start.toISOString().split('T')[0]
+
+  const { data, error } = await supabase
+    .from('daily_entries')
+    .select('hrv')
+    .eq('user_id', 'julie')
+    .gte('date', startStr)
+    .lte('date', endStr)
+  if (error) throw error
+
+  const values = ((data ?? []) as { hrv: number | null }[])
+    .map(r => r.hrv)
+    .filter((v): v is number => v != null)
+    .sort((a, b) => a - b)
+
+  if (values.length < 14) return 88
+
+  const mid = Math.floor(values.length / 2)
+  return values.length % 2 !== 0
+    ? values[mid]
+    : (values[mid - 1] + values[mid]) / 2
+}
+
 // ─── saveVo2Reading ───────────────────────────────────────────────
 export async function saveVo2Reading(value: number, date: string): Promise<void> {
   const { error } = await supabase

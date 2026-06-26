@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import type { DailyEntry } from '@/lib/types'
 import { zone3Intensity } from '@/lib/types'
-import { rowToEntry, loadSessionsForDates } from '@/lib/db'
+import { rowToEntry, loadSessionsForDates, getHrvRolling28DayMedian } from '@/lib/db'
 import { supaAdmin, nutritionUserId } from '@/lib/nutrition'
 
 // ─── Julie's fixed health profile ─────────────────────────────────
@@ -189,9 +189,16 @@ function buildContext(
   cycleDay: number | null,
   currentDate: string,
   currentMonth: string,
+  hrvBaseline: number,
   nutritionSummary?: NutritionSummary | null,
 ): string {
   const BAVARIA_FORAGING = BAVARIA_FORAGING_TEMPLATE.replace('{currentMonth}', currentMonth)
+  // Inject the computed HRV baseline into the profile (leaves the framework
+  // band line — >100 / 80–100 / 60–80 / <60 — untouched).
+  const profile = JULIE_PROFILE.replace(
+    '- HRV personal baseline: ~88ms | RHR baseline: ~52 bpm (flag if above 58 for 2+ days)',
+    `- HRV personal baseline: ~${hrvBaseline}ms (rolling 28-day median, default 88) | RHR baseline: ~52 bpm (flag if above 58 for 2+ days)`,
+  )
 
   const historyStr = history30
     .filter(e => e.date !== today.date)
@@ -201,7 +208,7 @@ function buildContext(
   const tier = getTrainingTier(today.training.sessions)
 
   return [
-    JULIE_PROFILE,
+    profile,
     '',
     CGM_INTERPRETATION,
     '',
@@ -294,6 +301,7 @@ function buildBriefingPrompt(
   mode: CoachMode,
   today: DailyEntry,
   currentDate: string,
+  hrvBaseline: number,
   nutritionSummary?: NutritionSummary | null,
 ): string {
   if (mode === 'wakeup') {
@@ -304,7 +312,7 @@ function buildBriefingPrompt(
 You are Julie's personal health coach. It is WAKE-UP time (before 09:00) — generate a sleep and recovery briefing with today's training recommendation.
 
 WAKEUP RULES:
-- Analyse last night's sleep: duration, HRV vs baseline (88ms), RHR vs baseline (52 bpm), rested score, bedtime vs target (21:45), fasting glucose if logged.
+- Analyse last night's sleep: duration, HRV vs baseline (${hrvBaseline}ms), RHR vs baseline (52 bpm), rested score, bedtime vs target (21:45), fasting glucose if logged.
 - Apply HRV framework strictly for training recommendation. Never recommend full rest unless HRV < 50ms or she is sick.
 - Look across 30-day history for correlations: HRV vs cycle day, HRV vs previous day's Zone 3+ minutes, sleep quality vs bedtime, fasting glucose trends. Surface one genuinely interesting pattern if it exists. Never generic.
 - Do NOT mention nutrition, supplements, or anything other than sleep, recovery, and today's training recommendation.
@@ -312,7 +320,7 @@ WAKEUP RULES:
 
 Return ONLY valid JSON with exactly these five fields:
 {
-  "recovery": "Sleep analysis with specific numbers — HRV vs 88ms baseline, RHR vs 52 bpm, duration vs 7h30–8h30 target, rested score, bedtime. Include fasting glucose if logged.",
+  "recovery": "Sleep analysis with specific numbers — HRV vs ${hrvBaseline}ms baseline, RHR vs 52 bpm, duration vs 7h30–8h30 target, rested score, bedtime. Include fasting glucose if logged.",
   "training": "Specific training recommendation based on HRV framework. Name the activity and intensity. Never recommend full rest unless HRV < 50ms or sick.",
   "nutrition": null,
   "insight": "One genuinely interesting pattern or correlation from 30-day history. Never generic. null if nothing genuine to say.",
@@ -365,7 +373,7 @@ Rules: Direct and warm. Use her actual numbers. No markdown inside JSON strings.
 You are Julie's personal health coach. It is AFTERNOON (12:00–16:59) — hydration, supplement reminder, movement nudge if needed, creative dinner suggestion.
 
 AFTERNOON RULES:
-- Recovery: one sentence on current recovery status using today's HRV vs 88ms baseline and sleep duration. If training is already logged, weave in how the body is handling the load.
+- Recovery: one sentence on current recovery status using today's HRV vs ${hrvBaseline}ms baseline and sleep duration. If training is already logged, weave in how the body is handling the load.
 - Hydration: check today's logged hydration. If below 1500ml, nudge to drink before dinner. Weave naturally.
 - Supplements: if morning_stack_taken is false, remind once. Keep brief.
 - Movement: if no training logged and no cycling, gentle nudge to move. If training is already logged, acknowledge and skip.
@@ -375,7 +383,7 @@ AFTERNOON RULES:
 
 Return ONLY valid JSON with exactly these five fields:
 {
-  "recovery": "One sentence on current recovery status — HRV vs 88ms baseline, sleep quality, and how the body is handling today's training load if applicable.",
+  "recovery": "One sentence on current recovery status — HRV vs ${hrvBaseline}ms baseline, sleep quality, and how the body is handling today's training load if applicable.",
   "training": null,
   "nutrition": "One surprising, creative dinner suggestion. Seasonal. Not from recent meal history. Include preparation approach and why it works nutritionally. If weekend, optionally include a forageable ingredient with where to find it near Munich.",
   "insight": "Hydration note if behind. Supplement reminder if morning stack not taken. Combined into one natural sentence.",
@@ -402,7 +410,7 @@ EARLYEVENING RULES:
 
 Return ONLY valid JSON with exactly these five fields:
 {
-  "recovery": "One sentence on today's sleep — HRV vs 88ms baseline, duration vs target. Keep brief.",
+  "recovery": "One sentence on today's sleep — HRV vs ${hrvBaseline}ms baseline, duration vs target. Keep brief.",
   "training": "One sentence acknowledging today's training sessions or rest. Use 'this evening' not 'this afternoon'.",
   "nutrition": null,
   "insight": "Supplement check (progesterone, estradiol, evening stack) and hydration close-out. Max 3 sentences combined.",
@@ -466,13 +474,15 @@ export async function POST(req: NextRequest) {
     const currentMonth = new Date(currentDate + 'T00:00:00').toLocaleString('en-US', { month: 'long' })
 
     const { history30, nutritionSummary } = await getCoachContext(null, currentDate)
+    // Personal HRV baseline: rolling 28-day median of manual hrv (fallback 88).
+    const hrvBaseline = Math.round(await getHrvRolling28DayMedian(currentDate))
 
-    const ctx = buildContext(history30, today, cycleDay, currentDate, currentMonth, nutritionSummary)
+    const ctx = buildContext(history30, today, cycleDay, currentDate, currentMonth, hrvBaseline, nutritionSummary)
     // Prefer client-supplied mode (computed from local time) over server-side derivation from UTC ISO string
     const mode: CoachMode = clientMode ?? getCoachMode(currentTime)
 
     if (type === 'briefing') {
-      const prompt = buildBriefingPrompt(ctx, mode, today, currentDate, nutritionSummary)
+      const prompt = buildBriefingPrompt(ctx, mode, today, currentDate, hrvBaseline, nutritionSummary)
 
       const msg = await anthropic.messages.create({
         model: 'claude-sonnet-4-6',

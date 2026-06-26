@@ -577,12 +577,25 @@ function getBehaviorBullets(
   return bullets
 }
 
-function getOutcomeBullets(entry: DailyEntry): { text: string; ok: boolean }[] {
+// Client-side HRV baseline: median of non-null hrv across the recent
+// (30-day) window in dashEntries. Mirrors getHrvRolling28DayMedian in
+// lib/db.ts — falls back to 88 when fewer than 14 readings are present.
+function hrvBaselineFromEntries(entries: DailyEntry[]): number {
+  const values = entries
+    .map(e => e.sleep.hrv)
+    .filter((v): v is number => v != null)
+    .sort((a, b) => a - b)
+  if (values.length < 14) return 88
+  const mid = Math.floor(values.length / 2)
+  return values.length % 2 !== 0 ? values[mid] : (values[mid - 1] + values[mid]) / 2
+}
+
+function getOutcomeBullets(entry: DailyEntry, hrvBaseline: number = 88): { text: string; ok: boolean }[] {
   const bullets: { text: string; ok: boolean }[] = []
 
   if (entry.sleep.hrv != null) {
     const hrv = entry.sleep.hrv
-    bullets.push({ text: `HRV ${hrv}ms — ${hrv >= 88 ? 'above baseline' : 'below baseline'}`, ok: hrv >= 88 })
+    bullets.push({ text: `HRV ${hrv}ms — ${hrv >= hrvBaseline ? 'above baseline' : 'below baseline'}`, ok: hrv >= hrvBaseline })
   }
 
   if (entry.sleep.duration_min != null) {
@@ -723,10 +736,10 @@ const SVG_PAD_T = 8
 const SVG_PAD_B = 18
 const svgCW = SVG_VW - SVG_PAD_L - SVG_PAD_R
 
-function HrvChart({ data }: { data: { date: string; value: number | null }[] }) {
+function HrvChart({ data, baseline = 88 }: { data: { date: string; value: number | null }[]; baseline?: number }) {
   const VH = 160
   const ch = VH - SVG_PAD_T - SVG_PAD_B
-  const BASELINE = 88
+  const BASELINE = baseline
   const nonNull = data.map(d => d.value).filter(v => v != null) as number[]
   if (nonNull.length === 0) {
     return (
@@ -765,7 +778,7 @@ function HrvChart({ data }: { data: { date: string; value: number | null }[] }) 
       <line x1={SVG_PAD_L} x2={SVG_PAD_L + svgCW} y1={yOf(BASELINE)} y2={yOf(BASELINE)}
         stroke="var(--color-amber)" strokeOpacity="0.6" strokeWidth="1" strokeDasharray="4 4" />
       <text x={SVG_PAD_L + svgCW} y={SVG_PAD_T + 12} textAnchor="end"
-        fontSize="12" fill="var(--color-text-muted)">baseline 88ms</text>
+        fontSize="12" fill="var(--color-text-muted)">baseline {Math.round(BASELINE)}ms</text>
       {/* Polyline segments */}
       {segments.map((pts, si) => (
         <polyline key={si} points={pts.join(' ')} fill="none" stroke="var(--color-navy)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -1261,6 +1274,9 @@ export default function App() {
   })()
   const todayBehavior = todayScored?.behavior_score ?? 0
   const todayOutcome  = todayScored?.outcome_score  ?? 0
+  // Personal HRV baseline (rolling 28-day median, fallback 88) — computed once,
+  // reused by the Outcome Score bullet and the HRV chart's dashed baseline line.
+  const hrvBaseline   = hrvBaselineFromEntries(dashEntries)
   const scoreTlResult = computeTrainingLoad(scoreAllEntries)
 
   // ── Today tab — long-term goals derived values (from GoalsTab) ───
@@ -1635,7 +1651,7 @@ export default function App() {
             {/* Score cards (from DashboardTab) */}
             <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'flex-start', marginTop: 16, marginBottom: 16 }}>
               <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(entry, todayScored?.nutrition)} />
-              <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(entry)} />
+              <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(entry, hrvBaseline)} />
               <button
                 type="button"
                 onClick={() => { setActiveTab('dashboard'); setTrainingLoadExpanded(true) }}
@@ -3349,7 +3365,7 @@ export default function App() {
 
                   {/* HRV — 30 Days */}
                   <ChartCard title="HRV — 30 Days">
-                    <HrvChart data={hrvData} />
+                    <HrvChart data={hrvData} baseline={hrvBaseline} />
                   </ChartCard>
 
                   {/* Sleep — 30 Days */}
