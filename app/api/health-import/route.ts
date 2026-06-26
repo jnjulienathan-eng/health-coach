@@ -85,14 +85,6 @@ export async function POST(req: NextRequest) {
 
   try {
     const body: ImportPayload = await req.json()
-    console.log('[health-import] RAW PAYLOAD:', JSON.stringify(body).slice(0, 2000))
-    // ── TEMPORARY DIAGNOSTIC — remove once HRV field name is confirmed ────────
-    console.log('[HAE-RAW]', JSON.stringify(body));
-    const names = (body?.data?.metrics ?? []).map(m => ({ name: m.name, units: m.units }));
-    console.log('[HAE-METRICS]', JSON.stringify(names));
-    const hrvMetric = (body?.data?.metrics ?? []).find(m => /variab|hrv/i.test(m.name ?? ''));
-    console.log('[HAE-HRV]', JSON.stringify(hrvMetric ?? 'NOT PRESENT'));
-    // ── END TEMPORARY DIAGNOSTIC ──────────────────────────────────────────────
     const metrics: Metric[] = body?.data?.metrics ?? []
     const workouts: Workout[] = body?.data?.workouts ?? []
     const supabase = supaAdmin()
@@ -236,8 +228,13 @@ export async function POST(req: NextRequest) {
       }
 
       if (incoming.apple_hrv_avg !== undefined) {
-        upsert.apple_hrv_avg = incoming.apple_hrv_avg
-        written.push('apple_hrv_avg')
+        const storedHrv = row?.apple_hrv_avg as number | null | undefined
+        if (storedHrv == null || incoming.apple_hrv_avg !== storedHrv) {
+          upsert.apple_hrv_avg = incoming.apple_hrv_avg
+          written.push('apple_hrv_avg')
+        } else {
+          skipped.push(`apple_hrv_avg (unchanged ${storedHrv})`)
+        }
       }
 
       if (written.length === 0) {
@@ -257,6 +254,8 @@ export async function POST(req: NextRequest) {
       metricsImported++
       console.log(`[health-import] metrics ${date}: wrote [${written.join(', ')}]${skipped.length ? ` — skipped [${skipped.join(', ')}]` : ''}`)
     }
+
+    console.log('[health-import] writes', JSON.stringify({ datesWritten: metricsImported, datesReceived: Object.keys(byDate).length }))
 
     // ── VO2 MAX → biomarker_readings ─────────────────────────────────────────
     let vo2MaxImported = 0

@@ -476,8 +476,8 @@ HAE-only fields: **resting_hr_daytime** (integer, nullable — HAE resting_heart
 - `basal_energy_burned` → `basal_calories` (integer, kcal; converts kJ if needed). Same "overwrite if higher" rule as active_calories.
 - `walking_heart_rate_average` → `walking_hr_avg` (integer, bpm). Uses "overwrite if higher".
 - `walking_running_distance` → `walking_running_km` (numeric, 2 decimal places; mi→km converted if HAE sends units = 'mi'). Uses "overwrite if higher".
-- `heart_rate_variability` → `apple_hrv_avg` (numeric, ms, rounded to integer). **Plain overwrite** — no COALESCE, no overwrite-if-higher. Once-daily, authoritative from Apple Health. Does NOT touch the manual `hrv` column.
-`sleep_duration_min` and `bedtime` use COALESCE — only written if the DB value is currently null (manual entries always win). All other HAE-written fields use "overwrite if higher". `apple_hrv_avg` uses plain overwrite (once-daily, no manual equivalent). Updated June 24, 2026.
+- `heart_rate_variability` → `apple_hrv_avg` (numeric, ms, raw decimal). **Overwrite-on-change** — written only when the incoming value differs from the stored value (equal-value skip guard). No COALESCE, no overwrite-if-higher. Latest different value wins. Once-daily, authoritative from Apple Health. Does NOT touch the manual `hrv` column.
+`sleep_duration_min` and `bedtime` use COALESCE — only written if the DB value is currently null (manual entries always win). All other HAE-written fields use "overwrite if higher". `apple_hrv_avg` uses overwrite-on-change: a re-sent day with an unchanged value no longer forces a write, and a date whose only candidate field was an unchanged `apple_hrv_avg` counts as skipped (not counted in `metricsImported`). Updated June 26, 2026.
 
 **Health Auto Export → biomarker_readings mapping (as of May 4, 2026):**
 - `vo2_max` → `biomarker_readings` with marker = `'vo2_max'`, unit = `'ml/kg/min'`. Inserted only if no existing row for that user_id + marker + recorded_on (23505 unique-violation = skip). No overwrite of existing values.
