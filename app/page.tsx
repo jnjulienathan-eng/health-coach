@@ -736,10 +736,14 @@ const SVG_PAD_T = 8
 const SVG_PAD_B = 18
 const svgCW = SVG_VW - SVG_PAD_L - SVG_PAD_R
 
-function HrvChart({ data, baseline = 88 }: { data: { date: string; value: number | null }[]; baseline?: number }) {
+function HrvChart({ data, baseline = 88, apple = [] }: { data: { date: string; value: number | null }[]; baseline?: number; apple?: { date: string; value: number | null }[] }) {
   const VH = 160
   const ch = VH - SVG_PAD_T - SVG_PAD_B
   const BASELINE = baseline
+  // Reserve right-edge room for the teal Apple-avg y-labels without widening
+  // the viewBox — shrink the plot area locally instead (left axis unchanged).
+  const PAD_R = 26
+  const plotW = SVG_VW - SVG_PAD_L - PAD_R
   const nonNull = data.map(d => d.value).filter(v => v != null) as number[]
   if (nonNull.length === 0) {
     return (
@@ -754,7 +758,7 @@ function HrvChart({ data, baseline = 88 }: { data: { date: string; value: number
   const minV   = rawMin - pad
   const maxV   = rawMax + pad
   const range  = maxV - minV || 1
-  const xOf = (i: number) => SVG_PAD_L + (data.length <= 1 ? svgCW / 2 : (i / (data.length - 1)) * svgCW)
+  const xOf = (i: number) => SVG_PAD_L + (data.length <= 1 ? plotW / 2 : (i / (data.length - 1)) * plotW)
   const yOf = (v: number) => SVG_PAD_T + ch * (1 - (v - minV) / range)
   // Y-axis: 3 evenly-spaced grid values
   const yStep = (maxV - minV) / 2
@@ -767,18 +771,42 @@ function HrvChart({ data, baseline = 88 }: { data: { date: string; value: number
     else cur.push(`${xOf(i).toFixed(1)},${yOf(d.value).toFixed(1)}`)
   })
   if (cur.length) segments.push(cur)
+
+  // ── Right axis: Apple all-day avg HRV on its OWN auto-fit scale ──────────
+  // (apple_hrv_avg ~29–63ms would crush flat on the waking-HRV scale).
+  const appleNonNull = apple.map(d => d.value).filter(v => v != null) as number[]
+  const hasApple = appleNonNull.length > 0
+  const aMin = hasApple ? Math.max(0, Math.min(...appleNonNull) - 5) : 0
+  const aMax = hasApple ? Math.max(...appleNonNull) + 5 : 1
+  const aRange = (aMax - aMin) || 1
+  const yOfA = (v: number) => SVG_PAD_T + ch * (1 - (v - aMin) / aRange)
+  const aGridVals = [aMin, (aMin + aMax) / 2, aMax]
+  // Segment the Apple line around null gaps — do not connect across missing days.
+  const appleSegments: string[][] = []
+  let aCur: string[] = []
+  apple.forEach((d, i) => {
+    if (d.value == null) { if (aCur.length) { appleSegments.push(aCur); aCur = [] } }
+    else aCur.push(`${xOf(i).toFixed(1)},${yOfA(d.value).toFixed(1)}`)
+  })
+  if (aCur.length) appleSegments.push(aCur)
+
   return (
+    <>
     <svg width="100%" viewBox={`0 0 ${SVG_VW} ${VH}`} style={{ display: 'block', overflow: 'visible' }}>
       {/* Horizontal grid lines */}
       {gridVals.map(v => (
-        <line key={v} x1={SVG_PAD_L} x2={SVG_PAD_L + svgCW} y1={yOf(v)} y2={yOf(v)}
+        <line key={v} x1={SVG_PAD_L} x2={SVG_PAD_L + plotW} y1={yOf(v)} y2={yOf(v)}
           stroke="var(--color-border-subtle)" strokeWidth="1" />
       ))}
       {/* Baseline dashed */}
-      <line x1={SVG_PAD_L} x2={SVG_PAD_L + svgCW} y1={yOf(BASELINE)} y2={yOf(BASELINE)}
+      <line x1={SVG_PAD_L} x2={SVG_PAD_L + plotW} y1={yOf(BASELINE)} y2={yOf(BASELINE)}
         stroke="var(--color-amber)" strokeOpacity="0.6" strokeWidth="1" strokeDasharray="4 4" />
-      <text x={SVG_PAD_L + svgCW} y={SVG_PAD_T + 12} textAnchor="end"
+      <text x={SVG_PAD_L + plotW} y={SVG_PAD_T + 12} textAnchor="end"
         fontSize="12" fill="var(--color-text-muted)">baseline {Math.round(BASELINE)}ms</text>
+      {/* Apple all-day avg — teal line on the right-hand scale, drawn under the waking line */}
+      {appleSegments.map((pts, si) => (
+        <polyline key={`a${si}`} points={pts.join(' ')} fill="none" stroke="var(--color-teal)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      ))}
       {/* Polyline segments */}
       {segments.map((pts, si) => (
         <polyline key={si} points={pts.join(' ')} fill="none" stroke="var(--color-navy)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -790,12 +818,29 @@ function HrvChart({ data, baseline = 88 }: { data: { date: string; value: number
       ))}
       {/* X-axis: first and last labels only */}
       <text x={SVG_PAD_L} y={VH - 3} textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">1</text>
-      <text x={SVG_PAD_L + svgCW} y={VH - 3} textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">30</text>
-      {/* Y-axis labels */}
+      <text x={SVG_PAD_L + plotW} y={VH - 3} textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">30</text>
+      {/* Left y-axis labels (waking HRV) */}
       {gridVals.map(v => (
         <text key={v} x={SVG_PAD_L - 4} y={yOf(v) + 4} textAnchor="end" fontSize="12" fill="var(--color-text-muted)">{Math.round(v)}</text>
       ))}
+      {/* Right y-axis labels (Apple avg) in teal */}
+      {hasApple && aGridVals.map(v => (
+        <text key={`ay${v}`} x={SVG_PAD_L + plotW + 4} y={yOfA(v) + 4} textAnchor="start" fontSize="12" fill="var(--color-teal)">{Math.round(v)}</text>
+      ))}
     </svg>
+    {/* Legend (HTML, below the SVG) — colours via CSS custom properties */}
+    <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap', marginTop: 6, fontSize: 11, color: 'var(--color-text-muted)' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ width: 14, borderTop: '2px solid var(--color-navy)' }} /> Waking HRV
+      </span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ width: 14, borderTop: '2px dashed var(--color-amber)' }} /> Baseline
+      </span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ width: 14, borderTop: '2px solid var(--color-teal)' }} /> Apple avg
+      </span>
+    </div>
+    </>
   )
 }
 
@@ -3175,6 +3220,7 @@ export default function App() {
           const tlHistory = computeTrainingLoadHistory(chart30)
 
           const hrvData = chart30.map(e => ({ date: chartDate(e.date), value: e.sleep.hrv }))
+          const appleHrvData = chart30.map(e => ({ date: chartDate(e.date), value: e.sleep.apple_hrv_avg }))
           const sleepData = chart30.map(e => ({ date: chartDate(e.date), value: durationToH(e.sleep.duration_min) }))
           // Independent 30-day date range for nutrition charts — not derived from
           // dashEntries/chart30 so bars appear even when daily_entries has no row for
@@ -3364,8 +3410,8 @@ export default function App() {
                   })()}
 
                   {/* HRV — 30 Days */}
-                  <ChartCard title="HRV — 30 Days">
-                    <HrvChart data={hrvData} baseline={hrvBaseline} />
+                  <ChartCard title="HRV Overview — 30 Days">
+                    <HrvChart data={hrvData} baseline={hrvBaseline} apple={appleHrvData} />
                   </ChartCard>
 
                   {/* Sleep — 30 Days */}
