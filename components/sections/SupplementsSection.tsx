@@ -392,7 +392,7 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
               doseMin={0}
               doseMax={10}
               doseStep={1}
-              dosePlaceholder="1"
+              dosePlaceholder="3"
               doseUnit="sprays"
               onDoseChange={(v) => change({ ...data, estradiol_sprays: v })}
               taken={data.estradiol_taken}
