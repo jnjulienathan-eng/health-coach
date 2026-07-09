@@ -178,7 +178,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 - Logs ml per day. Passes through to Coach context.
 
 **Supplements section**
-- Hormones: Progesterone (mg, toggle), Estradiol (sprays, toggle). Estradiol spray count placeholder/default: 3 (was 1).
+- Hormones: Progesterone (mg, toggle), Estradiol (sprays, toggle). When estradiol_taken is toggled ON and estradiol_sprays is null, the spray count auto-defaults to 3 (was no auto-set; DB rows previously stored 1). Toggle OFF does not clear the count.
 - Morning stack (accordion, default collapsed): Creatine 5g, Vitamin D3+K2, Zinc+Selenium, Glucosamine, Omega-3, Berberine, DIM
 - Evening stack (accordion, default collapsed): Magnesium glycinate 200mg, L-Theanine
 - **DEFAULT STATE: everything OFF.** User must actively confirm.
