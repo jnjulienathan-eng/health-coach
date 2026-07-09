@@ -1060,8 +1060,21 @@ function HistoryRow({ entry, onSelectDate }: { entry: DailyEntry; onSelectDate: 
             {historyFormatDate(entry.date)}
           </div>
           {sessionIcons.length > 0 && (
-            <div style={{ fontSize: 16, marginTop: 4, display: 'flex', gap: 4 }}>
-              {sessionIcons.map((e, i) => <span key={i}>{e}</span>)}
+            <div style={{ fontSize: 16, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+              {sessionIcons.slice(0, 4).map((e, i) => <span key={i}>{e}</span>)}
+              {sessionIcons.length > 4 && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    padding: '1px 6px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'var(--color-border-subtle)',
+                    color: 'var(--color-text-secondary)',
+                  }}
+                >
+                  +{sessionIcons.length - 4}
+                </span>
+              )}
             </div>
           )}
         </div>

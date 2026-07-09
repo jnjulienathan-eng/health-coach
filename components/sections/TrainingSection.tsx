@@ -138,16 +138,36 @@ export default function TrainingSection({ data, onChange, onSave, saving, basalC
     }
   }
 
-  // Collapsed summary
+  // Collapsed summary — capped at 4 icons, overflow shown as a "+N" pill
+  const MAX_SUMMARY_ICONS = 4
+  const overflowCount = data.sessions.length - MAX_SUMMARY_ICONS
   const summary = isComplete ? (
     <div
       style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
         fontFamily: 'var(--font-mono)',
         fontSize: 12,
         color: 'var(--color-text-secondary)',
       }}
     >
-      {data.sessions.map((s) => activityEmoji(s.activity_type)).join(' ')}
+      <span>
+        {data.sessions.slice(0, MAX_SUMMARY_ICONS).map((s) => activityEmoji(s.activity_type)).join(' ')}
+      </span>
+      {overflowCount > 0 && (
+        <span
+          style={{
+            padding: '1px 6px',
+            borderRadius: 'var(--radius-full)',
+            backgroundColor: 'var(--color-border-subtle)',
+            color: 'var(--color-text-secondary)',
+            fontSize: 11,
+          }}
+        >
+          +{overflowCount}
+        </span>
+      )}
     </div>
   ) : null
 

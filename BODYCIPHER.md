@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: June 22, 2026 (feat: HbA1c entry flow in Glucose Stability card)_
+_Last updated: July 9, 2026 (fix: session icon cap + "+N" pill overflow on mobile)_
 
 ---
 
@@ -231,7 +231,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 - **Training Load collapsed state (May 10, 2026):** Left column shows "TRAINING LOAD" label (12px/700/0.05em/uppercase/amber) above status text (18px/600/white). Color dot + chevron remain on right.
 - **30-day trend label (May 10, 2026):** "30-DAY TREND" heading (12px/700/0.05em/uppercase/white 60% opacity) added immediately above the 30-day trend SVG in expanded state.
 - **History section appended below charts** (April 30, 2026): chronological entry list with expandable detail rows and "Edit this day →" link (navigates to Today tab for that date). Uses `loadAllEntries()` fetched once on mount via dedicated state (`historyEntries`, `historyLoading`, `historyError`).
-- **History rows (design Step 6 + targeted fixes May 10, 2026):** HISTORY section label (14px/700/uppercase/letter-spacing 0.05em). Each row: `--shadow-card`, min-height 72px, date (24px/700), emojis (16px), BEHAV/OUTC columns. Chevron: ChevronDown SVG (not ChevronRight), hidden when row is expanded.
+- **History rows (design Step 6 + targeted fixes May 10, 2026):** HISTORY section label (14px/700/uppercase/letter-spacing 0.05em). Each row: `--shadow-card`, min-height 72px, date (24px/700), emojis (16px), BEHAV/OUTC columns. Chevron: ChevronDown SVG (not ChevronRight), hidden when row is expanded. **Session icon cap (July 9, 2026):** the collapsed row's icon list is capped at 4 icons with a "+N" overflow pill — see "Activity icons" → "Icon cap" above. The expanded row detail (`EntryDetail`) is unaffected and still lists every session.
 - Data source: `dashEntries` (already loaded by the Today tab's `loadRecentEntries(30)` effect) reused for HRV/sleep/training chart computation. `loadAllEntries()` added separately for the history list.
 - **Protein and Fiber charts (updated May 1, 2026):** Read from `daily_nutrition_summary` via `GET /api/nutrition/chart?days=31` (service-role admin client, bypasses RLS). Stored in `nutritionSummaries` state as a `Record<string, { protein, fiber }>` keyed by plain YYYY-MM-DD strings using `.slice(0, 10)`. Chart arrays are built from an **independent 30-consecutive-date range** (`nutritionChart30`) ending at `currentDate`, not from `dashEntries`/`chart30` — so bars show even on dates where `daily_entries` has no row. Date generation uses `Date.UTC` arithmetic + `.toISOString().slice(0, 10)` with no local-timezone shift; map lookup is a direct string key comparison. Legacy `daily_entries.total_protein` / `total_fiber` columns are no longer read by the charts.
 - DashboardTab.tsx no longer imported — content fully inlined in app/page.tsx. Component preserved on disk.
@@ -515,6 +515,8 @@ Used consistently in `TrainingSection.tsx` and `HistoryTab.tsx`:
 Run / Outdoor Run / Indoor Run → 🏃 | Walk / Outdoor Walk / Indoor Walk → 🚶 | Cycling / Outdoor Cycling / Indoor Cycling → 🚴 | Swim / Pool Swim → 🏊 | Strength / eGym → 🏋️ | Rowing → 🚣 | Elliptical → 〇 | Yoga / Pilates → 🧘 | Hiking → 🥾 | HIIT → ⚡ | anything else → 🏅
 
 Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
+
+**Icon cap (July 9, 2026 — mobile overflow fix):** In compact/collapsed summary displays only, session icons are capped at 4, followed by a muted "+N" pill (rounded, `--color-border-subtle` background, `--color-text-secondary` text, `--radius-full`) representing the remaining count. Applies to the Training accordion header row on the Today tab (`components/sections/TrainingSection.tsx`, `summary` rightSlot) and the History row icon list on the Dashboard (inlined in `app/page.tsx`, `HistoryRow`). Fixes icon overflow/overlap on mobile viewports on days with more than 4 sessions. Expanded views (the open Training accordion, and the expanded History row detail via `EntryDetail`) are uncapped and always show every session — nothing is hidden from the user, only the collapsed summary row is capped.
 
 ### `health_appointments`
 
