@@ -51,10 +51,19 @@ to silently revert. Targeted edits only. If a full rewrite seems
 genuinely necessary, stop and explain why before proceeding.
 
 ### The Supabase env var bug
-The correct env var is NEXT_PUBLIC_SUPABASE_ANON_KEY.
-NOT NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY.
-Using the wrong one causes silent data fetch failures with no error shown.
-If data is mysteriously not loading, check this first.
+The correct env var is NEXT_PUBLIC_SUPABASE_ANON_KEY — this is what
+`lib/db.ts` (the actively-used Supabase client, imported throughout the
+app) reads. NOT NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY.
+Confirmed July 9, 2026: the PUBLISHABLE_DEFAULT_KEY name only appears in
+`utils/supabase/client.ts`, `server.ts`, and `middleware.ts` — leftover
+Supabase-SSR-starter boilerplate (single commit "add supabase connection")
+that is never imported anywhere in the app. It is not a genuine two-key
+setup; naming .env.local after those dead files instead of `lib/db.ts` is
+what causes the mismatch. Using the wrong var name can cause silent data
+fetch failures, or a hard "supabaseKey is required" crash on startup if the
+var is missing outright. If data is mysteriously not loading, or the app
+won't start locally, check this first. Vercel's Production/Preview env
+vars are already correctly named — this only bites local `.env.local` setup.
 
 ### DB migration before code deployment
 If a column is renamed or added in Supabase before the frontend code
