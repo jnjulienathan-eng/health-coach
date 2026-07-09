@@ -2574,7 +2574,7 @@ function ScreenPhotoEstimate({
     setAddingIngredient(true)
     setAddError(null)
     try {
-      const name = description.trim().slice(0, 50) || 'Estimated item'
+      const name = description.trim().slice(0, 50) || ingredientEstimate.meal_name.trim() || 'Estimated item'
       const res = await fetch('/api/nutrition/food-item', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2622,7 +2622,7 @@ function ScreenPhotoEstimate({
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-            {description.trim().slice(0, 50) || 'Estimated item'}
+            {description.trim().slice(0, 50) || ingredientEstimate.meal_name.trim() || 'Estimated item'}
           </div>
 
           <div style={{

@@ -45,7 +45,11 @@ export async function POST(req: Request) {
     const first = message.content[0]
     const raw = first?.type === 'text' ? first.text.trim() : ''
     // Strip any accidental quotes the model may add
-    const name = raw.replace(/^["']|["']$/g, '').trim().slice(0, 40)
+    const stripped = raw.replace(/^["']|["']$/g, '').trim()
+    // Truncate at the last word boundary before the limit — no mid-word cut, no "..." appended.
+    const name = stripped.length <= 40
+      ? stripped
+      : (stripped.slice(0, 40).replace(/\s+\S*$/, '') || stripped.slice(0, 40))
     return Response.json({ name })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
