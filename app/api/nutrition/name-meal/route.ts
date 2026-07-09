@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   }
 
   const ingredientList = items.map(it => `${it.name} (${it.weight_grams}g)`).join(', ')
-  const userPrompt = `Ingredients: ${ingredientList}.\n\nReturn only a meal name, maximum 40 characters. Descriptive and food-forward (e.g. "Greek yogurt & berry bowl", "Pulled chicken sandwich"). Never time-of-day based. No preamble, no punctuation wrapping — just the name.`
+  const userPrompt = `Ingredients: ${ingredientList}.\n\nReturn only a meal name, maximum 40 characters, INCLUDING spaces — count the characters before answering. The name must be a complete, natural-sounding phrase, not a sentence fragment or a name that trails off (e.g. "Grilled chicken with roasted" is wrong — either finish the thought within the limit or pick a shorter complete phrase that captures the meal, like "Grilled chicken & veg"). Descriptive and food-forward (e.g. "Greek yogurt & berry bowl", "Pulled chicken sandwich"). Never time-of-day based. If the full ingredient list can't fit as a complete phrase within 40 characters, summarize to the most defining ingredients rather than truncating a longer name. No preamble, no punctuation wrapping — just the name.`
 
   try {
     const client = new Anthropic({ apiKey })
@@ -46,6 +46,8 @@ export async function POST(req: Request) {
     const raw = first?.type === 'text' ? first.text.trim() : ''
     // Strip any accidental quotes the model may add
     const stripped = raw.replace(/^["']|["']$/g, '').trim()
+    // The prompt asks the model to produce a complete phrase that already fits within
+    // 40 chars — this is a safety-net fallback only, in case it doesn't comply.
     // Truncate at the last word boundary before the limit — no mid-word cut, no "..." appended.
     const name = stripped.length <= 40
       ? stripped
