@@ -554,10 +554,13 @@ function getBehaviorBullets(
     const [h, m]   = entry.sleep.bedtime.split(':').map(Number)
     const [th, tm] = bedtimeTarget.split(':').map(Number)
     const diff = Math.abs(h * 60 + m - (th * 60 + tm))
+    // Normalise to HH:MM — entry.sleep.bedtime can come back with seconds
+    // ("22:04:00") from the DB; h/m are already parsed above.
+    const bedtimeDisplay = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
     if (diff <= 30) {
-      bullets.push({ text: `Bedtime on target (${entry.sleep.bedtime})`, ok: true })
+      bullets.push({ text: `Bedtime on target (${bedtimeDisplay}, target ${bedtimeTarget})`, ok: true })
     } else {
-      bullets.push({ text: `Bedtime off target (${entry.sleep.bedtime}, target ${bedtimeTarget})`, ok: false })
+      bullets.push({ text: `Bedtime off target (${bedtimeDisplay}, target ${bedtimeTarget})`, ok: false })
     }
   } else {
     bullets.push({ text: 'Bedtime not logged', ok: false })
