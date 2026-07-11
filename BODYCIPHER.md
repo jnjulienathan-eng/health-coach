@@ -439,7 +439,7 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 | Nutrition targets hit (protein + fiber priority) | 30% |
 | Supplements confirmed (morning + evening + hormones) | 20% |
 | Training appropriate to HRV framework | 20% |
-| Bedtime consistency (within 30 min of 21:45) | 15% |
+| Bedtime consistency (within 30 min of rolling 30-day bedtime average, fallback 21:45) | 15% |
 | Active calorie target reached (900 kcal total) | 15% |
 
 **Critical rule:** Empty or missing fields = N/A, not zero. Weight redistributes to other components. Never penalise for unlogged optional data.
@@ -453,6 +453,8 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 - HRV <60 → rest = full | any training = penalty
 - HRV missing → redistributes, no penalty
 - Going easier than HRV recommends is **NEVER penalised.**
+
+**Bedtime target (added July 11, 2026):** The bedtime-consistency comparison no longer uses a hardcoded 21:45. It uses a **30-day trailing circular average of the manual `bedtime` column** (`daily_entries.bedtime`, HH:MM), computed at runtime (compute-not-store — no DB column, no migration). Circular averaging: each HH:MM is converted to minutes-since-midnight, shifted -720 (centred on noon, where nobody's bedtime falls) mod 1440 before averaging, then shifted back — avoids the midnight-wraparound bug (e.g. 23:30 and 00:15 average to ~23:53, not ~11:52). Falls back to **'21:45'** only when zero non-null bedtimes exist in the 30-day window (no other minimum-sample threshold). Computed via `getBedtimeRolling30DayAvg(asOfDate?)` in `lib/db.ts`; `behaviorScore(entry, nutritionSummary?, bedtimeTarget = '21:45')` in `lib/scores.ts` takes the target as a third argument — the "within 30 min" scoring logic itself is unchanged. **Score recompute is forward-only:** `lib/scores-server.ts → recomputeScores(date)` computes the target as of that date; historical stored scores are not bulk-backfilled. The Today-tab Behavior Score bullet computes the same rolling average client-side from `dashEntries` (same fallback rule) via `bedtimeTargetFromEntries()` in `app/page.tsx`. The Coach interpolates the target into its "vs target" prompt commentary in `app/api/coach/route.ts` — both the wakeup-mode and endofday-mode briefing prompts, plus a runtime `.replace()` on the `Bedtime target: 21:45` line inside the `JULIE_PROFILE` context block passed to chat mode (mirrors the existing HRV-baseline replace; the `JULIE_PROFILE` constant's source text itself is untouched — this is a per-request substitution on a local copy). Does not touch `sleep_duration_min` scoring, the Dashboard Sleep trend chart, the fixed 7h30–8h30 sleep-duration target, or how `bedtime` is written to the DB.
 
 ### Outcome Score
 

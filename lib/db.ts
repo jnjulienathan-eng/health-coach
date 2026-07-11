@@ -541,6 +541,49 @@ export async function getHrvRolling28DayMedian(asOfDate?: string): Promise<numbe
     : (values[mid - 1] + values[mid]) / 2
 }
 
+// ─── getBedtimeRolling30DayAvg ─────────────────────────────────────
+// Rolling bedtime target: 30-day trailing circular average of the manual
+// `bedtime` column (daily_entries.bedtime, HH:MM), window ending at
+// asOfDate inclusive (default = today in Europe/Berlin). Nulls skipped.
+// Returns '21:45' (the historical fixed target) when zero non-null
+// bedtimes exist in the window. Compute-not-store — no DB column, no
+// migration.
+// Circular averaging: bedtimes cluster around midnight, so minutes are
+// shifted -720 (centred on noon, where nobody's bedtime falls) before
+// averaging to avoid the midnight-wraparound bug — e.g. 23:30 and 00:15
+// must NOT average to ~11:52.
+export async function getBedtimeRolling30DayAvg(asOfDate?: string): Promise<string> {
+  const endStr = asOfDate
+    ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
+  const start = new Date(endStr + 'T00:00:00Z')
+  start.setUTCDate(start.getUTCDate() - 29) // 30 calendar days inclusive
+  const startStr = start.toISOString().split('T')[0]
+
+  const { data, error } = await supabase
+    .from('daily_entries')
+    .select('bedtime')
+    .eq('user_id', 'julie')
+    .gte('date', startStr)
+    .lte('date', endStr)
+  if (error) throw error
+
+  const values = ((data ?? []) as { bedtime: string | null }[])
+    .map(r => r.bedtime)
+    .filter((v): v is string => v != null)
+
+  if (values.length === 0) return '21:45'
+
+  const shifted = values.map(bedtime => {
+    const [h, m] = bedtime.split(':').map(Number)
+    return ((h * 60 + m) - 720 + 1440) % 1440
+  })
+  const avgShifted = shifted.reduce((a, b) => a + b, 0) / shifted.length
+  const unshifted  = (Math.round(avgShifted) + 720) % 1440
+  const h = Math.floor(unshifted / 60)
+  const m = unshifted % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 // ─── saveVo2Reading ───────────────────────────────────────────────
 export async function saveVo2Reading(value: number, date: string): Promise<void> {
   const { error } = await supabase

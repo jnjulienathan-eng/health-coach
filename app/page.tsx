@@ -532,6 +532,7 @@ interface TodayScored {
 function getBehaviorBullets(
   entry: DailyEntry,
   nutrition?: TodayScored['nutrition'],
+  bedtimeTarget: string = '21:45',
 ): { text: string; ok: boolean }[] {
   const bullets: { text: string; ok: boolean }[] = []
   const sup = entry.supplements
@@ -550,12 +551,13 @@ function getBehaviorBullets(
   }
 
   if (entry.sleep.bedtime) {
-    const [h, m] = entry.sleep.bedtime.split(':').map(Number)
-    const diff = Math.abs(h * 60 + m - (21 * 60 + 45))
+    const [h, m]   = entry.sleep.bedtime.split(':').map(Number)
+    const [th, tm] = bedtimeTarget.split(':').map(Number)
+    const diff = Math.abs(h * 60 + m - (th * 60 + tm))
     if (diff <= 30) {
       bullets.push({ text: `Bedtime on target (${entry.sleep.bedtime})`, ok: true })
     } else {
-      bullets.push({ text: `Bedtime off target (${entry.sleep.bedtime}, target 21:45)`, ok: false })
+      bullets.push({ text: `Bedtime off target (${entry.sleep.bedtime}, target ${bedtimeTarget})`, ok: false })
     }
   } else {
     bullets.push({ text: 'Bedtime not logged', ok: false })
@@ -588,6 +590,27 @@ function hrvBaselineFromEntries(entries: DailyEntry[]): number {
   if (values.length < 14) return 88
   const mid = Math.floor(values.length / 2)
   return values.length % 2 !== 0 ? values[mid] : (values[mid - 1] + values[mid]) / 2
+}
+
+// Client-side bedtime target: 30-day circular average of non-null bedtime
+// across the recent (30-day) window in dashEntries. Mirrors
+// getBedtimeRolling30DayAvg in lib/db.ts — falls back to '21:45' when no
+// bedtimes are present. Minutes are shifted -720 (centred on noon) before
+// averaging so bedtimes spanning midnight don't wrap incorrectly.
+function bedtimeTargetFromEntries(entries: DailyEntry[]): string {
+  const values = entries
+    .map(e => e.sleep.bedtime)
+    .filter((v): v is string => v != null)
+  if (values.length === 0) return '21:45'
+  const shifted = values.map(bedtime => {
+    const [h, m] = bedtime.split(':').map(Number)
+    return ((h * 60 + m) - 720 + 1440) % 1440
+  })
+  const avgShifted = shifted.reduce((a, b) => a + b, 0) / shifted.length
+  const unshifted  = (Math.round(avgShifted) + 720) % 1440
+  const h = Math.floor(unshifted / 60)
+  const m = unshifted % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
 function getOutcomeBullets(entry: DailyEntry, hrvBaseline: number = 88): { text: string; ok: boolean }[] {
@@ -1335,6 +1358,9 @@ export default function App() {
   // Personal HRV baseline (rolling 28-day median, fallback 88) — computed once,
   // reused by the Outcome Score bullet and the HRV chart's dashed baseline line.
   const hrvBaseline   = hrvBaselineFromEntries(dashEntries)
+  // Personal bedtime target (rolling 30-day circular average, fallback 21:45) —
+  // reused by the Behavior Score bullet, matching the server-computed score.
+  const bedtimeTarget = bedtimeTargetFromEntries(dashEntries)
   const scoreTlResult = computeTrainingLoad(scoreAllEntries)
 
   // ── Today tab — long-term goals derived values (from GoalsTab) ───
@@ -1708,7 +1734,7 @@ export default function App() {
 
             {/* Score cards (from DashboardTab) */}
             <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'flex-start', marginTop: 16, marginBottom: 16 }}>
-              <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(entry, todayScored?.nutrition)} />
+              <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(entry, todayScored?.nutrition, bedtimeTarget)} />
               <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(entry, hrvBaseline)} />
               <button
                 type="button"

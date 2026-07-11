@@ -8,7 +8,11 @@ export interface NutritionSummaryForScore {
 
 // ─── Behavior Score (0–100) ───────────────────────────────────────
 // What you controlled: nutrition, supplements, bedtime, training vs HRV, active calories
-export function behaviorScore(entry: DailyEntry, nutritionSummary?: NutritionSummaryForScore | null): number {
+export function behaviorScore(
+  entry: DailyEntry,
+  nutritionSummary?: NutritionSummaryForScore | null,
+  bedtimeTarget: string = '21:45',
+): number {
   const components: { score: number; weight: number }[] = []
 
   // 1. Nutrition — 30%: protein target 130g, fiber 30g
@@ -49,11 +53,12 @@ export function behaviorScore(entry: DailyEntry, nutritionSummary?: NutritionSum
     components.push({ score: s, weight: 20 })
   }
 
-  // 3. Bedtime consistency — 15%: target 21:45, within 30 min = 100, -1.1pt per extra minute
+  // 3. Bedtime consistency — 15%: target = rolling 30-day avg (fallback 21:45), within 30 min = 100, -1.1pt per extra minute
   const bedtime = entry.sleep.bedtime
   if (bedtime) {
-    const [h, m] = bedtime.split(':').map(Number)
-    const diff = Math.abs(h * 60 + m - (21 * 60 + 45))
+    const [h, m]   = bedtime.split(':').map(Number)
+    const [th, tm] = bedtimeTarget.split(':').map(Number)
+    const diff = Math.abs(h * 60 + m - (th * 60 + tm))
     components.push({ score: Math.max(0, 100 - diff * 1.1), weight: 15 })
   }
 
