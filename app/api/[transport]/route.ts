@@ -4,11 +4,14 @@
 // hosted as a Vercel route instead. Same two tools, same underlying fetch calls to the
 // existing quick-log/quick-import routes — this is a transport swap, not a rewrite.
 //
-// Inbound auth: every request must carry x-mcp-secret matching MCP_SECRET. This check is
-// new — the local stdio server had no equivalent, since trust came from being local-only.
+// Inbound auth: every request must carry a bearer access token issued by the OAuth 2.1
+// layer in app/oauth/* + lib/mcp-auth.ts (discovery at app/.well-known/*). Replaces the
+// earlier static x-mcp-secret header check — that mechanism is removed as of this change
+// because Claude's phone/web custom-connector UI only supports OAuth, not static headers.
 
-import { createMcpHandler } from 'mcp-handler'
+import { createMcpHandler, withMcpAuth } from 'mcp-handler'
 import { z } from 'zod'
+import { verifyBearerToken } from '@/lib/mcp-auth'
 
 const mcpHandler = createMcpHandler(
   (server) => {
@@ -199,27 +202,13 @@ const mcpHandler = createMcpHandler(
   }
 )
 
-// Inbound auth — reject before any tool logic runs. This is new: the local stdio
-// server trusted callers implicitly because it was local-only; the remote route is
-// reachable over the network, so every request must present a matching secret.
-function unauthorized(): Response {
-  return Response.json(
-    {
-      jsonrpc: '2.0',
-      id: null,
-      error: { code: -32001, message: 'Unauthorized: missing or invalid x-mcp-secret header' },
-    },
-    { status: 401 }
-  )
-}
+// Inbound auth — reject before any tool logic runs, via mcp-handler's withMcpAuth.
+// verifyBearerToken (lib/mcp-auth.ts) checks the bearer token's HS256 signature
+// (MCP_SECRET) and expiry. required: true means every request must carry a valid
+// token — there is no unauthenticated fallback.
+const handler = withMcpAuth(mcpHandler, verifyBearerToken, {
+  required: true,
+  resourceMetadataPath: '/.well-known/oauth-protected-resource',
+})
 
-async function withAuth(request: Request): Promise<Response> {
-  const expected = process.env.MCP_SECRET
-  const provided = request.headers.get('x-mcp-secret')
-  if (!expected || provided !== expected) {
-    return unauthorized()
-  }
-  return mcpHandler(request)
-}
-
-export { withAuth as GET, withAuth as POST, withAuth as DELETE }
+export { handler as GET, handler as POST, handler as DELETE }

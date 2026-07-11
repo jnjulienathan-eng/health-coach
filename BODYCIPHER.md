@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: July 11, 2026 (feat: remote MCP server route replacing local stdio server)_
+_Last updated: July 11, 2026 (feat: self-hosted OAuth 2.1 layer in front of the remote MCP route)_
 
 ---
 
@@ -329,7 +329,7 @@ Glucose stability expanded state (June 22, 2026):
 - `VAPID_PRIVATE_KEY` — server-side only. Paired with VAPID_PUBLIC_KEY. Never expose client-side.
 - `VAPID_EMAIL` — server-side only. Contact email passed to web-push setVapidDetails.
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` — client-side. Same value as VAPID_PUBLIC_KEY. Read by SwRegister.tsx when calling pushManager.subscribe().
-- `MCP_SECRET` — server-side only. Shared secret for the remote MCP route (see MCP SERVER section below). Checked against the inbound `x-mcp-secret` header on every request to `/api/mcp`, and sent as the outbound `x-mcp-secret` header when the MCP tools call `/api/nutrition/meal/quick-log` and `/api/nutrition/recipe/quick-import`.
+- `MCP_SECRET` — server-side only. Dual purpose (see MCP SERVER section below): (1) the HS256 signing key for every JWT the OAuth 2.1 layer issues (client_id, authorization code, access token — inbound auth on `/api/mcp` is now bearer-token-only, the old inbound `x-mcp-secret` header check is removed); (2) still sent as the outbound `x-mcp-secret` header when the MCP tools call `/api/nutrition/meal/quick-log` and `/api/nutrition/recipe/quick-import` (unrelated, unchanged).
 
 ### Recipe builder — locked decisions
 
@@ -406,10 +406,33 @@ Meal time: inline editable on meal card — tap the time to enter an `<input typ
 
 - **Endpoint:** `https://health-coach-rho.vercel.app/api/mcp` (Streamable HTTP transport only — SSE disabled, no Redis).
 - **Dependency:** `mcp-handler@1.1.0` (peer-pins `@modelcontextprotocol/sdk@1.26.0`) + `zod@^4.4.3`. Built via `createMcpHandler(...)` from `mcp-handler`, configured with `basePath: '/api'`, `disableSse: true`, no `redisUrl` — each POST spins up a fresh `McpServer` + transport per request (no session state, matching the stateless-only requirement).
-- **Inbound auth (new — the local stdio server had none, since trust came from being local-only):** every request to `/api/mcp` must carry an `x-mcp-secret` header matching `MCP_SECRET`. Checked before any tool logic runs, in a thin wrapper around the handler returned by `createMcpHandler`. Missing/mismatched secret → `401` with a JSON-RPC-shaped error body (`code: -32001`). GET, POST, and DELETE are all routed through the same auth check.
-- **Tools:** `log_meal` and `save_recipe`, ported field-for-field from the local server's Zod schemas and handler logic. Each tool still calls the existing internal routes directly via `fetch()` — same URLs (`https://health-coach-rho.vercel.app/api/nutrition/meal/quick-log` and `.../recipe/quick-import`), same outbound `x-mcp-secret` header (using `process.env.MCP_SECRET`), same success/error message wording. Deliberately not refactored into a shared internal function — both this route and the eventual Pi client are meant to go through the same tested HTTP API surface.
+- **Inbound auth:** bearer-token OAuth 2.1, via `withMcpAuth` from `mcp-handler` wrapping the handler returned by `createMcpHandler`. See "OAuth 2.1 layer" below. GET, POST, and DELETE are all routed through the same wrapped handler.
+- **Tools:** `log_meal` and `save_recipe`, ported field-for-field from the local server's Zod schemas and handler logic. Each tool still calls the existing internal routes directly via `fetch()` — same URLs (`https://health-coach-rho.vercel.app/api/nutrition/meal/quick-log` and `.../recipe/quick-import`), same outbound `x-mcp-secret` header (using `process.env.MCP_SECRET`), same success/error message wording. Deliberately not refactored into a shared internal function — both this route and the eventual Pi client are meant to go through the same tested HTTP API surface. **This outbound `x-mcp-secret` header (tools → internal quick-log/quick-import routes) is unrelated to the inbound OAuth layer below and is unchanged.**
 - **Local server status:** `~/Documents/Northstar/bodycipher-mcp` is **deprecated but preserved** on disk as a fallback until the remote route is verified working end-to-end (e.g. from an actual MCP client, not just curl). Do not delete or modify it.
 - **Not touched:** `/api/nutrition/meal/quick-log` and `/api/nutrition/recipe/quick-import` are unchanged — they still do not verify the `x-mcp-secret` header themselves (both MCP callers send it as a matter of convention, but neither destination route checks it). Adding that check is a separate future task, not part of this change.
+
+### OAuth 2.1 layer (added July 2026, branch feat/mcp-oauth)
+
+Self-hosted, single-user, fully stateless OAuth 2.1 + PKCE in front of `/api/mcp`, added so Claude's phone/web "custom connector" UI (which only supports OAuth, not static headers) can authenticate. No third-party auth provider, no database, no new secrets — `MCP_SECRET` is reused as the HS256 JWT signing key for every token this layer issues. All logic lives in `lib/mcp-auth.ts` plus the routes below.
+
+- **`x-mcp-secret` header auth on `/api/mcp` is REMOVED as of this change.** The old static-header check (`withAuth` wrapper in the route) is replaced entirely by `withMcpAuth(mcpHandler, verifyBearerToken, { required: true })`. Desktop's `mcp-remote` config (which sent `x-mcp-secret`) will need to be reconfigured for OAuth separately — not done as part of this session.
+- **No persisted codes or tokens** — matches the Vercel serverless/stateless constraint. Every "code" and "token" is a signed JWT that carries everything needed to verify itself:
+  - **`client_id`** (minted by `/oauth/register`) is itself a signed JWT embedding the registered `redirect_uris` array. No client table — verifying `client_id` at `/oauth/authorize` time just means verifying that JWT's signature and reading its embedded redirect URIs back out. No expiry (registration is permanent, single-user).
+  - **Authorization code** (minted by `/oauth/authorize`) is a signed JWT embedding `client_id`, `redirect_uri`, and the PKCE `code_challenge`. 5-minute expiry.
+  - **Access token** (minted by `/oauth/token`) is a signed JWT, ~1 year expiry (`ACCESS_TOKEN_TTL_SECONDS` in `lib/mcp-auth.ts`). No refresh-token grant — the long lifetime is the intended way this stays usable without persisted state.
+  - **Known tradeoff:** because there's no server-side store of "used" codes, a code can be redeemed more than once within its 5-minute window provided the correct `code_verifier` is presented each time. Accepted deliberately given the no-storage constraint — exposure is narrow (5 min, bound to one client + redirect_uri + PKCE challenge).
+- **No consent screen:** `/oauth/authorize` validates `client_id`/`redirect_uri`/PKCE and immediately redirects with a code — no login form, no "Allow" click. Deliberate simplification appropriate only because there is exactly one user and the app is already private; the one thing still validated is that `redirect_uri` matches a URI actually returned by `/oauth/register` for that `client_id`, so a forged `client_id`/`redirect_uri` pair can't be used to redirect a code to an attacker-controlled URL.
+- **Endpoints:**
+  | Route | Method | Purpose |
+  |---|---|---|
+  | `/.well-known/oauth-protected-resource` | GET | RFC 9728 protected resource metadata. `resource` = `{origin}/api/mcp`, `authorization_servers` = `[{origin}]` (this app is its own AS). Built with `protectedResourceHandler` from `mcp-handler`. |
+  | `/.well-known/oauth-authorization-server` | GET | RFC 8414 AS metadata. Hand-built (mcp-handler doesn't provide this side) — `authorization_endpoint`, `token_endpoint`, `registration_endpoint`, `code_challenge_methods_supported: ["S256"]`, `token_endpoint_auth_methods_supported: ["none"]`. |
+  | `/oauth/register` | POST | RFC 7591 dynamic client registration. Accepts any `redirect_uris`, returns a `client_id` JWT (see above). `token_endpoint_auth_method: "none"` — public client, no `client_secret`. |
+  | `/oauth/authorize` | GET | Validates `client_id`/`redirect_uri`/PKCE `code_challenge` (S256 only), immediately issues a code JWT, redirects to `redirect_uri` with `?code=...&state=...`. |
+  | `/oauth/token` | POST | Verifies the code JWT, verifies `code_verifier` (SHA-256/S256) against the embedded `code_challenge`, issues the ~1-year access token JWT. Accepts `application/x-www-form-urlencoded` or JSON bodies. |
+- **Verification on `/api/mcp`:** `verifyBearerToken` in `lib/mcp-auth.ts` checks the bearer token's HS256 signature (against `MCP_SECRET`) and expiry, returning an `AuthInfo` (`token`, `clientId`, `scopes`, `expiresAt`) for `withMcpAuth`. Missing/invalid token → `401` with a `WWW-Authenticate: Bearer ... resource_metadata="..."` header, per spec.
+- **Dependency:** `jose@^6.2.3` added as a direct dependency (was already present transitively) — used for all JWT signing/verification. PKCE S256 hashing uses Web Crypto (`crypto.subtle.digest`), not Node's `crypto` module, so the code isn't tied to the Node runtime.
+- **Tested manually end-to-end** (register → authorize → token → `initialize`/`tools/list` call against `/api/mcp`) against a local dev server before this was pushed. Also verified: missing/garbage bearer tokens get `401`; a forged `redirect_uri` not present in the client's registration is rejected with `400` before any redirect happens; a wrong `code_verifier` is rejected with `invalid_grant`.
 
 ---
 
