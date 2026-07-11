@@ -149,18 +149,21 @@ export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 88): numbe
   }
 
   // 2. Sleep duration + Rested score — 30%
+  // Effective sleep = night sleep + naps (naps only pad an existing night's
+  // figure — they never manufacture a sleep entry when duration_min is null).
   const dur    = entry.sleep.duration_min
   const rested = entry.sleep.rested
   if (dur != null || rested != null) {
     const parts: number[] = []
     if (dur != null) {
+      const effectiveDur = dur + (entry.sleep.nap_minutes ?? 0)
       const s =
-        dur >= 450 && dur <= 510 ? 100 :
-        dur >  510 && dur <= 570 ? 80  :
-        dur >= 420 && dur <  450 ? 60 + ((dur - 420) / 30) * 40 :
-        dur >  570               ? 60  :
-        dur >= 390 && dur <  420 ? 30 + ((dur - 390) / 30) * 30 :
-        Math.max(0, (dur / 390) * 30)
+        effectiveDur >= 450 && effectiveDur <= 510 ? 100 :
+        effectiveDur >  510 && effectiveDur <= 570 ? 80  :
+        effectiveDur >= 420 && effectiveDur <  450 ? 60 + ((effectiveDur - 420) / 30) * 40 :
+        effectiveDur >  570                        ? 60  :
+        effectiveDur >= 390 && effectiveDur <  420 ? 30 + ((effectiveDur - 390) / 30) * 30 :
+        Math.max(0, (effectiveDur / 390) * 30)
       parts.push(s)
     }
     if (rested != null) parts.push((rested / 5) * 100)

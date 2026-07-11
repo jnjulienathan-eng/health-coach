@@ -114,8 +114,11 @@ function formatEntry(entry: DailyEntry, cd?: number | null, nutritionSummary?: N
   const sup = entry.supplements
   const c = entry.context
 
-  const durationH = s.duration_min != null
-    ? `${Math.floor(s.duration_min / 60)}h${s.duration_min % 60 > 0 ? `${s.duration_min % 60}m` : ''}`
+  // Effective sleep = night sleep + naps (naps only pad an existing night's
+  // figure — they never manufacture a sleep entry when duration_min is null).
+  const effectiveDur = s.duration_min != null ? s.duration_min + (s.nap_minutes ?? 0) : null
+  const durationH = effectiveDur != null
+    ? `${Math.floor(effectiveDur / 60)}h${effectiveDur % 60 > 0 ? `${effectiveDur % 60}m` : ''}`
     : '?'
 
   const sessions = t.sessions.length
