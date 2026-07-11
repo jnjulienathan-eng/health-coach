@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: July 9, 2026 (fix: session icon cap + "+N" pill overflow on mobile)_
+_Last updated: July 11, 2026 (feat: remote MCP server route replacing local stdio server)_
 
 ---
 
@@ -329,6 +329,7 @@ Glucose stability expanded state (June 22, 2026):
 - `VAPID_PRIVATE_KEY` — server-side only. Paired with VAPID_PUBLIC_KEY. Never expose client-side.
 - `VAPID_EMAIL` — server-side only. Contact email passed to web-push setVapidDetails.
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` — client-side. Same value as VAPID_PUBLIC_KEY. Read by SwRegister.tsx when calling pushManager.subscribe().
+- `MCP_SECRET` — server-side only. Shared secret for the remote MCP route (see MCP SERVER section below). Checked against the inbound `x-mcp-secret` header on every request to `/api/mcp`, and sent as the outbound `x-mcp-secret` header when the MCP tools call `/api/nutrition/meal/quick-log` and `/api/nutrition/recipe/quick-import`.
 
 ### Recipe builder — locked decisions
 
@@ -369,8 +370,8 @@ After every meal_log save, edit, or delete:
 | /api/nutrition/name-meal | POST | Anthropic Haiku. ingredient list → short meal name (max 40 chars). No DB write. Called by ScreenConfirm when mealName is empty. |
 | /api/nutrition/barcode | GET ?code= | Open Food Facts lookup. Null on not-found or sparse data. |
 | /api/nutrition/templates | GET/POST/PUT/DELETE | Data preserved. UI hidden. Do not surface to user. |
-| /api/nutrition/recipe/quick-import | POST | Create a macro-only recipe from per-serving macro values. Auth placeholder (x-mcp-secret / MCP_SECRET) to be added in a subsequent session. Requires `ALTER TABLE recipes ADD COLUMN IF NOT EXISTS ingredients_text text` migration. |
-| /api/nutrition/meal/quick-log | POST | Log a meal directly from macros (MCP/Claude Desktop). Requires `x-mcp-secret` header matching `MCP_SECRET` env var. Accepts: name, calories, protein, carbs, fat, fiber. Uses `logged_via = 'photo_estimate'`, sets `logged_at` to server timestamp, date computed with 05:00 Berlin boundary. Calls recomputeDailySummary + recomputeScores. No meal_log_items rows created. Added May 2026. |
+| /api/nutrition/recipe/quick-import | POST | Create a macro-only recipe from per-serving macro values. Called by both the local stdio MCP server and the new remote MCP route (see MCP SERVER section below) with an `x-mcp-secret` header — this route itself does not yet verify the header (unchanged, out of scope for the remote-MCP session). Requires `ALTER TABLE recipes ADD COLUMN IF NOT EXISTS ingredients_text text` migration. |
+| /api/nutrition/meal/quick-log | POST | Log a meal directly from macros (MCP/Claude Desktop). Accepts: name, calories, protein, carbs, fat, fiber. Uses `logged_via = 'photo_estimate'`, sets `logged_at` to server timestamp, date computed with 05:00 Berlin boundary. Calls recomputeDailySummary + recomputeScores. No meal_log_items rows created. Added May 2026. Called with an `x-mcp-secret` header by both MCP callers (unchanged, out of scope for the remote-MCP session — this route itself does not yet verify the header). |
 
 **ingredients_text display (added May 18, 2026):** `ingredients_text` (nullable text column on `recipes`) is now surfaced in the Library UI. GET /api/nutrition/recipe select includes `ingredients_text`. In the recipe card (list view): a single-line truncated preview renders below the macros row when `ingredients_text` is present and the recipe is not a draft. A chevron button (▼) at the card's right edge toggles an expanded detail section showing the full `ingredients_text` under an "Ingredients" label (`pre-wrap`, `--color-text-secondary`). Chevron rotates 180° when expanded. Only rendered when `ingredients_text` is non-null. In the recipe detail view (`ScreenRecipeBuilder`, opened via Edit): `ingredients_text` is threaded into `RecipeBuilderState` via `startEditRecipe` and rendered as a read-only `pre-wrap` block under a "INGREDIENTS" `FieldLabel`, above the save error and footer macros. Only rendered when non-null. Not editable — managed via the quick-import MCP route.
 
@@ -394,6 +395,21 @@ Screen 5: Save confirmation. Meal name (editable), time, macros, notes. Confirm 
 
 Peak glucose: inline editable on meal card in day view. PATCH /api/nutrition/meal. Never on logging screens.
 Meal time: inline editable on meal card — tap the time to enter an `<input type="time">`, blur saves via PATCH /api/nutrition/meal with `logged_at` (ISO string). Client reconstructs the correct UTC ISO by converting the Berlin HH:MM back to UTC using `buildNewLoggedAt()` in NutritionSection.tsx. No summary recompute.
+
+---
+
+## MCP SERVER
+
+### Remote MCP route (added July 2026, branch feat/mcp-remote-server)
+
+`app/api/[transport]/route.ts` — a Vercel-hosted, stateless remote MCP server, replacing the standalone local stdio server (`~/Documents/Northstar/bodycipher-mcp`, on disk, untouched) as the primary path for MCP-based logging.
+
+- **Endpoint:** `https://health-coach-rho.vercel.app/api/mcp` (Streamable HTTP transport only — SSE disabled, no Redis).
+- **Dependency:** `mcp-handler@1.1.0` (peer-pins `@modelcontextprotocol/sdk@1.26.0`) + `zod@^4.4.3`. Built via `createMcpHandler(...)` from `mcp-handler`, configured with `basePath: '/api'`, `disableSse: true`, no `redisUrl` — each POST spins up a fresh `McpServer` + transport per request (no session state, matching the stateless-only requirement).
+- **Inbound auth (new — the local stdio server had none, since trust came from being local-only):** every request to `/api/mcp` must carry an `x-mcp-secret` header matching `MCP_SECRET`. Checked before any tool logic runs, in a thin wrapper around the handler returned by `createMcpHandler`. Missing/mismatched secret → `401` with a JSON-RPC-shaped error body (`code: -32001`). GET, POST, and DELETE are all routed through the same auth check.
+- **Tools:** `log_meal` and `save_recipe`, ported field-for-field from the local server's Zod schemas and handler logic. Each tool still calls the existing internal routes directly via `fetch()` — same URLs (`https://health-coach-rho.vercel.app/api/nutrition/meal/quick-log` and `.../recipe/quick-import`), same outbound `x-mcp-secret` header (using `process.env.MCP_SECRET`), same success/error message wording. Deliberately not refactored into a shared internal function — both this route and the eventual Pi client are meant to go through the same tested HTTP API surface.
+- **Local server status:** `~/Documents/Northstar/bodycipher-mcp` is **deprecated but preserved** on disk as a fallback until the remote route is verified working end-to-end (e.g. from an actual MCP client, not just curl). Do not delete or modify it.
+- **Not touched:** `/api/nutrition/meal/quick-log` and `/api/nutrition/recipe/quick-import` are unchanged — they still do not verify the `x-mcp-secret` header themselves (both MCP callers send it as a matter of convention, but neither destination route checks it). Adding that check is a separate future task, not part of this change.
 
 ---
 
