@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     return errorResponse(400, 'invalid_grant', 'client_id or redirect_uri does not match the authorization request.')
   }
 
-  const computedChallenge = await pkceChallengeFromVerifier(codeVerifier)
+  const computedChallenge = await pkceChallengeFromVerifier(codeVerifier.trim())
   if (computedChallenge !== claims.code_challenge) {
     return errorResponse(400, 'invalid_grant', 'code_verifier does not match code_challenge.')
   }

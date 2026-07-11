@@ -41,6 +41,21 @@ export async function pkceChallengeFromVerifier(codeVerifier: string): Promise<s
   return base64UrlEncode(digest)
 }
 
+/**
+ * Canonicalize a client-supplied code_challenge to base64url. RFC 7636 mandates
+ * base64url (no padding) for S256, but some OAuth client implementations emit
+ * standard base64 (with +, /, and = padding) by mistake. We always recompute
+ * the challenge from the verifier using base64url (pkceChallengeFromVerifier
+ * above), so an un-normalized challenge stored verbatim can never match, even
+ * with the correct verifier. Normalizing here — once, at the point the
+ * client's value first enters storage — makes that class of client bug
+ * harmless without weakening the check (it's still a real SHA-256 comparison,
+ * just encoding-tolerant).
+ */
+function canonicalizeBase64Url(value: string): string {
+  return value.trim().replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
 // ---- client_id (RFC 7591 dynamic client registration) ----
 
 interface ClientClaims extends JWTPayload {
@@ -90,7 +105,7 @@ export async function signAuthorizationCode(params: {
     typ: 'code',
     client_id: params.clientId,
     redirect_uri: params.redirectUri,
-    code_challenge: params.codeChallenge,
+    code_challenge: canonicalizeBase64Url(params.codeChallenge),
     resource: params.resource,
     scope: params.scope,
   }
