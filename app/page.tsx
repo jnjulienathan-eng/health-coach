@@ -121,64 +121,64 @@ const TABS: { id: Tab; label: string; Icon: React.FC }[] = [
 
 const GREETINGS = {
   wakeup: [
-    "Morning. The data's ready when you are.",
-    "Another day to collect evidence about yourself.",
-    "Sleep's done. Now the interesting part.",
-    "Good morning. The body kept score overnight — time to check.",
-    "Early. Good. The day hasn't made any demands yet.",
-    "Morning, Julie. The goals don't move. Neither do you, apparently. Time to fix that.",
-    "The metrics are fresh. So are you, theoretically.",
-    "Up before most of Munich. Noted.",
-    "Morning. Let's see what last night's sleep bought you.",
-    "Another loop around the sun begins. Make it count.",
+    "Rise and shine, or just rise. We'll take it.",
+    "Your HRV is judging your bedtime. Again.",
+    "Good morning. Decode responsibly.",
+    "Coffee first, biomarkers second.",
+    "The body keeps the score. Let's go check it.",
+    "Another day, another chance to out-sleep yesterday.",
+    "Munich's awake. Your mitochondria, mostly.",
+    "Vitals loading. Please stand by.",
+    "Good morning to everyone except your bedtime average.",
+    "New day, same relentless data collection.",
   ],
   midmorning: [
-    "The hard part of the day is either done or ahead of you. Either way, you're here.",
-    "Mid-morning. Prime time for protein and decisions.",
-    "The morning session is in the books, or it isn't. No judgment — there's still afternoon.",
-    "Somewhere between the first coffee and lunch lies your best window. Use it.",
-    "Your body is warm. Your options are open.",
-    "The morning has happened. What did you make of it?",
-    "Still before noon. The day is cooperative.",
-    "Post-training window. Feed the work you did, or the work you're about to do.",
-    "The muscle doesn't build itself. But you knew that.",
-    "Mid-morning check-in. Everything on track, or are we course-correcting?",
+    "Mid-morning check-in: still human, still tracked.",
+    "Somewhere between breakfast and regret.",
+    "You've been awake long enough to have opinions about your sleep score.",
+    "The dashboard never sleeps. Neither did you, apparently.",
+    "Hydration status: probably concerning.",
+    "This is your body. It has notes.",
+    "Zone 2 called. It misses you.",
+    "Prime time for pretending you'll hit your fiber target.",
+    "Everything's fine. The data will confirm or deny.",
+    "Halfway to lunch, nowhere near your protein goal.",
   ],
   afternoon: [
-    "Afternoon. The day is half-spent and entirely salvageable.",
-    "Halfway through. The second half is where most people stop paying attention.",
-    "Good afternoon. The boring middle of the day is where habits live.",
-    "You've made it to afternoon without catastrophe. Respectable.",
-    "The day is longer than it feels. There's still time.",
-    "Afternoon slump is a myth you're not buying into.",
-    "Mid-afternoon. The decisions you make now are the ones you'll be glad about tonight.",
-    "Still plenty of day left. Don't coast.",
-    "Afternoon. The goals are the same as this morning. The execution window is smaller.",
-    "The day hasn't decided how it ends yet. You have some influence over that.",
+    "The 3pm slump has entered the chat.",
+    "Your cortisol curve called. It's dramatic today.",
+    "Afternoon check-in: still decoding, still guessing a little.",
+    "Somewhere your RHR is quietly doing its thing.",
+    "Peak productivity, or peak procrastination. Hard to say.",
+    "You survived the morning. Bold of you.",
+    "The body doesn't lie. It just under-communicates.",
+    "Halfway through the day, nowhere near halfway through your water.",
+    "Afternoon status: caffeinated optimism.",
+    "Still time to make today's numbers respectable.",
   ],
   earlyevening: [
-    "The active part of the day is winding down. Time to be deliberate about the rest.",
-    "Evening approaching. What you do now sets up how tomorrow starts.",
-    "The data for today is mostly written. A few chapters left.",
-    "Early evening. The difference between a good day and a great one is often the last few hours.",
-    "Getting close to the finish line. Don't trip at the end.",
-    "Evening. Protein logged? Sleep coming? Good. Almost there.",
-    "The day is entering its final stretch. Make the landing clean.",
-    "The hard work is done. Now it's about protecting the recovery.",
-    "Almost. Keep the consistency going through to the end.",
-    "Evening wind-down. The choices in the next two hours matter more than they look.",
+    "The sun's setting on your chance to hit today's targets. No pressure.",
+    "Evening mode: engaged. Willpower: questionable.",
+    "One more walk won't kill you. Might even help the ratio.",
+    "The kitchen closes at bedtime, not before. Choose wisely.",
+    "Training load says pace yourself. You'll ignore it beautifully.",
+    "Almost bedtime-adjacent. Emphasis on almost.",
+    "Evening check-in: how's the fiber count holding up?",
+    "The day's not over till the supplements are logged.",
+    "Wind-down starts now, whether you like it or not.",
+    "Last call for anything resembling a vegetable.",
   ],
   endofday: [
-    "Late. The day is essentially done. How did it go?",
-    "Evening. The score is nearly final.",
-    "The logs are mostly in. Rest is the next performance variable.",
-    "Wind down well. Tomorrow is already being shaped.",
-    "Almost time. Sleep is where the work gets processed.",
-    "The day is closing. What it meant depends on what you did with it.",
-    "Late evening. The only thing left to optimize is sleep.",
-    "You made it to the end of another day. That's the minimum. What else?",
-    "The body has been asked a lot today. Time to give it what it needs.",
-    "Nearly done. The goal isn't perfection — it's consistency. One more day of it.",
+    "The day is basically over. Your bedtime target, less so.",
+    "21:45 is a suggestion the body takes very seriously.",
+    "Last chance to log something before tomorrow-you inherits the blank space.",
+    "Nightcap? Water. Always water.",
+    "The body's closing its books for the day. Balance them.",
+    "Sleep well, or at least log trying to.",
+    "Tomorrow's HRV is being decided right now.",
+    "End of day. Time to stop optimizing and just rest.",
+    "The numbers will still be there tomorrow. Go to bed.",
+    "Last light of the day, last chance for good data.",
   ],
 }
 
@@ -1155,21 +1155,6 @@ export default function App() {
   // ── Goals data + VO2 state (from GoalsTab) ───────────────────────
   const [goalsData,            setGoalsData]            = useState<GoalsData | null>(null)
   const [greeting]                                       = useState(() => getGreeting())
-  const [heroImage]                                      = useState(() => {
-    const images = [
-      '/images/hero/state-easy-blackforest.jpg',
-      '/images/hero/state-easy-bovic.jpg',
-      '/images/hero/state-easy-mushrooms.jpg',
-      '/images/hero/state-hard-iceland.jpg',
-      '/images/hero/state-moderate-scotland.jpg',
-      '/images/hero/state-moderate.jpg',
-      '/images/hero/state-nodata.jpg',
-      '/images/hero/state-rest-cat.jpg',
-      '/images/hero/state-rest-norway.jpg',
-      '/images/hero/state-rest.jpg',
-    ]
-    return images[Math.floor(Math.random() * images.length)]
-  })
   const [vo2RollingAvg,        setVo2RollingAvg]        = useState<number | null>(null)
   const [vo2Expanded,          setVo2Expanded]          = useState(false)
   const [vo2Sparkline,         setVo2Sparkline]         = useState<BiomarkerReading[]>([])
@@ -1579,28 +1564,41 @@ export default function App() {
         {/* ── TODAY TAB ────────────────────────────────────────── */}
         {activeTab === 'today' && (
           <>
-            {/* Hero: background photo + date navigator + greeting */}
+            {/* Hero: solid navy + BodyCipher mark + date navigator + greeting */}
             <div style={{
               position: 'relative',
-              height: 320,
+              minHeight: 200,
               marginLeft: -20,
               marginRight: -20,
               marginTop: -20,
               overflow: 'hidden',
-              backgroundImage: `url(${heroImage})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
+              background: 'var(--color-navy)',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
+              paddingBottom: 'var(--space-lg)',
             }}>
-              {/* Gradient overlay */}
-              <div style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'linear-gradient(to bottom, transparent, rgba(11, 17, 32, 0.75))',
-                pointerEvents: 'none',
-              }} />
+              {/* BodyCipher mark — faint watermark, same paths as SplashScreen.tsx / generate-icon.mjs */}
+              <svg
+                width="130"
+                viewBox="220 36 220 250"
+                xmlns="http://www.w3.org/2000/svg"
+                style={{
+                  position: 'absolute',
+                  top: -20,
+                  right: -10,
+                  opacity: 0.08,
+                  pointerEvents: 'none',
+                }}
+                aria-hidden="true"
+              >
+                <path d="M 249,90 C 244,108 238,126 241,162" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M 242,200 C 240,222 242,252 245,272" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M 264,46 C 276,44 285,56 285,72 C 285,84 276,90 272,94 C 270,98 268,106 272,116 C 276,122 288,122 292,128 C 294,134 280,150 258,160 C 258,167 274,177 278,188 C 282,197 284,207 278,222 C 274,232 264,252 256,277 C 254,252 250,234 249,220 C 248,208 249,197 250,188 C 251,178 251,168 251,160 C 251,150 249,138 238,128 C 238,120 242,114 252,106 C 254,100 256,92 252,88 C 250,82 244,70 244,60 C 246,50 254,44 264,46 Z" fill="white" />
+                <polyline points="260,160 294,160 300,124 308,190 314,148 325,160 428,160" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="260" cy="160" r="5.5" fill="#E8940A" />
+                <circle cx="428" cy="160" r="5.5" fill="#E8940A" />
+              </svg>
 
               {/* Date navigator */}
               <div
@@ -1670,13 +1668,13 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Greeting */}
+              {/* Greeting — primary visual element of the hero now that the photo is gone */}
               <div style={{
                 position: 'relative',
                 zIndex: 1,
-                padding: '0 20px 20px',
-                fontSize: 'clamp(1.6rem, 5vw, 2.4rem)',
-                fontWeight: 'var(--fw-bold)',
+                padding: '20px 20px 0',
+                fontSize: 'clamp(2rem, 7vw, var(--fs-score-display))',
+                fontWeight: 'var(--fw-score-display)',
                 color: 'white',
                 lineHeight: 1.2,
                 maxWidth: '90%',

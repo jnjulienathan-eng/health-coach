@@ -335,8 +335,15 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
     }
   }
 
-  // Collapsed summary
-  const summary = isComplete ? (
+  // Collapsed summary — each badge is independent of the others; gate only
+  // on "is there anything at all to show", not on morning/evening specifically
+  const anyBadgeSaved =
+    data.morning_stack_taken ||
+    data.evening_stack_taken ||
+    data.progesterone_taken ||
+    data.estradiol_taken
+
+  const summary = anyBadgeSaved ? (
     <span
       style={{
         fontFamily: 'var(--font-mono)',

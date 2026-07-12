@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: July 11, 2026 (fix: protected resource metadata now also served at the RFC 9728 path-suffixed location)_
+_Last updated: July 12, 2026 (Supplements summary pill fix, Today-tab hero redesign — photos removed, new greeting set)_
 
 ---
 
@@ -84,18 +84,17 @@ Default active tab: 0 (Today). GoalsTab, DashboardTab, and HistoryTab components
 - Macro progress bar track: colour changed from `--color-primary-light` (light green) to `--color-navy-tint` (`#E8EEF7`, a very light blue tint of dark navy). New token `--color-navy-tint` added to `:root` in `globals.css`.
 - Supplements StackAccordion "Taken" label: colour changed from `--color-status-optimal` (green) to `--color-navy` (dark navy). "Not taken" remains `--color-text-muted`.
 
-### Today Tab (updated May 11, 2026 — hero photo added)
+### Today Tab (updated July 12, 2026 — hero redesigned, photos removed)
 
-**Hero photo (May 11, 2026):**
-Full-width hero container replaces the standalone date navigator and greeting. Sits at the very top of the Today tab, above the score cards.
-- Height: 320px. Negative margins (`-20px` left/right/top) break out of the main container padding to reach full width.
-- Background: random image selected on mount from 10 images in `/public/images/hero/`. Stored in `heroImage` state (useState initializer — runs once, does not change on re-render).
-- Images: state-easy-blackforest, state-easy-bovic, state-easy-mushrooms, state-hard-iceland, state-moderate-scotland, state-moderate, state-nodata, state-rest-cat, state-rest-norway, state-rest. `state-easy.jpg` and `state-hard.jpg` deleted (removed from git).
-- Gradient overlay: `linear-gradient(to bottom, transparent, rgba(11, 17, 32, 0.75))` — full hero height.
-- Date navigator: same logic, restyled white text + white chevrons. `‹/›` disabled state uses `rgba(255,255,255,0.35)`.
-- Greeting: same rotating message logic, restyled to `--fs-display` / `--fw-bold` / white, positioned at bottom of hero with `padding: 0 20px 20px`.
-- Yesterday sleep banner: moved to below the hero (was between date nav and greeting). Gets `marginTop: 16` inline.
-- Score cards: `marginTop: 16` added (was relying on greeting's `marginBottom`).
+**Hero — solid navy + BodyCipher mark (July 12, 2026):**
+Full-width hero container above the score cards, in `app/page.tsx`. Negative margins (`-20px` left/right/top) break out of the main container padding to reach full width — unchanged.
+- **Photo system removed.** The `heroImage` state (random selection from 10 images in `/public/images/hero/`) and its `backgroundImage`/gradient-overlay styling are gone. Background is now solid `var(--color-navy)`.
+- Images themselves (state-easy-blackforest, state-easy-bovic, state-easy-mushrooms, state-hard-iceland, state-moderate-scotland, state-moderate, state-nodata, state-rest-cat, state-rest-norway, state-rest) are **preserved on disk** in `/public/images/hero/`, just no longer referenced anywhere — same deprecated-but-preserved pattern as `DashboardTab.tsx`/`HistoryTab.tsx`/`GoalsTab.tsx`.
+- **BodyCipher mark:** the same SVG paths used by `SplashScreen.tsx` and `scripts/generate-icon.mjs` (body silhouette + ECG line + two amber dots, viewBox `220 36 220 250`) are inlined as a faint (`opacity: 0.08`) watermark, absolutely positioned top-right of the hero, `aria-hidden`, `pointerEvents: none` — decorative only, sits behind the greeting text so it doesn't compete for attention.
+- **Greeting is now the primary visual element.** Font size increased from `clamp(1.6rem, 5vw, 2.4rem)` / `--fw-bold` to `clamp(2rem, 7vw, var(--fs-score-display))` (32–48px) / `--fw-score-display` (800). Still clamped/responsive so long greetings don't overflow (preserves the May 11 BUG 6 fix).
+- **Height:** the fixed `320px` was dropped in favor of `minHeight: 200` plus padding (`paddingBottom: var(--space-lg)` on the container, `padding: '20px 20px 0'` on the greeting) — a solid navy block that tall with no photo behind it read as dead space. The hero now grows/shrinks naturally with greeting length instead of being pinned to a fixed height.
+- Date navigator: unchanged — same logic, same white styling, same `‹/›` disabled-state treatment.
+- Yesterday sleep banner and score card spacing: unchanged from the May 11 hero-photo layout.
 
 ### Today Tab (updated May 10, 2026 — Long-term Goals cards design-aligned)
 
@@ -183,6 +182,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 - Evening stack (accordion, default collapsed): Magnesium glycinate 200mg, L-Theanine
 - **DEFAULT STATE: everything OFF.** User must actively confirm.
 - NO cyclic supplements. Ashwagandha and Phosphatidylserine removed entirely. Do not re-add.
+- **Collapsed summary pill fix (July 12, 2026):** the summary pill ("AM ✓ · PM ✓ · Prog ✓ · E2 ✓") is built in `SupplementsSection.tsx`. It used to be gated on `isComplete` (`morning_stack_taken || evening_stack_taken`), so saving only estradiol or only progesterone rendered no pill at all. Fixed by gating the pill on a separate `anyBadgeSaved` check (`morning_stack_taken || evening_stack_taken || progesterone_taken || estradiol_taken`) — each of the four badges was already rendered independently inside the pill via `.filter(Boolean)`; only the outer gate was wrong. `isComplete` itself (still morning/evening-only) is unchanged and still drives the accordion header's green checkmark — that's a separate "day confirmed" concept from "is there anything to show in the pill."
 
 **Context section**
 - Fields: cycle day (auto-counter with manual reset), symptoms (multi-select), travelling toggle, notes
@@ -732,9 +732,11 @@ Supplement confirm route built. All three sessions complete — push notificatio
 6. Apple Health XML import — deferred indefinitely
 7. Regression analysis — revisit July 2026
 
-### Greeting — resolved (April 28, 2026)
+### Greeting — resolved (April 28, 2026; content replaced July 12, 2026)
 
 Replaced Anthropic API greeting with static rotating list. Client-side only, instant, zero cost. 50 greetings across 5 time bands. API route deleted.
+
+**July 12, 2026:** The April 28 greeting set was fully replaced with a new 50-greeting set (10 per band, same 5 bands: wakeup/midmorning/afternoon/earlyevening/endofday) — content only, no logic change. Same `getGreeting()` random-per-mount selection in both `app/page.tsx` (Today tab hero) and `GoalsTab.tsx` (Goals tab hero, not in nav but preserved on disk) — each file keeps its own independent copy of the `GREETINGS` object, as before.
 
 ### Removed / will not do
 
