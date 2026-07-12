@@ -1578,32 +1578,28 @@ export default function App() {
               justifyContent: 'space-between',
               paddingBottom: 'var(--space-lg)',
             }}>
-              {/* BodyCipher mark — faint watermark, same paths as SplashScreen.tsx / generate-icon.mjs */}
-              <svg
-                width="130"
-                viewBox="220 36 220 250"
-                xmlns="http://www.w3.org/2000/svg"
-                style={{
-                  position: 'absolute',
-                  top: -20,
-                  right: -10,
-                  opacity: 0.08,
-                  pointerEvents: 'none',
-                }}
-                aria-hidden="true"
-              >
-                <path d="M 249,90 C 244,108 238,126 241,162" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                <path d="M 242,200 C 240,222 242,252 245,272" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                <path d="M 264,46 C 276,44 285,56 285,72 C 285,84 276,90 272,94 C 270,98 268,106 272,116 C 276,122 288,122 292,128 C 294,134 280,150 258,160 C 258,167 274,177 278,188 C 282,197 284,207 278,222 C 274,232 264,252 256,277 C 254,252 250,234 249,220 C 248,208 249,197 250,188 C 251,178 251,168 251,160 C 251,150 249,138 238,128 C 238,120 242,114 252,106 C 254,100 256,92 252,88 C 250,82 244,70 244,60 C 246,50 254,44 264,46 Z" fill="white" />
-                <polyline points="260,160 294,160 300,124 308,190 314,148 325,160 428,160" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="260" cy="160" r="5.5" fill="#E8940A" />
-                <circle cx="428" cy="160" r="5.5" fill="#E8940A" />
-              </svg>
+              {/* BodyCipher mark — small solid icon, same paths as SplashScreen.tsx / generate-icon.mjs
+                  (amber dots dropped for a clean single-colour mark). Its own row above the date
+                  navigator so it can't collide with the '›' chevron on the row below. */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 20px 0' }}>
+                <svg
+                  width="30"
+                  height="34"
+                  viewBox="220 36 220 250"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                >
+                  <path d="M 249,90 C 244,108 238,126 241,162" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M 242,200 C 240,222 242,252 245,272" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M 264,46 C 276,44 285,56 285,72 C 285,84 276,90 272,94 C 270,98 268,106 272,116 C 276,122 288,122 292,128 C 294,134 280,150 258,160 C 258,167 274,177 278,188 C 282,197 284,207 278,222 C 274,232 264,252 256,277 C 254,252 250,234 249,220 C 248,208 249,197 250,188 C 251,178 251,168 251,160 C 251,150 249,138 238,128 C 238,120 242,114 252,106 C 254,100 256,92 252,88 C 250,82 244,70 244,60 C 246,50 254,44 264,46 Z" fill="white" />
+                  <polyline points="260,160 294,160 300,124 308,190 314,148 325,160 428,160" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
 
               {/* Date navigator */}
               <div
                 className="flex items-center justify-between"
-                style={{ minHeight: '48px', position: 'relative', zIndex: 1, padding: '12px 20px 0' }}
+                style={{ minHeight: '48px', position: 'relative', zIndex: 1, padding: '4px 20px 0' }}
               >
                 <button
                   type="button"
