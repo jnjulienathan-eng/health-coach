@@ -482,8 +482,10 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 | Nutrition targets hit (protein + fiber priority) | 30% |
 | Supplements confirmed (morning + evening + hormones) | 20% |
 | Training appropriate to HRV framework | 20% |
-| Bedtime consistency (within 30 min of rolling 30-day bedtime average, fallback 21:45) | 15% |
-| Active calorie target reached (900 kcal total) | 15% |
+| Bedtime consistency (within 30 min of rolling 30-day bedtime average, fallback 21:45; −1.1 pts per minute beyond 30) | 15% |
+| Active calorie target reached (600 kcal from training sessions + cycling) | 15% |
+
+**Active calories component source:** the 600 kcal target is intentional-training energy — `active_calories` summed across `training_sessions` plus `cycling_calories`. This is distinct from Julie's ~900 kcal all-day active-calorie figure (`daily_entries.active_calories`, written by the Health Auto Export webhook) — that all-day figure is not read by this component. See `lib/scores.ts` behaviorScore() component 5.
 
 **Critical rule:** Empty or missing fields = N/A, not zero. Weight redistributes to other components. Never penalise for unlogged optional data.
 
@@ -542,6 +544,7 @@ HAE-only fields: **resting_hr_daytime** (integer, nullable — HAE resting_heart
 Nutrition columns: **LEGACY — do not read or write from new code**
 Hydration: hydration_ml
 Supplements: morning_stack_taken, morning_exceptions, evening_stack_taken, evening_exceptions, progesterone_taken, progesterone_mg, estradiol_taken, estradiol_sprays
+**Dead columns (do not wire up without an explicit decision):** `phosphatidylserine_taken`, `ashwagandha_taken`, `dim_taken` exist on this table and are mapped through `lib/types.ts` (`SupplementsData`) and `lib/db.ts` (both directions), but are read by no UI and no scoring code — actual supplement state lives entirely in `morning_stack_taken`/`evening_stack_taken` plus the `morning_exceptions`/`evening_exceptions` name arrays above. `dim_taken` in particular is misleading — DIM is a live item in the morning stack array (`MORNING_ITEMS` in `SupplementsSection.tsx`), tracked via `morning_exceptions` like every other morning item, not via this column.
 Context: cycle_day, symptoms, travelling, notes
 Scores: behavior_score, outcome_score
 

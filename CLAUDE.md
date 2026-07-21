@@ -159,7 +159,7 @@ pasting. Do not attempt HTTPS auth.
 - Never re-add avg_heart_rate to training sessions
 - Never re-add hrv_score to ContextSection
 - Never add calorie warnings or penalties to nutrition
-- Never add cyclic supplements (Ashwagandha, Phosphatidylserine) — removed by design
+- Ashwagandha remains removed by design — never re-add. Phosphatidylserine 150mg is now a live evening stack item (re-added July 2026) — do not treat it as excluded
 - Never create synthetic food_items entries for photo-estimated meals — use top-level macro fields on meal_logs
 - Never call the USDA API from client-side code — always go through /api/nutrition/search
 - Never call the Anthropic API from client-side code — always go through /api/nutrition/estimate
