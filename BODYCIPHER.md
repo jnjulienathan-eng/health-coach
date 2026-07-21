@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: July 12, 2026 (Supplements summary pill fix, Today-tab hero redesign — photos removed, new greeting set, hero mark refined to a small solid icon)_
+_Last updated: July 21, 2026 (Phosphatidylserine 150mg re-added to evening supplement stack)_
 
 ---
 
@@ -179,9 +179,9 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 **Supplements section**
 - Hormones: Progesterone (mg, toggle), Estradiol (sprays, toggle). When estradiol_taken is toggled ON and estradiol_sprays is null, the spray count auto-defaults to 3 (was no auto-set; DB rows previously stored 1). Toggle OFF does not clear the count.
 - Morning stack (accordion, default collapsed): Creatine 5g, Vitamin D3+K2, Zinc+Selenium, Glucosamine, Omega-3, Berberine, DIM
-- Evening stack (accordion, default collapsed): Magnesium glycinate 200mg, L-Theanine
+- Evening stack (accordion, default collapsed): Magnesium glycinate 200mg, L-Theanine, Phosphatidylserine 150mg
 - **DEFAULT STATE: everything OFF.** User must actively confirm.
-- NO cyclic supplements. Ashwagandha and Phosphatidylserine removed entirely. Do not re-add.
+- Ashwagandha remains removed — do not re-add. Phosphatidylserine 150mg was re-added to the evening stack in July 2026 (Julie resumed taking it nightly; no longer treated as cyclic/excluded).
 - **Collapsed summary pill fix (July 12, 2026):** the summary pill ("AM ✓ · PM ✓ · Prog ✓ · E2 ✓") is built in `SupplementsSection.tsx`. It used to be gated on `isComplete` (`morning_stack_taken || evening_stack_taken`), so saving only estradiol or only progesterone rendered no pill at all. Fixed by gating the pill on a separate `anyBadgeSaved` check (`morning_stack_taken || evening_stack_taken || progesterone_taken || estradiol_taken`) — each of the four badges was already rendered independently inside the pill via `.filter(Boolean)`; only the outer gate was wrong. `isComplete` itself (still morning/evening-only) is unchanged and still drives the accordion header's green checkmark — that's a separate "day confirmed" concept from "is there anything to show in the pill."
 
 **Context section**
@@ -741,7 +741,7 @@ Replaced Anthropic API greeting with static rotating list. Client-side only, ins
 ### Removed / will not do
 
 - Breakfast templates
-- Cyclic supplements (Ashwagandha, Phosphatidylserine)
+- Cyclic supplements (Ashwagandha — Phosphatidylserine re-added to evening stack July 2026, see Supplements section)
 - Andreas secondary user
 - avg_heart_rate in training sessions
 - Template UI in My Library (tables and API routes preserved in DB)

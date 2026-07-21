@@ -152,7 +152,7 @@ const MORNING_ITEMS = [
   'DIM',
 ]
 
-const EVENING_ITEMS = ['Magnesium glycinate (200mg)', 'L-Theanine']
+const EVENING_ITEMS = ['Magnesium glycinate (200mg)', 'L-Theanine', 'Phosphatidylserine (150mg)']
 
 // Label helper
 function StackLabel({ text }: { text: string }) {
