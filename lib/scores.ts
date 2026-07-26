@@ -14,31 +14,37 @@ export function behaviorScore(
   bedtimeTarget: string = '21:45',
 ): number {
   const components: { score: number; weight: number }[] = []
+  // Sick day: nutrition, bedtime-consistency, and active-calories components are
+  // excluded entirely (weight redistributes to supplements + training-vs-HRV).
+  // Training-vs-HRV is deliberately NOT gated by isSick — it scores normally.
+  const isSick = entry.context.is_sick === true
 
   // 1. Nutrition — 30%: protein target 130g, fiber 30g
   // When nutritionSummary is provided, use daily_nutrition_summary data.
   // A day counts as logged if meal_count > 0. Falls back to legacy entry fields if
   // nutritionSummary is not provided (those fields are always null for new data).
-  if (nutritionSummary != null) {
-    if ((nutritionSummary.meal_count ?? 0) > 0) {
-      const protein = nutritionSummary.protein
-      const fiber   = nutritionSummary.fiber
-      const parts: number[] = []
-      if (protein != null) parts.push(Math.min(100, (protein / 130) * 100))
-      if (fiber   != null) parts.push(Math.min(100, (fiber   / 30)  * 100))
-      if (parts.length > 0) {
+  if (!isSick) {
+    if (nutritionSummary != null) {
+      if ((nutritionSummary.meal_count ?? 0) > 0) {
+        const protein = nutritionSummary.protein
+        const fiber   = nutritionSummary.fiber
+        const parts: number[] = []
+        if (protein != null) parts.push(Math.min(100, (protein / 130) * 100))
+        if (fiber   != null) parts.push(Math.min(100, (fiber   / 30)  * 100))
+        if (parts.length > 0) {
+          components.push({ score: parts.reduce((a, b) => a + b) / parts.length, weight: 30 })
+        }
+      }
+      // meal_count === 0 → nutrition N/A, weight redistributes to other components
+    } else {
+      const protein = entry.nutrition.total_protein
+      const fiber   = entry.nutrition.total_fiber
+      if (protein != null || fiber != null) {
+        const parts: number[] = []
+        if (protein != null) parts.push(Math.min(100, (protein / 130) * 100))
+        if (fiber   != null) parts.push(Math.min(100, (fiber   / 30)  * 100))
         components.push({ score: parts.reduce((a, b) => a + b) / parts.length, weight: 30 })
       }
-    }
-    // meal_count === 0 → nutrition N/A, weight redistributes to other components
-  } else {
-    const protein = entry.nutrition.total_protein
-    const fiber   = entry.nutrition.total_fiber
-    if (protein != null || fiber != null) {
-      const parts: number[] = []
-      if (protein != null) parts.push(Math.min(100, (protein / 130) * 100))
-      if (fiber   != null) parts.push(Math.min(100, (fiber   / 30)  * 100))
-      components.push({ score: parts.reduce((a, b) => a + b) / parts.length, weight: 30 })
     }
   }
 
@@ -54,12 +60,14 @@ export function behaviorScore(
   }
 
   // 3. Bedtime consistency — 15%: target = rolling 30-day avg (fallback 21:45), within 30 min = 100, -1.1pt per extra minute
-  const bedtime = entry.sleep.bedtime
-  if (bedtime) {
-    const [h, m]   = bedtime.split(':').map(Number)
-    const [th, tm] = bedtimeTarget.split(':').map(Number)
-    const diff = Math.abs(h * 60 + m - (th * 60 + tm))
-    components.push({ score: Math.max(0, 100 - diff * 1.1), weight: 15 })
+  if (!isSick) {
+    const bedtime = entry.sleep.bedtime
+    if (bedtime) {
+      const [h, m]   = bedtime.split(':').map(Number)
+      const [th, tm] = bedtimeTarget.split(':').map(Number)
+      const diff = Math.abs(h * 60 + m - (th * 60 + tm))
+      components.push({ score: Math.max(0, 100 - diff * 1.1), weight: 15 })
+    }
   }
 
   // 4. Training appropriate to HRV — 20%
@@ -119,11 +127,13 @@ export function behaviorScore(
   }
 
   // 5. Active calories — 15%: target 600 kcal (sessions + cycling combined)
-  const calSessions  = entry.training.sessions.filter(s => s.active_calories != null)
-  const cyclingCal   = entry.training.cycling_calories ?? 0
-  if (calSessions.length > 0 || cyclingCal > 0) {
-    const total = calSessions.reduce((s, x) => s + (x.active_calories ?? 0), 0) + cyclingCal
-    components.push({ score: Math.min(100, (total / 600) * 100), weight: 15 })
+  if (!isSick) {
+    const calSessions = entry.training.sessions.filter(s => s.active_calories != null)
+    const cyclingCal  = entry.training.cycling_calories ?? 0
+    if (calSessions.length > 0 || cyclingCal > 0) {
+      const total = calSessions.reduce((s, x) => s + (x.active_calories ?? 0), 0) + cyclingCal
+      components.push({ score: Math.min(100, (total / 600) * 100), weight: 15 })
+    }
   }
 
   if (!components.length) return 0
@@ -133,7 +143,7 @@ export function behaviorScore(
 
 // ─── Outcome Score (0–100) ────────────────────────────────────────
 // What your body did: HRV vs baseline, sleep duration+rested, RHR vs baseline
-export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 88): number {
+export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 88, sleepDebtMinutes: number = 0): number {
   const components: { score: number; weight: number }[] = []
 
   // 1. HRV vs personal baseline (rolling 28-day median, default 88ms) — 30%
@@ -151,19 +161,32 @@ export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 88): numbe
   // 2. Sleep duration + Rested score — 30%
   // Effective sleep = night sleep + naps (naps only pad an existing night's
   // figure — they never manufacture a sleep entry when duration_min is null).
-  const dur    = entry.sleep.duration_min
+  // Sick day: duration sub-component excluded entirely — same null-duration
+  // mechanism as an unlogged day. Rested still scores normally in this slot.
+  const dur    = entry.context.is_sick === true ? null : entry.sleep.duration_min
   const rested = entry.sleep.rested
   if (dur != null || rested != null) {
     const parts: number[] = []
     if (dur != null) {
       const effectiveDur = dur + (entry.sleep.nap_minutes ?? 0)
+      // 7-day rolling sleep debt forgiveness: overage past 510min is offset by
+      // trailing deficit. Floor depends on which side of 570 the raw duration
+      // started on: overage within (510, 570] can be forgiven all the way to
+      // 510 (full/optimal band); overage beyond 570 floors at 570 instead of
+      // 510 — no amount of debt can push a >570min day into the full/optimal
+      // band. No debt (the common case) leaves band selection byte-identical
+      // to pre-forgiveness scoring — this only ever helps, never worsens.
+      const forgivenessFloor = effectiveDur > 570 ? 570 : 510
+      const adjustedDur = effectiveDur > 510 && sleepDebtMinutes > 0
+        ? Math.min(570, Math.max(forgivenessFloor, effectiveDur - sleepDebtMinutes))
+        : effectiveDur
       const s =
-        effectiveDur >= 450 && effectiveDur <= 510 ? 100 :
-        effectiveDur >  510 && effectiveDur <= 570 ? 80  :
-        effectiveDur >= 420 && effectiveDur <  450 ? 60 + ((effectiveDur - 420) / 30) * 40 :
-        effectiveDur >  570                        ? 60  :
-        effectiveDur >= 390 && effectiveDur <  420 ? 30 + ((effectiveDur - 390) / 30) * 30 :
-        Math.max(0, (effectiveDur / 390) * 30)
+        adjustedDur >= 450 && adjustedDur <= 510 ? 100 :
+        adjustedDur >  510 && adjustedDur <= 570 ? 80  :
+        adjustedDur >= 420 && adjustedDur <  450 ? 60 + ((adjustedDur - 420) / 30) * 40 :
+        adjustedDur >  570                       ? 60  :
+        adjustedDur >= 390 && adjustedDur <  420 ? 30 + ((adjustedDur - 390) / 30) * 30 :
+        Math.max(0, (adjustedDur / 390) * 30)
       parts.push(s)
     }
     if (rested != null) parts.push((rested / 5) * 100)

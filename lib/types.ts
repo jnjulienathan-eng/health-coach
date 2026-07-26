@@ -87,6 +87,7 @@ export type Symptom =
 export interface ContextData {
   symptoms: Symptom[]
   travelling: boolean
+  is_sick: boolean
   notes: string
 }
 
@@ -151,7 +152,7 @@ export function emptySupplements(): SupplementsData {
 }
 
 export function emptyContext(): ContextData {
-  return { symptoms: [], travelling: false, notes: '' }
+  return { symptoms: [], travelling: false, is_sick: false, notes: '' }
 }
 
 export function emptyEntry(date: string): DailyEntry {

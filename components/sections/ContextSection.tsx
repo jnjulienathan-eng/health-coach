@@ -224,6 +224,26 @@ export default function ContextSection({ data, cycleDay, onChange, onSave, onRes
           />
         </div>
 
+        {/* ── Sick today ─────────────────────────────────────────── */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span style={{ fontSize: 'var(--fs-body)', color: 'var(--color-text-primary)' }}>
+            Sick today
+          </span>
+          <input
+            type="checkbox"
+            checked={data.is_sick}
+            onChange={(e) => change({ ...data, is_sick: e.target.checked })}
+            className="toggle"
+            aria-label="Sick today"
+          />
+        </div>
+
         {/* ── Notes ──────────────────────────────────────────────── */}
         <div>
           <div

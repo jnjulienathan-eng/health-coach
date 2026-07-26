@@ -315,6 +315,11 @@ function buildBriefingPrompt(
   bedtimeTarget: string,
   nutritionSummary?: NutritionSummary | null,
 ): string {
+  const isSick = today.context.is_sick === true
+  const sickTrainingRule = isSick
+    ? '\n- SICK DAY: is_sick is true today. Do not suggest, encourage, or nudge toward any training in the training field, regardless of HRV. Recommend rest and recovery only — no "get moving" language.'
+    : ''
+
   if (mode === 'wakeup') {
     return `${ctx}
 
@@ -327,7 +332,7 @@ WAKEUP RULES:
 - Apply HRV framework strictly for training recommendation. Never recommend full rest unless HRV < 50ms or she is sick.
 - Look across 30-day history for correlations: HRV vs cycle day, HRV vs previous day's Zone 3+ minutes, sleep quality vs bedtime, fasting glucose trends. Surface one genuinely interesting pattern if it exists. Never generic.
 - Do NOT mention nutrition, supplements, or anything other than sleep, recovery, and today's training recommendation.
-- Question: one thing you're genuinely curious about given her data.
+- Question: one thing you're genuinely curious about given her data.${sickTrainingRule}
 
 Return ONLY valid JSON with exactly these five fields:
 {
@@ -359,7 +364,7 @@ POSTTRAINING RULES:
 - Check today's nutrition. ${hasNutritionLogged ? 'Meals already logged — comment on what has been eaten and what macro gaps remain.' : 'No meals logged yet — give specific food recommendation based on what was trained (or not). If trained hard (16+ zone3+ min): prioritise protein and carbs for recovery. If easy or no training: lighter protein focus.'}
 - Check if morning supplements logged. If not, brief reminder.
 - No calorie warnings. Julie does not overeat.
-- Set recovery to null unless something notable from sleep worth carrying forward.
+- Set recovery to null unless something notable from sleep worth carrying forward.${sickTrainingRule}
 
 Return ONLY valid JSON with exactly these five fields:
 {
@@ -417,7 +422,7 @@ EARLYEVENING RULES:
 - Training: acknowledge what was trained today (if anything) in one sentence. If no training logged, one sentence noting it was a rest day or training is still possible this evening.
 - Supplement and hormone check: check progesterone and estradiol logged. If not, remind. Check evening stack logged. If not, remind.
 - Hydration: if below 2000ml on rest day or 2500ml on training day (check today's sessions), flag.
-- Set nutrition and question to null.
+- Set nutrition and question to null.${sickTrainingRule}
 
 Return ONLY valid JSON with exactly these five fields:
 {
@@ -450,7 +455,7 @@ ENDOFDAY RULES:
 - Apply TRAINING_INTERPRETATION framework. Report Zone 3+ minutes, weekly total vs recent 4-week average.
 - Look across 30-day history for one genuinely interesting observation — a pattern, correlation, or trend worth naming. This is the most important field. Never generic.
 - Bedtime nudge: it is after 20:00 — include target bedtime (${bedtimeTarget}) naturally in the insight.
-- Set question to null.
+- Set question to null.${sickTrainingRule}
 
 Return ONLY valid JSON with exactly these five fields:
 {

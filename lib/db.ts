@@ -97,6 +97,7 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
     context: {
       symptoms:   (r.symptoms   as Symptom[]) ?? [],
       travelling: (r.travelling as boolean | null) ?? false,
+      is_sick:    (r.is_sick    as boolean | null) ?? false,
       notes:      (r.notes      as string) ?? '',
       // cycle_day persisted as top-level column, surfaced here for runtime use
       ...(r.cycle_day != null ? { cycle_day: r.cycle_day as number } : {}),
@@ -224,6 +225,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     // Context
     cycle_day:  cycleDay ?? null,
     travelling: entry.context.travelling,
+    is_sick:    entry.context.is_sick,
     symptoms:   entry.context.symptoms,
     notes:      entry.context.notes || null,
 
@@ -582,6 +584,42 @@ export async function getBedtimeRolling30DayAvg(asOfDate?: string): Promise<stri
   const h = Math.floor(unshifted / 60)
   const m = unshifted % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+// ─── getSleepDebtRolling7Day ────────────────────────────────────────
+// 7-day trailing sleep debt: looks at the 7 days strictly BEFORE asOfDate
+// (default = today in Europe/Berlin), not including asOfDate itself.
+// For each of those days, skips it (counts neither deficit nor surplus) if
+// sleep_duration_min is null or is_sick is true. For remaining days, adds
+// max(0, 450 - effectiveDur) to a running total — days >= 450min contribute
+// 0 (no negative debt, no banking of surplus). Returns 0 if fewer than 3
+// qualifying days exist in the window. Compute-not-store — no DB column.
+export async function getSleepDebtRolling7Day(asOfDate?: string): Promise<number> {
+  const endStr = asOfDate
+    ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
+  const windowEnd = new Date(endStr + 'T00:00:00Z')
+  windowEnd.setUTCDate(windowEnd.getUTCDate() - 1) // strictly before asOfDate
+  const windowEndStr = windowEnd.toISOString().split('T')[0]
+  const windowStart = new Date(endStr + 'T00:00:00Z')
+  windowStart.setUTCDate(windowStart.getUTCDate() - 7)
+  const windowStartStr = windowStart.toISOString().split('T')[0]
+
+  const { data, error } = await supabase
+    .from('daily_entries')
+    .select('sleep_duration_min, nap_minutes, is_sick')
+    .eq('user_id', 'julie')
+    .gte('date', windowStartStr)
+    .lte('date', windowEndStr)
+  if (error) throw error
+
+  const rows = (data ?? []) as { sleep_duration_min: number | null; nap_minutes: number | null; is_sick: boolean | null }[]
+  const qualifying = rows.filter(r => r.sleep_duration_min != null && r.is_sick !== true)
+  if (qualifying.length < 3) return 0
+
+  return qualifying.reduce((sum, r) => {
+    const effectiveDur = (r.sleep_duration_min ?? 0) + (r.nap_minutes ?? 0)
+    return sum + Math.max(0, 450 - effectiveDur)
+  }, 0)
 }
 
 // ─── saveVo2Reading ───────────────────────────────────────────────

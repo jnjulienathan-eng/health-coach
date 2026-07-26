@@ -2,7 +2,7 @@
 // by reading daily_entries + daily_nutrition_summary and writing back the result.
 // Import only from API routes and server components — never from client components.
 
-import { supabase, rowToEntry, loadSessionsForDates, getHrvRolling28DayMedian, getBedtimeRolling30DayAvg } from './db'
+import { supabase, rowToEntry, loadSessionsForDates, getHrvRolling28DayMedian, getBedtimeRolling30DayAvg, getSleepDebtRolling7Day } from './db'
 import { supaAdmin, nutritionUserId } from './nutrition'
 import { behaviorScore, outcomeScore } from './scores'
 import type { NutritionSummaryForScore } from './scores'
@@ -46,7 +46,9 @@ export async function recomputeScores(date: string): Promise<void> {
   // Forward-only: baseline is the 28-day rolling median as of this date.
   // Historical stored scores are not bulk-backfilled.
   const hrvBaseline = await getHrvRolling28DayMedian(date)
-  const oScore = outcomeScore(entry, hrvBaseline)
+  // Forward-only: sleep debt is the 7-day trailing deficit as of this date.
+  const sleepDebt = await getSleepDebtRolling7Day(date)
+  const oScore = outcomeScore(entry, hrvBaseline, sleepDebt)
 
   const { error } = await supabase
     .from('daily_entries')

@@ -616,7 +616,31 @@ function bedtimeTargetFromEntries(entries: DailyEntry[]): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-function getOutcomeBullets(entry: DailyEntry, hrvBaseline: number = 88): { text: string; ok: boolean }[] {
+// Client-side sleep debt: mirrors getSleepDebtRolling7Day in lib/db.ts —
+// 7 days strictly before asOfDate, skipping null-duration or sick days,
+// summing max(0, 450 - effectiveDur). Returns 0 if fewer than 3 qualifying
+// days exist in the window.
+function sleepDebtFromEntries(entries: DailyEntry[], asOfDate: string): number {
+  const windowEnd = new Date(asOfDate + 'T00:00:00Z')
+  windowEnd.setUTCDate(windowEnd.getUTCDate() - 1)
+  const windowEndStr = windowEnd.toISOString().split('T')[0]
+  const windowStart = new Date(asOfDate + 'T00:00:00Z')
+  windowStart.setUTCDate(windowStart.getUTCDate() - 7)
+  const windowStartStr = windowStart.toISOString().split('T')[0]
+
+  const qualifying = entries.filter(e =>
+    e.date >= windowStartStr && e.date <= windowEndStr &&
+    e.sleep.duration_min != null && e.context.is_sick !== true
+  )
+  if (qualifying.length < 3) return 0
+
+  return qualifying.reduce((sum, e) => {
+    const effectiveDur = (e.sleep.duration_min ?? 0) + (e.sleep.nap_minutes ?? 0)
+    return sum + Math.max(0, 450 - effectiveDur)
+  }, 0)
+}
+
+function getOutcomeBullets(entry: DailyEntry, hrvBaseline: number = 88, sleepDebtMinutes: number = 0): { text: string; ok: boolean }[] {
   const bullets: { text: string; ok: boolean }[] = []
 
   if (entry.sleep.hrv != null) {
@@ -625,13 +649,38 @@ function getOutcomeBullets(entry: DailyEntry, hrvBaseline: number = 88): { text:
   }
 
   if (entry.sleep.duration_min != null) {
-    const nap = entry.sleep.nap_minutes ?? 0
-    const effectiveDur = entry.sleep.duration_min + nap
-    const h = Math.floor(effectiveDur / 60)
-    const m = effectiveDur % 60
-    const ok = effectiveDur >= 450 && effectiveDur <= 510
-    const napSuffix = nap > 0 ? ` (incl. ${nap}m nap)` : ''
-    bullets.push({ text: `Sleep ${h}h ${m}m — ${ok ? 'on target' : effectiveDur < 450 ? 'below target' : 'over target'}${napSuffix}`, ok })
+    if (entry.context.is_sick) {
+      bullets.push({ text: 'Sleep — not scored (sick day)', ok: true })
+    } else {
+      const nap = entry.sleep.nap_minutes ?? 0
+      const effectiveDur = entry.sleep.duration_min + nap
+      const h = Math.floor(effectiveDur / 60)
+      const m = effectiveDur % 60
+      const napSuffix = nap > 0 ? ` (incl. ${nap}m nap)` : ''
+
+      let verdict: string
+      let ok: boolean
+      if (effectiveDur >= 450 && effectiveDur <= 510) {
+        verdict = 'on target'
+        ok = true
+      } else if (effectiveDur < 450) {
+        verdict = 'below target'
+        ok = false
+      } else {
+        // Mirrors the forgivenessFloor logic in outcomeScore() (lib/scores.ts):
+        // overage beyond 570min floors at 570 — no amount of debt reaches the
+        // full/optimal band once raw sleep is that far over. No debt → no
+        // forgiveness possible, so skip straight to 'over target'.
+        const forgivenessFloor = effectiveDur > 570 ? 570 : 510
+        const adjustedDur = sleepDebtMinutes > 0
+          ? Math.min(570, Math.max(forgivenessFloor, effectiveDur - sleepDebtMinutes))
+          : effectiveDur
+        const forgiven = adjustedDur <= 510
+        verdict = forgiven ? "on target (offsetting this week's deficit)" : 'over target'
+        ok = forgiven
+      }
+      bullets.push({ text: `Sleep ${h}h ${m}m — ${verdict}${napSuffix}`, ok })
+    }
   }
 
   if (entry.sleep.rested != null) {
@@ -1352,6 +1401,9 @@ export default function App() {
   // Personal bedtime target (rolling 30-day circular average, fallback 21:45) —
   // reused by the Behavior Score bullet, matching the server-computed score.
   const bedtimeTarget = bedtimeTargetFromEntries(dashEntries)
+  // 7-day trailing sleep debt (as of currentDate) — reused by the Outcome
+  // Score bullet's forgiveness check, matching the server-computed score.
+  const sleepDebt = sleepDebtFromEntries(dashEntries, currentDate)
   const scoreTlResult = computeTrainingLoad(scoreAllEntries)
 
   // ── Today tab — long-term goals derived values (from GoalsTab) ───
@@ -1735,7 +1787,7 @@ export default function App() {
             {/* Score cards (from DashboardTab) */}
             <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'flex-start', marginTop: 16, marginBottom: 16 }}>
               <ScoreCard label="Behavior" score={todayBehavior} bullets={getBehaviorBullets(entry, todayScored?.nutrition, bedtimeTarget)} />
-              <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(entry, hrvBaseline)} />
+              <ScoreCard label="Outcome"  score={todayOutcome}  bullets={getOutcomeBullets(entry, hrvBaseline, sleepDebt)} />
               <button
                 type="button"
                 onClick={() => { setActiveTab('dashboard'); setTrainingLoadExpanded(true) }}
