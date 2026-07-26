@@ -536,6 +536,7 @@ function getBehaviorBullets(
 ): { text: string; ok: boolean }[] {
   const bullets: { text: string; ok: boolean }[] = []
   const sup = entry.supplements
+  const isSick = entry.context.is_sick === true
 
   const suppLogged = sup.morning_stack_taken || sup.evening_stack_taken || sup.progesterone_taken || sup.estradiol_taken
   if (suppLogged) {
@@ -550,33 +551,42 @@ function getBehaviorBullets(
     bullets.push({ text: 'Supplements not logged', ok: false })
   }
 
-  if (entry.sleep.bedtime) {
-    const [h, m]   = entry.sleep.bedtime.split(':').map(Number)
-    const [th, tm] = bedtimeTarget.split(':').map(Number)
-    const diff = Math.abs(h * 60 + m - (th * 60 + tm))
-    // Normalise to HH:MM — entry.sleep.bedtime can come back with seconds
-    // ("22:04:00") from the DB; h/m are already parsed above.
-    const bedtimeDisplay = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-    if (diff <= 30) {
-      bullets.push({ text: `Bedtime on target (${bedtimeDisplay}, target ${bedtimeTarget})`, ok: true })
+  // Sick day: bedtime-consistency and nutrition are excluded from Behavior
+  // Score (behaviorScore() in lib/scores.ts) — collapse both bullets into
+  // one "not scored" line instead of showing a stale on/off-target verdict
+  // for a component that isn't being scored. Matches the sick-day pattern
+  // already used for the Outcome Score sleep bullet.
+  if (isSick) {
+    bullets.push({ text: 'Nutrition and bedtime — not scored (sick day)', ok: true })
+  } else {
+    if (entry.sleep.bedtime) {
+      const [h, m]   = entry.sleep.bedtime.split(':').map(Number)
+      const [th, tm] = bedtimeTarget.split(':').map(Number)
+      const diff = Math.abs(h * 60 + m - (th * 60 + tm))
+      // Normalise to HH:MM — entry.sleep.bedtime can come back with seconds
+      // ("22:04:00") from the DB; h/m are already parsed above.
+      const bedtimeDisplay = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+      if (diff <= 30) {
+        bullets.push({ text: `Bedtime on target (${bedtimeDisplay}, target ${bedtimeTarget})`, ok: true })
+      } else {
+        bullets.push({ text: `Bedtime off target (${bedtimeDisplay}, target ${bedtimeTarget})`, ok: false })
+      }
     } else {
-      bullets.push({ text: `Bedtime off target (${bedtimeDisplay}, target ${bedtimeTarget})`, ok: false })
+      bullets.push({ text: 'Bedtime not logged', ok: false })
     }
-  } else {
-    bullets.push({ text: 'Bedtime not logged', ok: false })
-  }
 
-  if (nutrition != null && (nutrition.meal_count ?? 0) > 0) {
-    const p = nutrition.protein
-    const f = nutrition.fiber
-    const parts = [
-      p != null && `${Math.round(p)}g protein`,
-      f != null && `${Math.round(f)}g fiber`,
-    ].filter(Boolean).join(', ')
-    const ok = (p == null || p >= 130) && (f == null || f >= 30)
-    bullets.push({ text: `Nutrition: ${parts || 'logged'}`, ok })
-  } else {
-    bullets.push({ text: 'Nutrition not logged', ok: false })
+    if (nutrition != null && (nutrition.meal_count ?? 0) > 0) {
+      const p = nutrition.protein
+      const f = nutrition.fiber
+      const parts = [
+        p != null && `${Math.round(p)}g protein`,
+        f != null && `${Math.round(f)}g fiber`,
+      ].filter(Boolean).join(', ')
+      const ok = (p == null || p >= 130) && (f == null || f >= 30)
+      bullets.push({ text: `Nutrition: ${parts || 'logged'}`, ok })
+    } else {
+      bullets.push({ text: 'Nutrition not logged', ok: false })
+    }
   }
 
   return bullets
