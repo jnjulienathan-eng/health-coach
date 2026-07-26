@@ -625,10 +625,13 @@ function getOutcomeBullets(entry: DailyEntry, hrvBaseline: number = 88): { text:
   }
 
   if (entry.sleep.duration_min != null) {
-    const h = Math.floor(entry.sleep.duration_min / 60)
-    const m = entry.sleep.duration_min % 60
-    const ok = entry.sleep.duration_min >= 450 && entry.sleep.duration_min <= 510
-    bullets.push({ text: `Sleep ${h}h ${m}m — ${ok ? 'on target' : entry.sleep.duration_min < 450 ? 'below target' : 'over target'}`, ok })
+    const nap = entry.sleep.nap_minutes ?? 0
+    const effectiveDur = entry.sleep.duration_min + nap
+    const h = Math.floor(effectiveDur / 60)
+    const m = effectiveDur % 60
+    const ok = effectiveDur >= 450 && effectiveDur <= 510
+    const napSuffix = nap > 0 ? ` (incl. ${nap}m nap)` : ''
+    bullets.push({ text: `Sleep ${h}h ${m}m — ${ok ? 'on target' : effectiveDur < 450 ? 'below target' : 'over target'}${napSuffix}`, ok })
   }
 
   if (entry.sleep.rested != null) {

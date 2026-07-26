@@ -214,6 +214,20 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
           </div>
         </Field>
 
+        {/* Total sleep (duration + nap) — read-only, only shown when a nap is logged */}
+        {!!data.nap_minutes && (
+          <Field label="Total sleep">
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-body)', color: 'var(--color-text-secondary)' }}>
+              {(() => {
+                const total = (data.duration_min ?? 0) + data.nap_minutes
+                const th = Math.floor(total / 60)
+                const tm = String(total % 60).padStart(2, '0')
+                return `${th}h ${tm}m, incl. ${data.nap_minutes}m nap`
+              })()}
+            </div>
+          </Field>
+        )}
+
         {/* HRV + RHR */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <Field label="HRV" unit="ms">
