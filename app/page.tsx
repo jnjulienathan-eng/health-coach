@@ -2149,8 +2149,11 @@ export default function App() {
                             const nearLeft  = active.x < 50
                             const nearRight = active.x > SPARK_W - 50
                             const anchor = nearLeft ? 'start' : nearRight ? 'end' : 'middle'
-                            const valueY = active.y - 15
-                            const dateY  = active.y - 6
+                            // Fixed position inside the PAD_Y=32 headroom band, which the
+                            // plotted line never enters — independent of active.y so a local
+                            // dip's label can't drop into the curve/fill below it.
+                            const valueY = 12
+                            const dateY  = 21
                             return (
                               <g pointerEvents="none">
                                 <text x={active.x} y={valueY} textAnchor={anchor} fontSize="10" fontWeight="700" style={{ fill: 'var(--color-navy)', fontFamily: 'var(--font-mono)' }}>
