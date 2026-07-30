@@ -225,7 +225,10 @@ function buildVo2Sparkline(readings: BiomarkerReading[]): {
   const n = readings.length
   if (n === 0) return { linePath: '', fillPath: '', points: [] }
 
-  const PAD_X = 22, PAD_Y = 8, W = 280, CHART_H = 48
+  // PAD_Y reserves headroom above the plotted line for the tap-to-reveal label
+  // (see vo2ActiveIndex rendering below) so the label never collides with the
+  // peak dot — CHART_H is unchanged, the whole curve just sits lower in the SVG.
+  const PAD_X = 22, PAD_Y = 32, W = 280, CHART_H = 48
   const xOf = (i: number) => n === 1 ? PAD_X : PAD_X + (i / (n - 1)) * (W - 2 * PAD_X)
   const vals = readings.map(r => r.value)
   const minVal = Math.min(...vals), maxVal = Math.max(...vals)
@@ -2089,7 +2092,7 @@ export default function App() {
                       const colWidth = points.length > 0 ? (SPARK_PLOT_X1 - SPARK_PLOT_X0) / points.length : 0
                       const active = vo2ActiveIndex !== null ? points[vo2ActiveIndex] : null
                       return (
-                        <svg viewBox="0 0 280 76" width="100%" style={{ display: 'block' }}>
+                        <svg viewBox="0 0 280 100" width="100%" style={{ display: 'block' }}>
                           <defs>
                             <filter id="vo2Glow" x="-30%" y="-80%" width="160%" height="260%">
                               <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
@@ -2104,7 +2107,7 @@ export default function App() {
                             </linearGradient>
                           </defs>
                           <rect
-                            x="0" y="0" width={SPARK_W} height="76"
+                            x="0" y="0" width={SPARK_W} height="100"
                             fill="transparent"
                             pointerEvents="all"
                             onClick={() => setVo2ActiveIndex(null)}
@@ -2125,8 +2128,8 @@ export default function App() {
                             const [mon, day] = fmtSparkDate(p.date).split(' ')
                             return (
                               <g key={i}>
-                                <text x={p.x} y="63" textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{mon}</text>
-                                <text x={p.x} y="73" textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{day}</text>
+                                <text x={p.x} y="87" textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{mon}</text>
+                                <text x={p.x} y="97" textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{day}</text>
                               </g>
                             )
                           })}
@@ -2135,7 +2138,7 @@ export default function App() {
                             return (
                               <rect
                                 key={i}
-                                x={left} y="0" width={colWidth} height="76"
+                                x={left} y="0" width={colWidth} height="100"
                                 fill="transparent"
                                 pointerEvents="all"
                                 onClick={() => setVo2ActiveIndex(vo2ActiveIndex === i ? null : i)}
@@ -2146,9 +2149,8 @@ export default function App() {
                             const nearLeft  = active.x < 50
                             const nearRight = active.x > SPARK_W - 50
                             const anchor = nearLeft ? 'start' : nearRight ? 'end' : 'middle'
-                            const above = active.y > 20
-                            const valueY = above ? active.y - 15 : active.y + 17
-                            const dateY  = above ? active.y - 6  : active.y + 26
+                            const valueY = active.y - 15
+                            const dateY  = active.y - 6
                             return (
                               <g pointerEvents="none">
                                 <text x={active.x} y={valueY} textAnchor={anchor} fontSize="10" fontWeight="700" style={{ fill: 'var(--color-navy)', fontFamily: 'var(--font-mono)' }}>
