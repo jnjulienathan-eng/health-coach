@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling30DayAvg } from '@/lib/db'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
@@ -1221,6 +1221,7 @@ export default function App() {
   const [vo2Expanded,          setVo2Expanded]          = useState(false)
   const [vo2Sparkline,         setVo2Sparkline]         = useState<BiomarkerReading[]>([])
   const [vo2SparklineLoaded,   setVo2SparklineLoaded]   = useState(false)
+  const [vo2ActiveIndex,       setVo2ActiveIndex]       = useState<number | null>(null)
   const [vo2EntryOpen,         setVo2EntryOpen]         = useState(false)
   const [vo2EntryValue,        setVo2EntryValue]        = useState('')
   const [vo2EntryDate,         setVo2EntryDate]         = useState('')
@@ -1340,7 +1341,7 @@ export default function App() {
 
   // Load goals data for long-term goals + health calendar (from GoalsTab)
   useEffect(() => {
-    getVo2Rolling30DayAvg().then(setVo2RollingAvg).catch(console.error)
+    getVo2Rolling60DayAvg().then(setVo2RollingAvg).catch(console.error)
     getGoalsData()
       .then(async d => {
         if (d.appointments.length === 0) {
@@ -1433,6 +1434,7 @@ export default function App() {
     if (vo2Expanded) {
       setVo2Expanded(false)
       setVo2EntryOpen(false)
+      setVo2ActiveIndex(null)
       return
     }
     setVo2Expanded(true)
@@ -1468,6 +1470,7 @@ export default function App() {
       setGoalsData(fresh)
       setVo2Sparkline(sparkline)
       setVo2SparklineLoaded(true)
+      setVo2ActiveIndex(null)
       setVo2EntryOpen(false)
     } catch (err) {
       console.error('Save VO2 reading error:', err)
@@ -2082,6 +2085,9 @@ export default function App() {
                     {(() => {
                       const { linePath, fillPath, points } = buildVo2Sparkline(vo2Sparkline)
                       const labelStep = Math.ceil(points.length / 5) || 1
+                      const SPARK_W = 280, SPARK_PLOT_X0 = 22, SPARK_PLOT_X1 = 258
+                      const colWidth = points.length > 0 ? (SPARK_PLOT_X1 - SPARK_PLOT_X0) / points.length : 0
+                      const active = vo2ActiveIndex !== null ? points[vo2ActiveIndex] : null
                       return (
                         <svg viewBox="0 0 280 76" width="100%" style={{ display: 'block' }}>
                           <defs>
@@ -2097,6 +2103,12 @@ export default function App() {
                               <stop offset="100%" style={{ stopColor: 'var(--color-navy)', stopOpacity: 0 }} />
                             </linearGradient>
                           </defs>
+                          <rect
+                            x="0" y="0" width={SPARK_W} height="76"
+                            fill="transparent"
+                            pointerEvents="all"
+                            onClick={() => setVo2ActiveIndex(null)}
+                          />
                           {points.length >= 2 && (
                             <>
                               <path d={fillPath} fill="url(#vo2FillGrad)" />
@@ -2105,7 +2117,7 @@ export default function App() {
                             </>
                           )}
                           {points.map((p, i) => (
-                            <circle key={i} cx={p.x} cy={p.y} r="3" fill="var(--color-navy)" />
+                            <circle key={i} cx={p.x} cy={p.y} r={i === vo2ActiveIndex ? 5 : 3} fill="var(--color-navy)" />
                           ))}
                           {points.map((p, i) => {
                             if (i % labelStep !== 0 && i !== points.length - 1) return null
@@ -2118,6 +2130,36 @@ export default function App() {
                               </g>
                             )
                           })}
+                          {points.map((p, i) => {
+                            const left = Math.max(0, Math.min(SPARK_W - colWidth, p.x - colWidth / 2))
+                            return (
+                              <rect
+                                key={i}
+                                x={left} y="0" width={colWidth} height="76"
+                                fill="transparent"
+                                pointerEvents="all"
+                                onClick={() => setVo2ActiveIndex(vo2ActiveIndex === i ? null : i)}
+                              />
+                            )
+                          })}
+                          {active && (() => {
+                            const nearLeft  = active.x < 50
+                            const nearRight = active.x > SPARK_W - 50
+                            const anchor = nearLeft ? 'start' : nearRight ? 'end' : 'middle'
+                            const above = active.y > 20
+                            const valueY = above ? active.y - 15 : active.y + 17
+                            const dateY  = above ? active.y - 6  : active.y + 26
+                            return (
+                              <g pointerEvents="none">
+                                <text x={active.x} y={valueY} textAnchor={anchor} fontSize="10" fontWeight="700" style={{ fill: 'var(--color-navy)', fontFamily: 'var(--font-mono)' }}>
+                                  {active.value.toFixed(1)}
+                                </text>
+                                <text x={active.x} y={dateY} textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
+                                  {fmtSparkDate(active.date)}
+                                </text>
+                              </g>
+                            )
+                          })()}
                         </svg>
                       )
                     })()}

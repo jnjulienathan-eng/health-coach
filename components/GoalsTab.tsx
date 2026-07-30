@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getGoalsData, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, getVo2SparklineData, saveVo2Reading, saveCardioReading, fetch30DayHistory, getVo2Rolling30DayAvg } from '@/lib/db'
+import { getGoalsData, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, getVo2SparklineData, saveVo2Reading, saveCardioReading, fetch30DayHistory, getVo2Rolling60DayAvg } from '@/lib/db'
 import type { GoalsData, HealthAppointment, BiomarkerReading, DailyEntry } from '@/lib/types'
 import { scoreColor } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory, computeDailyTSU } from '@/lib/trainingLoad'
@@ -312,7 +312,7 @@ export default function GoalsTab({ onNavigateDashboard, today, currentDate }: Pr
   const [cardioSaving,    setCardioSaving]    = useState(false)
 
   useEffect(() => {
-    getVo2Rolling30DayAvg().then(setVo2RollingAvg).catch(console.error)
+    getVo2Rolling60DayAvg().then(setVo2RollingAvg).catch(console.error)
     getGoalsData()
       .then(async d => {
         console.error('GoalsTab: getGoalsData returned, appointments.length=', d.appointments.length)

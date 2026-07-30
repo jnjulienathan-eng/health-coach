@@ -479,22 +479,25 @@ export async function seedDefaultAppointments(): Promise<void> {
 
 // ─── getVo2SparklineData ──────────────────────────────────────────
 export async function getVo2SparklineData(): Promise<BiomarkerReading[]> {
+  const since = new Date()
+  since.setDate(since.getDate() - 60)
+  const sinceStr = since.toISOString().split('T')[0]
   const { data, error } = await supabase
     .from('biomarker_readings')
     .select('*')
     .eq('user_id', 'julie')
     .eq('marker', 'vo2_max')
-    .order('recorded_on', { ascending: false })
-    .limit(90)
+    .gte('recorded_on', sinceStr)
+    .order('recorded_on', { ascending: true })
 
   if (error) throw error
-  return ((data ?? []) as BiomarkerReading[]).reverse()
+  return (data ?? []) as BiomarkerReading[]
 }
 
-// ─── getVo2Rolling30DayAvg ────────────────────────────────────────
-export async function getVo2Rolling30DayAvg(): Promise<number | null> {
+// ─── getVo2Rolling60DayAvg ────────────────────────────────────────
+export async function getVo2Rolling60DayAvg(): Promise<number | null> {
   const since = new Date()
-  since.setDate(since.getDate() - 30)
+  since.setDate(since.getDate() - 60)
   const sinceStr = since.toISOString().split('T')[0]
   const { data, error } = await supabase
     .from('biomarker_readings')
