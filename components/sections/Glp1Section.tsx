@@ -25,14 +25,6 @@ function diffDaysUTC(aStr: string, bStr: string): number {
   return Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(by, bm - 1, bd)) / 86400000)
 }
 
-function mondayOfWeekUTC(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const dt = new Date(Date.UTC(y, m - 1, d))
-  const dow = dt.getUTCDay() // 0 = Sun .. 6 = Sat
-  dt.setUTCDate(dt.getUTCDate() + (dow === 0 ? -6 : 1 - dow))
-  return dt.toISOString().slice(0, 10)
-}
-
 // ─── Shared status computation (used by both collapsed badge + grid) ──
 interface Glp1Status {
   state: 'none' | 'taken' | 'due' | 'overdue'
@@ -87,9 +79,14 @@ function StatusBadge({ status }: { status: Glp1Status }) {
   )
 }
 
-// ─── 28-day grid (4 weeks, Monday-start, ending in today's week) ──
+// ─── 28-day grid — true rolling window ending today, not calendar
+// weeks: cell 28 (bottom-right) is always today, cell 1 is today - 27.
+// The M T W T F S S header is fixed left-to-right labelling, not a
+// literal Monday-start claim — it only lines up with real calendar
+// weekdays when today happens to fall on a Sunday. This is intentional:
+// the window must never extend past today into future, unlogged dates.
 function InjectionGrid({ injections, status, today }: { injections: Glp1Injection[]; status: Glp1Status; today: string }) {
-  const gridStart = addDaysUTC(mondayOfWeekUTC(today), -21)
+  const gridStart = addDaysUTC(today, -27)
   const days = Array.from({ length: 28 }, (_, i) => addDaysUTC(gridStart, i))
   const injectedDates = new Set(injections.map((inj) => inj.date))
   const monthName = new Date(today + 'T00:00:00').toLocaleDateString('en-US', { month: 'long' })
