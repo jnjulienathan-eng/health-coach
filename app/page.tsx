@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg } from '@/lib/db'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg, getWeightSparklineData, saveBodyScanReading } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
@@ -212,6 +212,15 @@ function vo2NextTier(value: number): string | null {
   if (value < 37) return 'Superior'
   return null
 }
+
+// ─── Body Composition helpers ──────────────────────────────────────
+// Target tick uses the same bar+tick treatment as the VO2 Max spectrum bar's
+// target-at-40 tick, without the named Poor/Fair/Good bands VO2 has — weight
+// has no such tiering. Scale runs 0–100kg so the ~65kg target and typical
+// current readings sit comfortably left of the bar's midpoint, mirroring how
+// VO2's 40 target sits well inside its own 0–50 scale.
+const WEIGHT_SCALE_MAX = 100
+const WEIGHT_TARGET_KG = 65
 
 function fmtSparkDate(s: string): string {
   return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -1201,6 +1210,120 @@ function HistoryRow({ entry, onSelectDate }: { entry: DailyEntry; onSelectDate: 
   )
 }
 
+// ─── Body Scan row (Body Composition card — Log/Update inline form,
+// same interaction pattern as the HbA1c row in the Glucose Stability card) ──
+function BodyScanRow({
+  label, reading, unit, precision, onSave,
+}: {
+  label: string
+  reading: BiomarkerReading | null
+  unit: string
+  precision: number
+  onSave: (value: number, date: string) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
+  const [date, setDate] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function openEntry(e: React.MouseEvent) {
+    e.stopPropagation()
+    setValue(reading ? String(reading.value) : '')
+    setDate(new Date().toISOString().split('T')[0])
+    setError(null)
+    setOpen(v => !v)
+  }
+
+  async function handleSave() {
+    const val = parseFloat(value)
+    if (isNaN(val)) return
+    const d = date || new Date().toISOString().split('T')[0]
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(val, d)
+      setOpen(false)
+      setValue('')
+      setDate('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+            {label}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+            {reading != null
+              ? new Date(reading.recorded_on + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+              : 'Not yet logged'}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {reading != null && (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-text-primary)' }}>
+                {parseFloat(reading.value.toFixed(precision))}
+              </span>
+              <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>{unit}</span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={openEntry}
+            style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+          >
+            {reading != null ? 'Update' : 'Log'}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>Value ({unit})</div>
+              <input
+                type="number"
+                step="0.1"
+                value={value}
+                onChange={e => setValue(e.target.value)}
+                style={{ width: '100%', minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--fs-body)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>Date</div>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                style={{ width: '100%', minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--fs-body)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+          {error && <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{error}</div>}
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={saving || !value}
+            style={{ height: 52, opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? 'Saving…' : `Save ${label}`}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main app ─────────────────────────────────────────────────────
 export default function App() {
   const [showSplash,    setShowSplash]    = useState(true)
@@ -1231,6 +1354,12 @@ export default function App() {
   const [vo2EntryValue,        setVo2EntryValue]        = useState('')
   const [vo2EntryDate,         setVo2EntryDate]         = useState('')
   const [vo2Saving,            setVo2Saving]            = useState(false)
+
+  // ── Body Composition state ────────────────────────────────────────
+  const [bodyCompExpanded,     setBodyCompExpanded]     = useState(false)
+  const [weightSparkline,      setWeightSparkline]      = useState<BiomarkerReading[]>([])
+  const [weightSparklineLoaded, setWeightSparklineLoaded] = useState(false)
+  const [weightActiveIndex,    setWeightActiveIndex]    = useState<number | null>(null)
 
   // ── Cardio state (from GoalsTab) ─────────────────────────────────
   const [cardioExpanded,  setCardioExpanded]  = useState(false)
@@ -1434,6 +1563,17 @@ export default function App() {
     ? validGlucose.reduce((a, b) => a + b, 0) / validGlucose.length
     : null
 
+  // ── Body Composition derived values ───────────────────────────────
+  // goalsData.biomarkers is already ordered recorded_on desc (see getGoalsData
+  // in lib/db.ts) — filtering by marker preserves that order, so [0]/[1] are
+  // the latest/previous readings without a separate query.
+  const weightReadings = (goalsData?.biomarkers ?? []).filter(b => b.marker === 'weight')
+  const weight         = weightReadings[0] ?? null
+  const weightPrev     = weightReadings[1] ?? null
+  const bodyFatPct     = goalsLatestBiomarker('body_fat_pct')
+  const waistCm        = goalsLatestBiomarker('waist_cm')
+  const visceralFatL   = goalsLatestBiomarker('visceral_fat_l')
+
   // ── VO2 Max card handlers (from GoalsTab) ─────────────────────────
   async function handleVo2Toggle() {
     if (vo2Expanded) {
@@ -1482,6 +1622,31 @@ export default function App() {
     } finally {
       setVo2Saving(false)
     }
+  }
+
+  // ── Body Composition card handlers ────────────────────────────────
+  async function handleBodyCompToggle() {
+    if (bodyCompExpanded) {
+      setBodyCompExpanded(false)
+      setWeightActiveIndex(null)
+      return
+    }
+    setBodyCompExpanded(true)
+    if (!weightSparklineLoaded) {
+      try {
+        const sparkline = await getWeightSparklineData()
+        setWeightSparkline(sparkline)
+        setWeightSparklineLoaded(true)
+      } catch (e) {
+        console.error('Weight sparkline load error:', e)
+      }
+    }
+  }
+
+  async function handleSaveBodyScan(marker: 'body_fat_pct' | 'waist_cm' | 'visceral_fat_l', unit: string, value: number, date: string) {
+    await saveBodyScanReading(marker, value, unit, date)
+    const fresh = await getGoalsData()
+    setGoalsData(fresh)
   }
 
   // ── Cardiovascular card handlers (from GoalsTab) ──────────────────
@@ -2170,6 +2335,241 @@ export default function App() {
                         </svg>
                       )
                     })()}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Body Composition card */}
+            <div
+              style={{
+                background: 'var(--color-surface)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-card)',
+                marginTop: 8,
+                overflow: 'hidden',
+                ...(bodyCompExpanded ? { borderLeft: '3px solid var(--color-amber)' } : {}),
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleBodyCompToggle}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  minHeight: 64,
+                }}
+              >
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-navy)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  color: '#fff',
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <rect x="2" y="7" width="14" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+                    <path d="M9 7V3M6 3h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    <circle cx="9" cy="11" r="1.5" stroke="currentColor" strokeWidth="1.4" />
+                  </svg>
+                </div>
+                <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-navy)', flex: 1 }}>
+                  Body Composition
+                </span>
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {weight !== null ? `${weight.value}kg` : 'Not yet logged'}
+                  {weight !== null && weightPrev !== null && weight.value !== weightPrev.value && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: 'var(--color-text-secondary)' }}>
+                      {weight.value > weightPrev.value ? '↑' : '↓'}
+                      {Math.abs(weight.value - weightPrev.value).toFixed(1)}kg
+                    </span>
+                  )}
+                </span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${bodyCompExpanded ? ' open' : ''}`} style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
+                  <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+
+              {bodyCompExpanded && (
+                <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--color-border-subtle)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 4 }}>
+                        Current weight
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: weight !== null ? 36 : 15,
+                          fontWeight: 700,
+                          lineHeight: 1,
+                          color: weight !== null ? 'var(--color-text-primary)' : 'var(--color-text-dim)',
+                        }}>
+                          {weight !== null ? weight.value : 'Not yet logged'}
+                        </span>
+                        {weight !== null && <span style={{ fontSize: 13, color: 'var(--color-text-dim)' }}>kg</span>}
+                      </div>
+                    </div>
+                    {weight !== null && weightPrev !== null && weight.value !== weightPrev.value && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        {weight.value > weightPrev.value ? '↑' : '↓'} {Math.abs(weight.value - weightPrev.value).toFixed(1)}kg
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ paddingRight: 8 }}>
+                    <svg viewBox="0 0 280 50" width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                      <rect x="0" y="22" width="280" height="10" rx="5" fill="var(--color-border)" />
+                      {weight !== null && (() => {
+                        const cx = Math.min(weight.value, WEIGHT_SCALE_MAX) / WEIGHT_SCALE_MAX * 280
+                        return <rect x="0" y="22" width={cx} height="10" rx="5" fill="var(--color-amber)" />
+                      })()}
+                      {(() => {
+                        const cx = (WEIGHT_TARGET_KG / WEIGHT_SCALE_MAX) * 280
+                        return (
+                          <>
+                            <line x1={cx} y1="18" x2={cx} y2="36" stroke="var(--color-navy)" strokeWidth="2" />
+                            <text x={cx} y="44" textAnchor="middle" fontSize="8" style={{ fill: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                              target
+                            </text>
+                          </>
+                        )
+                      })()}
+                      {weight !== null && (() => {
+                        const cx = Math.min(weight.value, WEIGHT_SCALE_MAX) / WEIGHT_SCALE_MAX * 280
+                        return (
+                          <>
+                            <text x={cx} y="11" textAnchor="middle" fontSize="8" fontWeight="600" style={{ fill: 'var(--color-navy)', fontFamily: 'var(--font-mono)' }}>
+                              {weight.value}
+                            </text>
+                            <line x1={cx} y1="14" x2={cx} y2="32" stroke="var(--color-navy)" strokeWidth="2" />
+                          </>
+                        )
+                      })()}
+                    </svg>
+                  </div>
+
+                  <div style={{ marginTop: 16 }}>
+                    <div className="section-label" style={{ marginBottom: 8 }}>Recent readings</div>
+                    {(() => {
+                      // Reuses buildVo2Sparkline — it operates generically on any
+                      // BiomarkerReading[] (value + recorded_on), no VO2-specific logic.
+                      const { linePath, fillPath, points } = buildVo2Sparkline(weightSparkline)
+                      const labelStep = Math.ceil(points.length / 5) || 1
+                      const SPARK_W = 280, SPARK_PLOT_X0 = 22, SPARK_PLOT_X1 = 258
+                      const colWidth = points.length > 0 ? (SPARK_PLOT_X1 - SPARK_PLOT_X0) / points.length : 0
+                      const active = weightActiveIndex !== null ? points[weightActiveIndex] : null
+                      return (
+                        <svg viewBox="0 0 280 100" width="100%" style={{ display: 'block' }}>
+                          <defs>
+                            <filter id="weightGlow" x="-30%" y="-80%" width="160%" height="260%">
+                              <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
+                              <feMerge>
+                                <feMergeNode in="blur" />
+                                <feMergeNode in="SourceGraphic" />
+                              </feMerge>
+                            </filter>
+                            <linearGradient id="weightFillGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%"   style={{ stopColor: 'var(--color-navy)', stopOpacity: 0.2 }} />
+                              <stop offset="100%" style={{ stopColor: 'var(--color-navy)', stopOpacity: 0 }} />
+                            </linearGradient>
+                          </defs>
+                          <rect
+                            x="0" y="0" width={SPARK_W} height="100"
+                            fill="transparent"
+                            pointerEvents="all"
+                            onClick={() => setWeightActiveIndex(null)}
+                          />
+                          {points.length >= 2 && (
+                            <>
+                              <path d={fillPath} fill="url(#weightFillGrad)" />
+                              <path d={linePath} fill="none" stroke="var(--color-navy)" strokeWidth="4" opacity="0.55" filter="url(#weightGlow)" />
+                              <path d={linePath} fill="none" stroke="var(--color-navy)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+                            </>
+                          )}
+                          {points.map((p, i) => (
+                            <circle key={i} cx={p.x} cy={p.y} r={i === weightActiveIndex ? 5 : 3} fill="var(--color-navy)" />
+                          ))}
+                          {points.map((p, i) => {
+                            if (i % labelStep !== 0 && i !== points.length - 1) return null
+                            const anchor = i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'
+                            const [mon, day] = fmtSparkDate(p.date).split(' ')
+                            return (
+                              <g key={i}>
+                                <text x={p.x} y="87" textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{mon}</text>
+                                <text x={p.x} y="97" textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>{day}</text>
+                              </g>
+                            )
+                          })}
+                          {points.map((p, i) => {
+                            const left = Math.max(0, Math.min(SPARK_W - colWidth, p.x - colWidth / 2))
+                            return (
+                              <rect
+                                key={i}
+                                x={left} y="0" width={colWidth} height="100"
+                                fill="transparent"
+                                pointerEvents="all"
+                                onClick={() => setWeightActiveIndex(weightActiveIndex === i ? null : i)}
+                              />
+                            )
+                          })}
+                          {active && (() => {
+                            const nearLeft  = active.x < 50
+                            const nearRight = active.x > SPARK_W - 50
+                            const anchor = nearLeft ? 'start' : nearRight ? 'end' : 'middle'
+                            const valueY = 12
+                            const dateY  = 21
+                            return (
+                              <g pointerEvents="none">
+                                <text x={active.x} y={valueY} textAnchor={anchor} fontSize="10" fontWeight="700" style={{ fill: 'var(--color-navy)', fontFamily: 'var(--font-mono)' }}>
+                                  {active.value.toFixed(1)}
+                                </text>
+                                <text x={active.x} y={dateY} textAnchor={anchor} fontSize="8" style={{ fill: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
+                                  {fmtSparkDate(active.date)}
+                                </text>
+                              </g>
+                            )
+                          })()}
+                        </svg>
+                      )
+                    })()}
+                  </div>
+
+                  {/* Body Scan subsection */}
+                  <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--color-border-subtle)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div className="section-label">Body Scan</div>
+                    <BodyScanRow
+                      label="Body Fat %"
+                      reading={bodyFatPct}
+                      unit="%"
+                      precision={1}
+                      onSave={(value, date) => handleSaveBodyScan('body_fat_pct', '%', value, date)}
+                    />
+                    <BodyScanRow
+                      label="Waist Circumference"
+                      reading={waistCm}
+                      unit="cm"
+                      precision={1}
+                      onSave={(value, date) => handleSaveBodyScan('waist_cm', 'cm', value, date)}
+                    />
+                    <BodyScanRow
+                      label="Visceral Fat"
+                      reading={visceralFatL}
+                      unit="L"
+                      precision={1}
+                      onSave={(value, date) => handleSaveBodyScan('visceral_fat_l', 'L', value, date)}
+                    />
                   </div>
                 </div>
               )}

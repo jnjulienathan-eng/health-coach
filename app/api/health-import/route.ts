@@ -35,6 +35,20 @@ function kjToKcal(kj: number): number {
   return Math.round(kj / 4.184)
 }
 
+// Every HAE metric name this route currently maps somewhere. Anything else
+// gets a one-line debug log (see POST handler) instead of being silently
+// dropped, so an unmapped metric's real field name can be read from logs.
+const RECOGNIZED_METRIC_NAMES = new Set([
+  'resting_heart_rate',
+  'walking_heart_rate_average',
+  'walking_running_distance',
+  'sleep_analysis',
+  'active_energy',
+  'basal_energy_burned',
+  'vo2_max',
+  'heart_rate_variability',
+])
+
 // ── Metric data point ────────────────────────────────────────────────────────
 interface MetricPoint {
   date: string
@@ -90,6 +104,17 @@ export async function POST(req: NextRequest) {
     const supabase = supaAdmin()
     let metricsImported = 0
     let workoutsImported = 0
+
+    // Debug: log name + units (not the full payload — sleep-type payloads can
+    // truncate in the log viewer) for any metric this endpoint doesn't yet
+    // recognize. Used to confirm the real HAE field name for a new metric
+    // (currently: weight/body mass) before wiring a mapping — see BODYCIPHER.md
+    // "Health Auto Export → biomarker_readings mapping" backlog note.
+    for (const metric of metrics) {
+      if (!RECOGNIZED_METRIC_NAMES.has(metric.name)) {
+        console.log(`[health-import] unrecognized metric: name=${metric.name} units=${metric.units}`)
+      }
+    }
 
     // ── METRICS → daily_entries ─────────────────────────────────────────────
     // Aggregate all data points by date first, then process each date once.

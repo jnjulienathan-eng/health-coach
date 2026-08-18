@@ -398,7 +398,7 @@ export async function getGoalsData(): Promise<GoalsData> {
       .from('biomarker_readings')
       .select('*')
       .eq('user_id', 'julie')
-      .in('marker', ['vo2_max', 'ldl', 'hdl', 'hba1c'])
+      .in('marker', ['vo2_max', 'ldl', 'hdl', 'hba1c', 'weight', 'body_fat_pct', 'waist_cm', 'visceral_fat_l'])
       .order('recorded_on', { ascending: false }),
     supabase
       .from('daily_entries')
@@ -504,6 +504,23 @@ export async function getVo2SparklineData(): Promise<BiomarkerReading[]> {
 
   if (error) throw error
   return (data ?? []) as BiomarkerReading[]
+}
+
+// ─── getWeightSparklineData ────────────────────────────────────────
+// Up to 90 most-recent weight readings, reversed to chronological order
+// (query fetches newest-first via .limit so the cap keeps the most recent
+// readings, then reverses for left-to-right chronological plotting).
+export async function getWeightSparklineData(): Promise<BiomarkerReading[]> {
+  const { data, error } = await supabase
+    .from('biomarker_readings')
+    .select('*')
+    .eq('user_id', 'julie')
+    .eq('marker', 'weight')
+    .order('recorded_on', { ascending: false })
+    .limit(90)
+
+  if (error) throw error
+  return ((data ?? []) as BiomarkerReading[]).reverse()
 }
 
 // ─── getVo2Rolling60DayAvg ────────────────────────────────────────
@@ -671,6 +688,23 @@ export async function saveHba1cReading(value: number, recordedOn: string): Promi
   const { error } = await supabase
     .from('biomarker_readings')
     .insert({ user_id: 'julie', marker: 'hba1c', value, unit: '%', recorded_on: recordedOn })
+
+  if (error) throw error
+}
+
+// ─── saveBodyScanReading ──────────────────────────────────────────
+// Body Scan measurements (Body Fat %, Waist Circumference, Visceral Fat) are
+// infrequent manual lab entries, not daily webhook data — plain insert, same
+// pattern as saveHba1cReading, not overwrite-on-change like the weight webhook.
+export async function saveBodyScanReading(
+  marker: 'body_fat_pct' | 'waist_cm' | 'visceral_fat_l',
+  value: number,
+  unit: string,
+  recordedOn: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('biomarker_readings')
+    .insert({ user_id: 'julie', marker, value, unit, recorded_on: recordedOn })
 
   if (error) throw error
 }

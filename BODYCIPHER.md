@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: August 18, 2026 (HRT protocol changes — Estradiol split into AM/PM toggles, Testosterone AM toggle added)_
+_Last updated: August 18, 2026 (New Body Composition long-term goal card below VO2 Max + Body Scan subsection; Health Auto Export weight mapping scaffolded but pending confirmation of the real metric field name; HRT protocol changes — Estradiol split into AM/PM toggles, Testosterone AM toggle added)_
 
 ---
 
@@ -197,6 +197,17 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 - `hrv_score` field: REMOVED from ContextSection.tsx. Do not re-add.
 - Read-only metrics strip at top of accordion interior: RESTING HR (resting_hr_daytime, bpm) / WALKING HR (walking_hr_avg, bpm) / DISTANCE (walking_running_km, km). Same visual style as TrainingSection energy strip. Shows — when null. No edit controls.
 - **"Sick today" toggle (added July 26, 2026):** Same visual treatment and row placement pattern as "Travelling today" — a plain checkbox row, immediately below the travelling row, above Notes. Wired through `is_sick` on `ContextData` (`lib/types.ts`), `rowToEntry()`/`saveEntry()` (`lib/db.ts`), same as travelling. No new prop plumbing needed in `app/page.tsx` — `ContextSection`'s `onChange` already does a generic `update({ context })`. Drives Behavior/Outcome Score exclusions and Coach training-suppression — see SCORING MODEL and Coach Tab sections.
+
+**Body Composition card (added Aug 18, 2026)**
+- New card in the Today tab's Long-term Goals section, stacked directly below the VO2 Max card and above the Cardiovascular Health card (same collapsed/expanded accordion-card pattern, amber left-border-on-expand treatment, all inline in `app/page.tsx`). Reads from `biomarker_readings` — markers `'weight'`, `'body_fat_pct'`, `'waist_cm'`, `'visceral_fat_l'` — all four added to the `.in('marker', [...])` filter in `getGoalsData()` (`lib/db.ts`) alongside the existing four.
+- **Collapsed state:** current weight (most recent `biomarker_readings` row where `marker = 'weight'`) with a small ↑/↓ + delta-in-kg trend indicator vs. the previous reading. Both values come from `goalsData.biomarkers` filtered to `marker === 'weight'` — the array is already ordered `recorded_on` descending by the `getGoalsData()` query, so `[0]`/`[1]` are the latest/previous reading with no extra query. Trend colour is neutral (`--color-text-secondary`) — deliberately not colour-coded green/up-is-bad or similar, since a weight delta has no inherent good/bad direction without dieting context that isn't tracked here.
+- **Expanded state:**
+  - Current-weight readout (36px value + "kg" unit, same treatment as the VO2 Max expanded-state headline number) plus the same trend indicator.
+  - **Target-tick bar** at 65kg: a simplified version of the VO2 Max spectrum bar (`WEIGHT_SCALE_MAX = 100`, `WEIGHT_TARGET_KG = 65`, both in `app/page.tsx`) — flat grey track, amber fill 0→current, navy target tick + "target" label below the bar, current-value tick + label above. No named Poor/Fair/Good-style bands (unlike VO2) since body-composition tiers weren't part of the spec.
+  - **Weight sparkline:** `getWeightSparklineData()` (`lib/db.ts`) — up to 90 most-recent `marker = 'weight'` readings, fetched newest-first via `.order(...).limit(90)` then `.reverse()`'d to chronological order for left-to-right plotting; decimated date labels (same `step = Math.ceil(points.length / 5)` rule as VO2). The sparkline rendering reuses `buildVo2Sparkline()` directly rather than duplicating it — that function only ever reads `.value`/`.recorded_on` off a generic `BiomarkerReading[]`, nothing VO2-specific, so no fork was needed. Tap-to-reveal (`weightActiveIndex` state) included for parity with the VO2 sparkline's existing tap-to-reveal.
+  - **Body Scan subsection**, below the sparkline: three rows — Body Fat % (`marker = 'body_fat_pct'`, unit `'%'`), Waist Circumference (`marker = 'waist_cm'`, unit `'cm'`), Visceral Fat (`marker = 'visceral_fat_l'`, unit `'L'`). Each shows latest value + lab date (or "Not yet logged") with a Log/Update button that opens an inline Value + Date form — same interaction pattern as the HbA1c row in the Glucose Stability card, factored into a small reusable `BodyScanRow` component (`app/page.tsx`, defined just above the `App` component) since the three rows are otherwise near-identical. All three save via the new `saveBodyScanReading(marker, value, unit, recordedOn)` in `lib/db.ts` — **plain insert**, not overwrite-on-change, matching `saveHba1cReading()`: these are infrequent manual lab entries, not daily webhook data.
+- **BMI is explicitly out of scope** — no BMI mapping, no BMI storage, no BMI display anywhere in this card.
+- **Weight webhook mapping — NOT YET WIRED.** See the Health Auto Export → biomarker_readings mapping note below: the real HAE JSON field name for weight/body mass has not been confirmed from a live payload, so `/api/health-import` does not yet write to `marker = 'weight'`. A debug log (metric `name` + `units` only, not the full payload) was added to `app/api/health-import/route.ts` for any metric name the route doesn't already recognize, specifically to surface the real field name from the next real Health Auto Export sync. Once confirmed, wiring the write is a small addition mirroring the `apple_hrv_avg` overwrite-on-change pattern (see below), not the `vo2_max` insert-only-if-absent pattern — those are different write rules and should not be conflated.
 
 ---
 
@@ -570,6 +581,7 @@ HAE-only fields: **resting_hr_daytime** (integer, nullable — HAE resting_heart
 
 **Health Auto Export → biomarker_readings mapping (as of May 4, 2026):**
 - `vo2_max` → `biomarker_readings` with marker = `'vo2_max'`, unit = `'ml/kg/min'`. Inserted only if no existing row for that user_id + marker + recorded_on (23505 unique-violation = skip). No overwrite of existing values.
+- **`weight` — PENDING, not yet wired (as of Aug 18, 2026).** Planned: HAE weight/body-mass metric → `biomarker_readings` with marker = `'weight'`, unit = `'kg'`. Unlike `vo2_max` (insert-only-if-absent, skip on conflict), this is planned as **overwrite-on-change**: update the existing `(user_id, marker, recorded_on)` row only when the incoming value differs from what's stored — same rule as `apple_hrv_avg` on `daily_entries`, adapted to an upsert against `biomarker_readings`'s existing unique constraint on `(user_id, marker, recorded_on)` instead of a plain column compare. A resend with an unchanged value must not count toward `metricsImported`. **Blocked on confirming the real HAE JSON field name** — HAE's UI shows "Weight" but the underlying metric `name` may not literally be `weight_body_mass` (a plausible guess, deliberately not hardcoded without verification). `app/api/health-import/route.ts` now logs `name` + `units` (not the full payload) for any metric it doesn't recognize, specifically so the next real Health Auto Export sync reveals the true field name in Vercel logs. Once confirmed: wire the write using the overwrite-on-change rule above, add `'weight'` to `RECOGNIZED_METRIC_NAMES` in the route, and update this note. BMI is explicitly out of scope — no BMI mapping, storage, or display.
 Nutrition columns: **LEGACY — do not read or write from new code**
 Hydration: hydration_ml
 Supplements: morning_stack_taken, morning_exceptions, evening_stack_taken, evening_exceptions, progesterone_taken, progesterone_mg, estradiol_taken (retired), estradiol_sprays (retired), **estradiol_am_taken, estradiol_am_sprays, estradiol_pm_taken, estradiol_pm_sprays, testosterone_taken, testosterone_pumps** (all six added Aug 18, 2026 — migration already run)
@@ -614,7 +626,8 @@ Sessions joined at read time via `loadSessionsForDates()` in lib/db.ts.
 ### `biomarker_readings`
 
 - user_id, marker (text), value (numeric), unit (text), recorded_on (date)
-- markers in use: 'vo2_max', 'ldl', 'hdl', 'hba1c'
+- markers in use: 'vo2_max', 'ldl', 'hdl', 'hba1c', 'weight' (unit 'kg' — planned, webhook not yet wired, see HAE mapping note above), 'body_fat_pct' (unit '%'), 'waist_cm' (unit 'cm'), 'visceral_fat_l' (unit 'L')
+- unique constraint on `(user_id, marker, recorded_on)` — already existed before the Body Composition card (confirmed via the pre-existing `vo2_max` insert-only-if-absent 23505 skip logic); no migration needed for the new markers above.
 
 ### `push_subscriptions`
 
