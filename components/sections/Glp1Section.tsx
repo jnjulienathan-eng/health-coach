@@ -339,13 +339,16 @@ export default function Glp1Section({ injections, onLog }: Props) {
             </div>
           </div>
         )}
+
+        <Glp1RefillCard injections={injections} />
       </div>
     </Section>
   )
 }
 
-// ─── Refill warning sub-card — always visible, rendered by the parent
-// directly below <Glp1Section>, not inside it ──────────────────────
+// ─── Refill warning sub-card — always visible (expanded-only, like the
+// Body Scan rows), rendered as the last element inside Glp1Section's
+// expanded content rather than as a top-level sibling card ─────────
 export function Glp1RefillCard({ injections }: { injections: Glp1Injection[] }) {
   const highest = injections.reduce((max, inj) => Math.max(max, inj.injection_number), 0)
   const dosesLeft = Math.max(0, COURSE_LENGTH - highest)
@@ -355,8 +358,7 @@ export function Glp1RefillCard({ injections }: { injections: Glp1Injection[] }) 
     <div
       style={{
         background: urgent ? 'var(--color-danger)' : 'var(--color-navy)',
-        borderRadius: 'var(--radius-xl)',
-        boxShadow: 'var(--shadow-card)',
+        borderRadius: 'var(--radius-md)',
         padding: 'var(--space-lg)',
       }}
     >

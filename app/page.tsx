@@ -12,7 +12,7 @@ import NutritionSection from '@/components/sections/NutritionSection'
 import HydrationSection from '@/components/sections/HydrationSection'
 import SupplementsSection from '@/components/sections/SupplementsSection'
 import ContextSection from '@/components/sections/ContextSection'
-import Glp1Section, { Glp1RefillCard } from '@/components/sections/Glp1Section'
+import Glp1Section from '@/components/sections/Glp1Section'
 import CoachTab from '@/components/CoachTab'
 import SplashScreen from '@/components/SplashScreen'
 import { enableNotifications } from '@/components/SwRegister'
@@ -1892,7 +1892,6 @@ export default function App() {
                   injections={glp1Injections}
                   onLog={handleLogGlp1}
                 />
-                <Glp1RefillCard injections={glp1Injections} />
                 <ContextSection
                   data={entry.context}
                   cycleDay={cycleDay}
