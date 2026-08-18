@@ -166,7 +166,7 @@ function formatEntry(entry: DailyEntry, cd?: number | null, nutritionSummary?: N
       ? `Nutrition (from daily_nutrition_summary): protein ${nutritionSummary.protein ?? '?'}g | fiber ${nutritionSummary.fiber ?? '?'}g | fat ${nutritionSummary.fat ?? '?'}g | carbs ${nutritionSummary.carbs ?? '?'}g | ${nutritionSummary.calories ?? '?'}kcal | meals logged: ${nutritionSummary.meal_count ?? 0}${nutritionSummary.logged_via_summary ? ` (${Object.entries(nutritionSummary.logged_via_summary).map(([k, v]) => `${k}:${v}`).join(', ')})` : ''}`
       : `Nutrition: protein ${n.total_protein ?? '?'}g | fiber ${n.total_fiber ?? '?'}g | fat ${n.total_fat ?? '?'}g | carbs ${n.total_carbs ?? '?'}g | ${n.total_calories ?? '?'}kcal`,
     meals.length ? `Meals: ${meals.join(' / ')}` : null,
-    `Supplements: morning ${sup.morning_stack_taken ? '✓' : '✗'}${sup.morning_exceptions.length ? ` (skipped: ${sup.morning_exceptions.join(', ')})` : ''} | evening ${sup.evening_stack_taken ? '✓' : '✗'} | progesterone ${sup.progesterone_taken ? '✓' : '✗'} | estradiol ${sup.estradiol_taken ? '✓' : '✗'}`,
+    `Supplements: morning ${sup.morning_stack_taken ? '✓' : '✗'}${sup.morning_exceptions.length ? ` (skipped: ${sup.morning_exceptions.join(', ')})` : ''} | evening ${sup.evening_stack_taken ? '✓' : '✗'} | progesterone ${sup.progesterone_taken ? '✓' : '✗'} | estradiol AM ${sup.estradiol_am_taken ? '✓' : '✗'} | estradiol PM ${sup.estradiol_pm_taken ? '✓' : '✗'} | testosterone ${sup.testosterone_taken ? '✓' : '✗'}`,
     `Context: cycle day ${effectiveCd ?? '?'}${c.symptoms.length ? ` | symptoms: ${c.symptoms.join(', ')}` : ''}${c.travelling ? ' | travelling' : ''}${c.notes ? ` | "${c.notes}"` : ''}`,
     `Hydration: ${entry.hydration_ml != null ? `${entry.hydration_ml}ml` : 'not logged'}`,
   ].filter(Boolean)
@@ -420,7 +420,7 @@ LANGUAGE RULE: It is evening, not afternoon. Always say "this evening", "tonight
 EARLYEVENING RULES:
 - Recovery: brief 1-sentence note on today's sleep quality using actual HRV and duration numbers.
 - Training: acknowledge what was trained today (if anything) in one sentence. If no training logged, one sentence noting it was a rest day or training is still possible this evening.
-- Supplement and hormone check: check progesterone and estradiol logged. If not, remind. Check evening stack logged. If not, remind.
+- Supplement and hormone check: check progesterone, estradiol AM, estradiol PM, and testosterone logged. If not, remind. Check evening stack logged. If not, remind.
 - Hydration: if below 2000ml on rest day or 2500ml on training day (check today's sessions), flag.
 - Set nutrition and question to null.${sickTrainingRule}
 
@@ -429,7 +429,7 @@ Return ONLY valid JSON with exactly these five fields:
   "recovery": "One sentence on today's sleep — HRV vs ${hrvBaseline}ms baseline, duration vs target. Keep brief.",
   "training": "One sentence acknowledging today's training sessions or rest. Use 'this evening' not 'this afternoon'.",
   "nutrition": null,
-  "insight": "Supplement check (progesterone, estradiol, evening stack) and hydration close-out. Max 3 sentences combined.",
+  "insight": "Supplement check (progesterone, estradiol AM/PM, testosterone, evening stack) and hydration close-out. Max 3 sentences combined.",
   "question": null
 }
 
