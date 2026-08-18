@@ -67,8 +67,14 @@ export interface SupplementsData {
   evening_exceptions: string[]     // names of items NOT taken from evening stack
   progesterone_taken: boolean
   progesterone_mg: number | null   // mg per day, e.g. 200
-  estradiol_taken: boolean
-  estradiol_sprays: number | null  // spray count, e.g. 1
+  estradiol_taken: boolean         // RETIRED — replaced by estradiol_am/pm_taken (Aug 2026 split dosing). Do not read/write from new code.
+  estradiol_sprays: number | null  // RETIRED — see estradiol_taken
+  estradiol_am_taken: boolean
+  estradiol_am_sprays: number | null  // spray count, e.g. 1
+  estradiol_pm_taken: boolean
+  estradiol_pm_sprays: number | null  // spray count, e.g. 1
+  testosterone_taken: boolean
+  testosterone_pumps: number | null   // pump count, e.g. 1
   ashwagandha_taken: boolean       // cyclic
   dim_taken: boolean               // cyclic
   phosphatidylserine_taken: boolean // cyclic
@@ -145,6 +151,12 @@ export function emptySupplements(): SupplementsData {
     progesterone_mg: null,
     estradiol_taken: false,
     estradiol_sprays: null,
+    estradiol_am_taken: false,
+    estradiol_am_sprays: null,
+    estradiol_pm_taken: false,
+    estradiol_pm_sprays: null,
+    testosterone_taken: false,
+    testosterone_pumps: null,
     ashwagandha_taken: false,
     dim_taken: false,
     phosphatidylserine_taken: false,

@@ -341,7 +341,9 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
     data.morning_stack_taken ||
     data.evening_stack_taken ||
     data.progesterone_taken ||
-    data.estradiol_taken
+    data.estradiol_am_taken ||
+    data.estradiol_pm_taken ||
+    data.testosterone_taken
 
   const summary = anyBadgeSaved ? (
     <span
@@ -355,7 +357,8 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
         data.morning_stack_taken && 'AM ✓',
         data.evening_stack_taken && 'PM ✓',
         data.progesterone_taken && 'Prog ✓',
-        data.estradiol_taken && 'E2 ✓',
+        (data.estradiol_am_taken || data.estradiol_pm_taken) && 'E2 ✓',
+        data.testosterone_taken && 'T ✓',
       ]
         .filter(Boolean)
         .join(' · ')}
@@ -394,16 +397,40 @@ export default function SupplementsSection({ data, onChange, onSave, saving }: P
               onToggle={(v) => change({ ...data, progesterone_taken: v })}
             />
             <HormoneCard
-              label="Estradiol sprays"
-              doseValue={data.estradiol_sprays}
+              label="Estradiol AM sprays"
+              doseValue={data.estradiol_am_sprays}
               doseMin={0}
               doseMax={10}
               doseStep={1}
               dosePlaceholder="1"
               doseUnit="sprays"
-              onDoseChange={(v) => change({ ...data, estradiol_sprays: v })}
-              taken={data.estradiol_taken}
-              onToggle={(v) => change({ ...data, estradiol_taken: v, ...(v && data.estradiol_sprays == null ? { estradiol_sprays: 3 } : {}) })}
+              onDoseChange={(v) => change({ ...data, estradiol_am_sprays: v })}
+              taken={data.estradiol_am_taken}
+              onToggle={(v) => change({ ...data, estradiol_am_taken: v, ...(v && data.estradiol_am_sprays == null ? { estradiol_am_sprays: 1 } : {}) })}
+            />
+            <HormoneCard
+              label="Estradiol PM sprays"
+              doseValue={data.estradiol_pm_sprays}
+              doseMin={0}
+              doseMax={10}
+              doseStep={1}
+              dosePlaceholder="1"
+              doseUnit="sprays"
+              onDoseChange={(v) => change({ ...data, estradiol_pm_sprays: v })}
+              taken={data.estradiol_pm_taken}
+              onToggle={(v) => change({ ...data, estradiol_pm_taken: v, ...(v && data.estradiol_pm_sprays == null ? { estradiol_pm_sprays: 1 } : {}) })}
+            />
+            <HormoneCard
+              label="Testosterone AM pumps"
+              doseValue={data.testosterone_pumps}
+              doseMin={0}
+              doseMax={10}
+              doseStep={1}
+              dosePlaceholder="1"
+              doseUnit="pumps"
+              onDoseChange={(v) => change({ ...data, testosterone_pumps: v })}
+              taken={data.testosterone_taken}
+              onToggle={(v) => change({ ...data, testosterone_taken: v, ...(v && data.testosterone_pumps == null ? { testosterone_pumps: 1 } : {}) })}
             />
           </div>
         </div>
