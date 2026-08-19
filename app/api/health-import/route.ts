@@ -47,6 +47,7 @@ const RECOGNIZED_METRIC_NAMES = new Set([
   'basal_energy_burned',
   'vo2_max',
   'heart_rate_variability',
+  'weight_body_mass',
 ])
 
 // ── Metric data point ────────────────────────────────────────────────────────
@@ -130,6 +131,7 @@ export async function POST(req: NextRequest) {
     }
     const byDate: Record<string, DayMetrics> = {}
     const vo2MaxByDate: Record<string, number> = {}
+    const weightByDate: Record<string, number> = {}
 
     for (const metric of metrics) {
       for (const point of metric.data ?? []) {
@@ -162,6 +164,11 @@ export async function POST(req: NextRequest) {
           vo2MaxByDate[date] = point.qty
         } else if (metric.name === 'heart_rate_variability' && point.qty !== undefined) {
           byDate[date].apple_hrv_avg = point.qty
+        } else if (metric.name === 'weight_body_mass' && point.qty !== undefined) {
+          // 'weight_body_mass' is HAE's standard identifier for Apple's body-mass
+          // metric — not yet confirmed against a real payload (see BODYCIPHER.md).
+          const kg = metric.units === 'lb' ? point.qty * 0.453592 : point.qty
+          weightByDate[date] = Math.round(kg * 10) / 10
         }
       }
     }
@@ -303,6 +310,51 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── WEIGHT → biomarker_readings (overwrite-on-change, NOT insert-only-
+    // if-absent like vo2_max above) ─────────────────────────────────────────
+    // A same-day reading updates the existing row only if the incoming value
+    // differs from what's stored — mirrors the apple_hrv_avg equal-value skip
+    // guard on daily_entries, adapted to an upsert against biomarker_readings'
+    // (user_id, marker, recorded_on) unique constraint instead of a plain
+    // column compare. A resend with an unchanged value doesn't count toward
+    // weightImported.
+    let weightImported = 0
+    for (const [date, value] of Object.entries(weightByDate)) {
+      const { data: existing, error: selectError } = await supabase
+        .from('biomarker_readings')
+        .select('value')
+        .eq('user_id', 'julie')
+        .eq('marker', 'weight')
+        .eq('recorded_on', date)
+        .maybeSingle()
+
+      if (selectError) {
+        console.error(`[health-import] weight ${date}: select failed —`, JSON.stringify(selectError))
+        throw new Error(`biomarker_readings select failed for weight ${date}: ${selectError.message ?? JSON.stringify(selectError)}`)
+      }
+
+      const stored = (existing as { value: number } | null)?.value ?? null
+      if (stored !== null && stored === value) {
+        console.log(`[health-import] weight ${date}: unchanged (${value}kg) — skipped`)
+        continue
+      }
+
+      const { error } = await supabase
+        .from('biomarker_readings')
+        .upsert(
+          { user_id: 'julie', marker: 'weight', value, unit: 'kg', recorded_on: date },
+          { onConflict: 'user_id,marker,recorded_on' }
+        )
+
+      if (error) {
+        console.error(`[health-import] weight ${date}: upsert failed —`, JSON.stringify(error))
+        throw new Error(`biomarker_readings upsert failed for weight ${date}: ${error.message ?? JSON.stringify(error)}`)
+      }
+
+      weightImported++
+      console.log(`[health-import] weight ${date}: ${value}kg — ${stored !== null ? `updated (was ${stored}kg)` : 'imported'}`)
+    }
+
     // ── WORKOUTS → training_sessions ────────────────────────────────────────
     for (const workout of workouts) {
       const date = extractDate(workout.start)
@@ -350,8 +402,8 @@ export async function POST(req: NextRequest) {
       console.log(`[health-import] workout ${date} ${activityType} ${durationMin}min ${calories != null ? calories + 'kcal' : 'no calories'}: imported`)
     }
 
-    console.log(`[health-import] done — metrics: ${metricsImported} written, vo2_max: ${vo2MaxImported} written, workouts: ${workoutsImported} written`)
-    return NextResponse.json({ imported: { metrics: metricsImported, vo2Max: vo2MaxImported, workouts: workoutsImported } })
+    console.log(`[health-import] done — metrics: ${metricsImported} written, vo2_max: ${vo2MaxImported} written, weight: ${weightImported} written, workouts: ${workoutsImported} written`)
+    return NextResponse.json({ imported: { metrics: metricsImported, vo2Max: vo2MaxImported, weight: weightImported, workouts: workoutsImported } })
 
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err)
