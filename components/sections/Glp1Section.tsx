@@ -25,6 +25,19 @@ function diffDaysUTC(aStr: string, bStr: string): number {
   return Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(by, bm - 1, bd)) / 86400000)
 }
 
+// 0 = Monday .. 6 = Sunday, matching the M T W T F S S header order.
+// Reads the date purely as a calendar day via getUTCDay() on a
+// Date.UTC-constructed value — never getDay()/local parsing, which
+// would read back a different weekday depending on the browser's local
+// timezone offset near midnight UTC. `dateStr` is already a correct
+// Europe/Berlin calendar date by the time it reaches here (produced by
+// getTodayBerlin() + pure day-count arithmetic in addDaysUTC), so this
+// stays a plain, timezone-independent calendar computation.
+function weekdayColUTC(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7
+}
+
 // ─── Shared status computation (used by both collapsed badge + grid) ──
 interface Glp1Status {
   state: 'none' | 'taken' | 'due' | 'overdue'
@@ -79,15 +92,24 @@ function StatusBadge({ status }: { status: Glp1Status }) {
   )
 }
 
-// ─── 28-day grid — true rolling window ending today, not calendar
-// weeks: cell 28 (bottom-right) is always today, cell 1 is today - 27.
-// The M T W T F S S header is fixed left-to-right labelling, not a
-// literal Monday-start claim — it only lines up with real calendar
-// weekdays when today happens to fall on a Sunday. This is intentional:
-// the window must never extend past today into future, unlogged dates.
+// ─── 28-day grid — true rolling window ending today (today - 27
+// through today, never into the future), placed under each date's real
+// weekday column (M T W T F S S = Mon..Sun). Because the window doesn't
+// necessarily start on a Monday, the grid isn't always a clean 4 rows —
+// it's padded with blank leading/trailing cells to a whole number of
+// weeks (5 rows unless the window happens to start on a Monday, i.e.
+// today is a Sunday, in which case it's a clean 4 rows with no blanks).
+// Today's cell lands in whatever column its real weekday maps to — it
+// is only ever the visual bottom-right cell when today is a Sunday.
 function InjectionGrid({ injections, status, today }: { injections: Glp1Injection[]; status: Glp1Status; today: string }) {
   const gridStart = addDaysUTC(today, -27)
-  const days = Array.from({ length: 28 }, (_, i) => addDaysUTC(gridStart, i))
+  const windowDays = Array.from({ length: 28 }, (_, i) => addDaysUTC(gridStart, i))
+  const startCol = weekdayColUTC(windowDays[0])
+  const totalCells = Math.ceil((startCol + 28) / 7) * 7
+  const days: (string | null)[] = Array.from({ length: totalCells }, (_, i) => {
+    const windowIndex = i - startCol
+    return windowIndex >= 0 && windowIndex < 28 ? windowDays[windowIndex] : null
+  })
   const injectedDates = new Set(injections.map((inj) => inj.date))
   const monthName = new Date(today + 'T00:00:00').toLocaleDateString('en-US', { month: 'long' })
 
@@ -111,7 +133,10 @@ function InjectionGrid({ injections, status, today }: { injections: Glp1Injectio
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-        {days.map((date) => {
+        {days.map((date, i) => {
+          if (date === null) {
+            return <div key={`blank-${i}`} style={{ aspectRatio: '1' }} />
+          }
           const injected = injectedDates.has(date)
           const isToday = date === today
           const isDue = status.nextDueDate === date && !injected
