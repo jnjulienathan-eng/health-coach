@@ -184,6 +184,17 @@ export function emptyEntry(date: string): DailyEntry {
   }
 }
 
+// ─── GLP-1 injections ─────────────────────────────────────────────
+export interface Glp1Injection {
+  id: string
+  user_id: string
+  date: string              // YYYY-MM-DD
+  dose_mg: number
+  injection_number: number
+  notes: string | null
+  created_at: string | null
+}
+
 // ─── Goals tab ────────────────────────────────────────────────────
 export interface BiomarkerReading {
   id: string

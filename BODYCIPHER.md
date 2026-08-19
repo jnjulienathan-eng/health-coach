@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: August 18, 2026 (New Body Composition long-term goal card below VO2 Max + Body Scan subsection; Health Auto Export weight mapping wired to `weight_body_mass` — overwrite-on-change, field name not yet verified against a real payload; HRT protocol changes — Estradiol split into AM/PM toggles, Testosterone AM toggle added)_
+_Last updated: August 19, 2026 (New Body Composition long-term goal card below VO2 Max + Body Scan subsection; Health Auto Export weight mapping wired to `weight_body_mass` — overwrite-on-change, field name not yet verified against a real payload; New GLP-1 tracking card + inline refill reminder sub-card on the Today tab; HRT protocol changes — Estradiol split into AM/PM toggles, Testosterone AM toggle added)_
 
 ---
 
@@ -27,7 +27,7 @@ _Last updated: August 18, 2026 (New Body Composition long-term goal card below V
 **Stack:** Next.js (App Router) + Supabase (West EU, `cprcamywvhtcboprtkjp.supabase.co`) + Vercel + Anthropic API
 **Key files:** `app/api/coach/route.ts`, `lib/db.ts`, `lib/types.ts`, `lib/scores.ts`, `lib/trainingLoad.ts`
 **Scripts:** `scripts/generate-icon.mjs` — generates `public/apple-touch-icon.png` (180×180 PNG, dark bg + BodyCipher mark). Run with `node scripts/generate-icon.mjs` from the project root. Requires `sharp`.
-**Sections:** `components/sections/` — SleepSection, TrainingSection, NutritionSection, HydrationSection, SupplementsSection, ContextSection
+**Sections:** `components/sections/` — SleepSection, TrainingSection, NutritionSection, HydrationSection, SupplementsSection, Glp1Section (+ named export `Glp1RefillCard`, not date-navigable), ContextSection
 **Other components:** `components/CoachTab.tsx`, `components/DashboardTab.tsx` (not imported, preserved on disk), `components/HistoryTab.tsx` (not imported, preserved on disk), `components/GoalsTab.tsx` (not imported, preserved on disk), `components/SplashScreen.tsx`
 
 ---
@@ -191,6 +191,29 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 - **⚠️ Flagged for review — Behavior Score hormone component (`lib/scores.ts → behaviorScore()`):** this is the locked scoring model's supplement bucket (morning 40% / evening 30% / progesterone 15% / estradiol 15% of the 20%-weight component). Two judgment calls were made rather than guessed silently:
   1. **Estradiol AM vs PM — used AND, not OR.** `estradiolConfirmed = sup.estradiol_am_taken && sup.estradiol_pm_taken` — full 15 points only when *both* doses are logged for the day. Rationale: the original toggle was all-or-nothing (one spray count credited the whole day), so requiring both doses mirrors "confirmed for the day" rather than crediting a half-day partial. **This differs from the collapsed-pill/bullet display logic above, which uses OR** (either dose shows "E2 ✓") — display optimises for "is anything logged", scoring optimises for "was the full regimen followed". If Julie wants OR here too (any one dose = full credit, matching pre-split leniency), that's a one-line change (`||` instead of `&&`).
   2. **Testosterone is NOT added to this component.** Folding a 5th supplement into a locked 40/30/15/15 split would mean re-deriving those weights (e.g. to fit a testosterone bucket, something would need to shrink) on a model explicitly marked "do not change without explicit instruction." Left out entirely for now — testosterone toggle state has no effect on Behavior Score. Flagging this for Julie to decide how (or whether) to weight it in.
+
+**GLP-1 card (added Aug 18, 2026)**
+- New card on the Today tab, positioned between the Supplements accordion and the Context accordion. `components/sections/Glp1Section.tsx` — exports default `Glp1Section` (the accordion, uses the standard `Section` wrapper) and named `Glp1RefillCard` (a separate always-visible sub-card, same "always visible, not collapsible" pattern as the Health Calendar hero card). Both rendered by `app/page.tsx` in that order, directly below `SupplementsSection`.
+- **Not date-navigable, unlike the other 5 logging accordions.** Sleep/Training/Nutrition/Hydration/Supplements/Context all read/write the currently-navigated `DailyEntry` (`entry` state, keyed to whatever date the Today-tab date-navigator is on). The GLP-1 card is different: it always reflects real "today" (Europe/Berlin) and the trailing 28-day window ending today, regardless of which date is selected on the date navigator. Backed by its own state (`glp1Injections` in `app/page.tsx`), loaded once via `loadGlp1Injections()` (`lib/db.ts`) in a mount-only `useEffect`, not tied to `currentDate`.
+- **Data:** `glp1_injections` table (see Data Model section below). `injection_number` is assigned as `(highest existing injection_number) + 1` at log time — this tracks *logging order*, not chronological dose order (relevant for the "Log a different date" backfill path — see below).
+- **Collapsed state:** status badge + "Dose N of 24" (N = highest `injection_number` on file, 0 if no rows). Badge states, computed from `daysSinceLast = today − most-recent injection date`:
+  - `daysSinceLast > 7` → **Overdue** (red, `--color-danger`)
+  - `daysSinceLast === 0` → **Taken this week** (green, `--color-success`)
+  - `1 ≤ daysSinceLast ≤ 7` → **Due in Nd** (amber, `--color-amber` bg / `--color-navy` text), N = `7 − daysSinceLast`
+  - No rows yet → **Not started** (grey, `--color-border` bg) — a 4th state added beyond the three named in spec, since none of Overdue/Taken/Due meaningfully describe a course that hasn't begun.
+  - ⚠️ **Flagged:** the spec's three conditions ("next injection upcoming" / "most recent within last 7 days" / "more than 7 days since last") are not mutually exclusive as written — "within the last 7 days" and "upcoming" describe the same non-overdue window from two angles. Resolved with the priority order above (day-of injection = green, days 1–7 = amber countdown, beyond day 7 = red). Flagging this interpretation for review since the source spec text genuinely overlaps.
+- **Expanded state:**
+  - Header row: "Last 4 Weeks" label + today's month name (no straddled-month handling, per spec).
+  - **28-day grid, Monday-start week-aligned** (not a raw "28 days ending today" row-major fill): grid start = Monday of (today's week − 3 weeks), so the grid always spans exactly 4 calendar weeks (Mon–Sun ×4) with the current week last. This makes the fixed `M T W T F S S` header row always align correctly to its columns. ⚠️ **Flagged:** the alternate reading — a plain 28-consecutive-days-ending-today fill with no week alignment — was considered and rejected because it would make the day-of-week header line up with its columns only when today happens to be a Sunday. Cells after today within the current week (if today isn't Sunday) render as plain empty future cells, no special styling.
+  - Cell states, in priority order: **injected** (navy fill, white bold number, small amber dot near the bottom) → **due, overdue** (2px `--color-danger` border, when the computed next-due date has passed without a log) → **due, upcoming/today** (2px `--color-amber` border) → **today, not otherwise flagged** (2px `--color-navy` border) → plain.
+  - Legend below the grid: Injected / Due / Today swatches matching the three border/fill treatments above.
+  - **"Log injection — today"** button (`btn-primary`, full width, 52px): inserts `date = today`, `dose_mg = 2.5`, `injection_number = max + 1`. Three states beyond the default label, all flagged as judgment calls (spec only asked about the cap explicitly):
+    - At 24/24 → disabled, relabelled **"Course complete"** (spec-requested; exact treatment was left to judgement).
+    - Already logged today (any dose) → disabled, relabelled **"Logged today ✓"** — added to prevent an accidental duplicate same-day row; not explicitly requested.
+    - Save failure → relabelled **"Save failed — retry"**, button re-enabled.
+  - **"Log a different date →"** link (hidden once at the 24-dose cap, same reasoning as disabling the main button) opens an inline form: date input (`type="date"`, `max` = today — no future-dated entries), dose input (number, step 0.25, defaults to 2.5, editable). Submits through the same `logGlp1Injection()` / injection-number auto-increment path as the main button.
+- **Refill warning sub-card (`Glp1RefillCard`):** always rendered, directly below the accordion, not inside it. Navy background, "REFILL REMINDER" amber label, "Call endocrinologist" headline, "Pen runs out at dose 24 — call by dose 20" subtext, and an amber pill showing `24 − highest injection_number` as "N doses left" — computed live from `glp1Injections`, no separate storage.
+  - **Urgent state (doses left ≤ 4):** card background switches from `--color-navy` to **`--color-danger`** (`#E05252`, already defined in `globals.css` — not a new hex value; distinct from `--color-status-low` `#F97316`, the orange "warning" token used for HRV/score bands, so the two are not conflated). Label text switches from amber to white (amber-on-red has weak contrast; white-on-red is the standard readable pairing for this card's existing white headline/subtext) and the label text changes to "REFILL REMINDER — CALL NOW". The "N doses left" pill itself is unchanged (amber bg / navy text) in both states since it has its own opaque background and reads fine over either card colour.
 
 **Context section**
 - Fields: cycle day (auto-counter with manual reset), symptoms (multi-select), travelling toggle, sick toggle, notes
@@ -646,6 +669,26 @@ Stores Web Push device subscriptions for server-initiated notifications.
     created_at timestamptz DEFAULT now()
   );
   ```
+
+### `glp1_injections`
+
+- id (uuid PK), user_id (text NOT NULL DEFAULT 'julie'), date (date NOT NULL), dose_mg (numeric NOT NULL DEFAULT 2.5), injection_number (integer NOT NULL), notes (text, nullable), created_at (timestamptz DEFAULT now())
+- Migration (applied Aug 18, 2026):
+  ```sql
+  CREATE TABLE IF NOT EXISTS glp1_injections (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id text NOT NULL DEFAULT 'julie',
+    date date NOT NULL,
+    dose_mg numeric NOT NULL DEFAULT 2.5,
+    injection_number integer NOT NULL,
+    notes text,
+    created_at timestamptz DEFAULT now()
+  );
+  ```
+- `injection_number` is assigned at log time as `(highest existing injection_number for user_id) + 1` — see `logGlp1Injection()` in `lib/db.ts`. It reflects logging order, not necessarily chronological `date` order (a backfilled past date logged via "Log a different date" still gets the next sequential number).
+- No RLS mentioned in the migration — queried with the same anon-key `supabase` client as `daily_entries`/`training_sessions`/`health_appointments`, not the nutrition tables' service-role admin client.
+- 24-injection course, tracked client-side (`COURSE_LENGTH = 24` in `Glp1Section.tsx`) — not enforced at the DB level.
+- Surfaced on the Today tab — see GLP-1 card under Today Tab above.
 
 ### `user_profiles`
 

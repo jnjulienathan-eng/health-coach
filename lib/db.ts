@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData } from './types'
+import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData, Glp1Injection } from './types'
 import { emptyEntry } from './types'
 
 export const supabase = createClient(
@@ -487,6 +487,52 @@ export async function seedDefaultAppointments(): Promise<void> {
     throw error
   }
   console.error('seedDefaultAppointments: insert succeeded')
+}
+
+// ─── GLP-1 injections ─────────────────────────────────────────────
+// Loads all rows (course is at most 24 injections — small table, no
+// need to window the query). Ordered ascending by date for the grid.
+export async function loadGlp1Injections(): Promise<Glp1Injection[]> {
+  const { data, error } = await supabase
+    .from('glp1_injections')
+    .select('*')
+    .eq('user_id', 'julie')
+    .order('date', { ascending: true })
+  if (error) {
+    console.error('loadGlp1Injections: query failed:', JSON.stringify(error))
+    throw error
+  }
+  return (data ?? []) as Glp1Injection[]
+}
+
+// ─── logGlp1Injection ─────────────────────────────────────────────
+// injection_number is always (highest existing injection_number) + 1,
+// regardless of whether `date` is today or a backfilled past date —
+// it tracks logging order, not chronological dose order.
+export async function logGlp1Injection(params: { date: string; dose_mg?: number; notes?: string | null }): Promise<Glp1Injection> {
+  const { data: maxRow, error: maxErr } = await supabase
+    .from('glp1_injections')
+    .select('injection_number')
+    .eq('user_id', 'julie')
+    .order('injection_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (maxErr) throw maxErr
+  const nextNumber = ((maxRow?.injection_number as number | undefined) ?? 0) + 1
+
+  const { data, error } = await supabase
+    .from('glp1_injections')
+    .insert({
+      user_id: 'julie',
+      date: params.date,
+      dose_mg: params.dose_mg ?? 2.5,
+      injection_number: nextNumber,
+      notes: params.notes ?? null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Glp1Injection
 }
 
 // ─── getVo2SparklineData ──────────────────────────────────────────

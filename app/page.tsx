@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg, getWeightSparklineData, saveBodyScanReading } from '@/lib/db'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg, getWeightSparklineData, saveBodyScanReading, loadGlp1Injections, logGlp1Injection } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
-import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment } from '@/lib/types'
+import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment, Glp1Injection } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
 import { behaviorScore, outcomeScore } from '@/lib/scores'
 import SleepSection from '@/components/sections/SleepSection'
@@ -12,6 +12,7 @@ import NutritionSection from '@/components/sections/NutritionSection'
 import HydrationSection from '@/components/sections/HydrationSection'
 import SupplementsSection from '@/components/sections/SupplementsSection'
 import ContextSection from '@/components/sections/ContextSection'
+import Glp1Section from '@/components/sections/Glp1Section'
 import CoachTab from '@/components/CoachTab'
 import SplashScreen from '@/components/SplashScreen'
 import { enableNotifications } from '@/components/SwRegister'
@@ -1342,6 +1343,9 @@ export default function App() {
   const [todayScored,  setTodayScored]  = useState<TodayScored | null>(null)
   const [dashEntries,  setDashEntries]  = useState<DailyEntry[]>([])
 
+  // ── GLP-1 injections state ────────────────────────────────────────
+  const [glp1Injections, setGlp1Injections] = useState<Glp1Injection[]>([])
+
   // ── Goals data + VO2 state (from GoalsTab) ───────────────────────
   const [goalsData,            setGoalsData]            = useState<GoalsData | null>(null)
   const [greeting]                                       = useState(() => getGreeting())
@@ -1499,6 +1503,18 @@ export default function App() {
       .catch(e => setHistoryError(e instanceof Error ? e.message : 'Failed to load history'))
       .finally(() => setHistoryLoading(false))
   }, [])
+
+  // Load GLP-1 injections — not date-navigable, always reflects "today"
+  // regardless of which day is selected on the Today tab.
+  const loadGlp1 = useCallback(() => {
+    loadGlp1Injections().then(setGlp1Injections).catch(e => console.error('GLP-1 load error:', JSON.stringify(e)))
+  }, [])
+  useEffect(() => { loadGlp1() }, [loadGlp1])
+
+  const handleLogGlp1 = async (params: { date: string; dose_mg?: number }) => {
+    await logGlp1Injection(params)
+    await loadGlp1()
+  }
 
   // Save a section of the entry — always merges cycleDay into context JSONB
   const save = async (sectionName: string) => {
@@ -2036,6 +2052,10 @@ export default function App() {
                   onChange={(supplements) => update({ supplements })}
                   onSave={() => save('supplements')}
                   saving={saving}
+                />
+                <Glp1Section
+                  injections={glp1Injections}
+                  onLog={handleLogGlp1}
                 />
                 <ContextSection
                   data={entry.context}
