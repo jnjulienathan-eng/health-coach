@@ -2407,15 +2407,17 @@ export default function App() {
                 <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-navy)', flex: 1 }}>
                   Body Composition
                 </span>
-                <span style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {weight !== null ? `${weight.value}kg` : 'Not yet logged'}
-                  {weight !== null && weightPrev !== null && weight.value !== weightPrev.value && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: 'var(--color-text-secondary)' }}>
-                      {weight.value > weightPrev.value ? '↑' : '↓'}
-                      {Math.abs(weight.value - weightPrev.value).toFixed(1)}kg
-                    </span>
-                  )}
-                </span>
+                {bodyCompExpanded && (
+                  <span style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {weight !== null ? `${weight.value}kg` : 'Not yet logged'}
+                    {weight !== null && weightPrev !== null && weight.value !== weightPrev.value && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: 'var(--color-text-secondary)' }}>
+                        {weight.value > weightPrev.value ? '↑' : '↓'}
+                        {Math.abs(weight.value - weightPrev.value).toFixed(1)}kg
+                      </span>
+                    )}
+                  </span>
+                )}
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${bodyCompExpanded ? ' open' : ''}`} style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
                   <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
