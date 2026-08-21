@@ -740,8 +740,11 @@ export async function saveHba1cReading(value: number, recordedOn: string): Promi
 
 // ─── saveBodyScanReading ──────────────────────────────────────────
 // Body Scan measurements (Body Fat %, Waist Circumference, Visceral Fat) are
-// infrequent manual lab entries, not daily webhook data — plain insert, same
-// pattern as saveHba1cReading, not overwrite-on-change like the weight webhook.
+// manual lab entries — upsert on (user_id, marker, recorded_on) so re-saving
+// a value for a date that's already logged overwrites it instead of hitting
+// the unique constraint. Not insert-only like saveVo2Reading, and not the
+// select-then-conditional-upsert of the weight webhook — a plain upsert is
+// correct here since the user is knowingly editing that date's value.
 export async function saveBodyScanReading(
   marker: 'body_fat_pct' | 'waist_cm' | 'visceral_fat_l',
   value: number,
@@ -750,7 +753,10 @@ export async function saveBodyScanReading(
 ): Promise<void> {
   const { error } = await supabase
     .from('biomarker_readings')
-    .insert({ user_id: 'julie', marker, value, unit, recorded_on: recordedOn })
+    .upsert(
+      { user_id: 'julie', marker, value, unit, recorded_on: recordedOn },
+      { onConflict: 'user_id,marker,recorded_on' }
+    )
 
   if (error) throw error
 }
