@@ -465,7 +465,10 @@ export async function fetchHealthAppointments() {
 }
 
 // ─── seedDefaultAppointments ─────────────────────────────────────
-// Inserts default appointment rows if the table is empty for this user.
+// Upserts default appointment rows, skipping any appointment_type that
+// already exists for this user. Relies on the unique constraint on
+// (user_id, appointment_type) — a concurrent/duplicate call is a
+// harmless no-op rather than a duplicate insert.
 export async function seedDefaultAppointments(): Promise<void> {
   const defaults = [
     { appointment_type: 'dermatologist',    interval_months: 6   },
@@ -478,15 +481,18 @@ export async function seedDefaultAppointments(): Promise<void> {
     { appointment_type: 'bone_density_scan', interval_months: 24 },
     { appointment_type: 'colonoscopy',      interval_months: 120 },
   ]
-  console.error('seedDefaultAppointments: attempting insert, user_id=julie, row count=', defaults.length)
+  console.error('seedDefaultAppointments: attempting upsert, user_id=julie, row count=', defaults.length)
   const { error } = await supabase
     .from('health_appointments')
-    .insert(defaults.map(d => ({ ...d, user_id: 'julie' })))
+    .upsert(defaults.map(d => ({ ...d, user_id: 'julie' })), {
+      onConflict: 'user_id,appointment_type',
+      ignoreDuplicates: true,
+    })
   if (error) {
-    console.error('seedDefaultAppointments: insert failed:', JSON.stringify(error))
+    console.error('seedDefaultAppointments: upsert failed:', JSON.stringify(error))
     throw error
   }
-  console.error('seedDefaultAppointments: insert succeeded')
+  console.error('seedDefaultAppointments: upsert succeeded')
 }
 
 // ─── GLP-1 injections ─────────────────────────────────────────────
