@@ -1347,6 +1347,7 @@ export default function App() {
   const [glp1Injections, setGlp1Injections] = useState<Glp1Injection[]>([])
 
   // ── Goals data + VO2 state (from GoalsTab) ───────────────────────
+  const seededAppointmentsRef = useRef(false)
   const [goalsData,            setGoalsData]            = useState<GoalsData | null>(null)
   const [greeting]                                       = useState(() => getGreeting())
   const [vo2RollingAvg,        setVo2RollingAvg]        = useState<number | null>(null)
@@ -1482,7 +1483,8 @@ export default function App() {
     getVo2Rolling60DayAvg().then(setVo2RollingAvg).catch(console.error)
     getGoalsData()
       .then(async d => {
-        if (d.appointments.length === 0) {
+        if (d.appointments.length === 0 && !seededAppointmentsRef.current) {
+          seededAppointmentsRef.current = true
           try {
             await seedDefaultAppointments()
             const fresh = await fetchHealthAppointments()
