@@ -92,35 +92,33 @@ function StatusBadge({ status }: { status: Glp1Status }) {
   )
 }
 
-// ─── 28-day grid — true rolling window ending today (today - 27
-// through today, never into the future), placed under each date's real
-// weekday column (M T W T F S S = Mon..Sun). Because the window doesn't
-// necessarily start on a Monday, the grid isn't always a clean 4 rows —
-// it's padded with blank leading/trailing cells to a whole number of
-// weeks (5 rows unless the window happens to start on a Monday, i.e.
-// today is a Sunday, in which case it's a clean 4 rows with no blanks).
-// Today's cell lands in whatever column its real weekday maps to — it
-// is only ever the visual bottom-right cell when today is a Sunday.
+// ─── Rolling ±2-week window, Monday-start/Sunday-end aligned: start =
+// Monday of the week containing (today - 14), end = Sunday of the week
+// containing (today + 14). Because today-14 and today+14 are exactly 4
+// weeks apart, they always fall on the same weekday, so rounding the
+// first back to Monday and the second forward to Sunday always yields a
+// span of exactly 34 days (35 cells / 5 full weeks) with no blank
+// padding cells — today always lands in the middle (3rd) row.
 function InjectionGrid({ injections, status, today }: { injections: Glp1Injection[]; status: Glp1Status; today: string }) {
-  const gridStart = addDaysUTC(today, -27)
-  const windowDays = Array.from({ length: 28 }, (_, i) => addDaysUTC(gridStart, i))
-  const startCol = weekdayColUTC(windowDays[0])
-  const totalCells = Math.ceil((startCol + 28) / 7) * 7
-  const days: (string | null)[] = Array.from({ length: totalCells }, (_, i) => {
-    const windowIndex = i - startCol
-    return windowIndex >= 0 && windowIndex < 28 ? windowDays[windowIndex] : null
-  })
+  const rangeStart = addDaysUTC(today, -14)
+  const rangeEnd = addDaysUTC(today, 14)
+  const gridStart = addDaysUTC(rangeStart, -weekdayColUTC(rangeStart))
+  const gridEnd = addDaysUTC(rangeEnd, 6 - weekdayColUTC(rangeEnd))
+  const totalCells = diffDaysUTC(gridEnd, gridStart) + 1
+  const days = Array.from({ length: totalCells }, (_, i) => addDaysUTC(gridStart, i))
   const injectedDates = new Set(injections.map((inj) => inj.date))
-  const monthName = new Date(today + 'T00:00:00').toLocaleDateString('en-US', { month: 'long' })
+  const startMonth = new Date(gridStart + 'T00:00:00').toLocaleDateString('en-US', { month: 'short' })
+  const endMonth = new Date(gridEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short' })
+  const rangeLabel = startMonth === endMonth ? startMonth : `${startMonth} – ${endMonth}`
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-sm)' }}>
         <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
-          Last 4 Weeks
+          ±2 Weeks
         </span>
         <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', color: 'var(--color-text-secondary)' }}>
-          {monthName}
+          {rangeLabel}
         </span>
       </div>
 
@@ -133,10 +131,7 @@ function InjectionGrid({ injections, status, today }: { injections: Glp1Injectio
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-        {days.map((date, i) => {
-          if (date === null) {
-            return <div key={`blank-${i}`} style={{ aspectRatio: '1' }} />
-          }
+        {days.map((date) => {
           const injected = injectedDates.has(date)
           const isToday = date === today
           const isDue = status.nextDueDate === date && !injected
