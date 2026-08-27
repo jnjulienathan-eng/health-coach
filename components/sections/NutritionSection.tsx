@@ -11,6 +11,8 @@ import MealLogger from '@/components/nutrition/MealLogger'
 interface Props {
   currentDate: string
   sessions?: TrainingSession[]
+  basalCalories?: number | null
+  activeCalories?: number | null
 }
 
 // ─── API types ────────────────────────────────────────────────────────────
@@ -501,7 +503,7 @@ function MealCard({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────
-export default function NutritionSection({ currentDate, sessions = [] }: Props) {
+export default function NutritionSection({ currentDate, sessions = [], basalCalories = null, activeCalories = null }: Props) {
   const [day, setDay] = useState<DayResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -646,34 +648,49 @@ export default function NutritionSection({ currentDate, sessions = [] }: Props) 
             value={totals.fat ?? 0}
             target={fatTarget}
           />
-          {day && (
-            <div>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => setShowTeeBreakdown(v => !v)}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setShowTeeBreakdown(v => !v) }}
-                style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'pointer' }}
-              >
-                <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>Calories</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 700, color: remainingColor }}>
-                  {remaining >= 0 ? `${r(remaining)} kcal left` : `${r(Math.abs(remaining))} kcal over`}
-                </span>
+          {day && (() => {
+            const burned = (basalCalories != null && activeCalories != null) ? basalCalories + activeCalories : null
+            const fmt = (n: number | null) => n != null ? r(n).toLocaleString() + ' kcal' : '—'
+            return (
+              <div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setShowTeeBreakdown(v => !v)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setShowTeeBreakdown(v => !v) }}
+                  style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-xs)', cursor: 'pointer' }}
+                >
+                  {([
+                    { label: 'Eaten',     value: fmt(consumed),        color: 'var(--color-navy)' },
+                    { label: 'Target',    value: fmt(targets.calories), color: 'var(--color-navy)' },
+                    { label: 'Remaining', value: fmt(remaining),       color: remainingColor },
+                    { label: 'Burned',    value: fmt(burned),          color: 'var(--color-navy)' },
+                  ] as { label: string; value: string; color: string }[]).map(({ label, value, color }) => (
+                    <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 0', minWidth: 0 }}>
+                      <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-secondary)', overflowWrap: 'anywhere' }}>
+                        {label}
+                      </span>
+                      <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color }}>
+                        {value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {targets.adjustment.active && (
+                  <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', marginTop: 6 }}>
+                    Training day: +{targets.adjustment.addedKcal} kcal, +{targets.adjustment.addedCarbs}g carbs
+                  </div>
+                )}
+                {showTeeBreakdown && (
+                  <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-dim)', marginTop: 2 }}>
+                    {targets.adjustment.active
+                      ? `${targets.calories} kcal target (${BASE_TEE} TEE − ${TARGET_DEFICIT} deficit + ${targets.adjustment.addedKcal} today's training)`
+                      : `${targets.calories} kcal target (${BASE_TEE} TEE − ${TARGET_DEFICIT} deficit)`}
+                  </div>
+                )}
               </div>
-              {targets.adjustment.active && (
-                <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                  Training day: +{targets.adjustment.addedKcal} kcal, +{targets.adjustment.addedCarbs}g carbs
-                </div>
-              )}
-              {showTeeBreakdown && (
-                <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-dim)', marginTop: 2 }}>
-                  {targets.adjustment.active
-                    ? `${targets.calories} kcal target (${BASE_TEE} TEE − ${TARGET_DEFICIT} deficit + ${targets.adjustment.addedKcal} today's training)`
-                    : `${targets.calories} kcal target (${BASE_TEE} TEE − ${TARGET_DEFICIT} deficit)`}
-                </div>
-              )}
-            </div>
-          )}
+            )
+          })()}
         </div>
 
         {/* Loading / error states */}

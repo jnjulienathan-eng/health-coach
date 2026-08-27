@@ -2039,6 +2039,8 @@ export default function App() {
                 <NutritionSection
                   currentDate={currentDate}
                   sessions={entry.training.sessions}
+                  basalCalories={entry.basal_calories}
+                  activeCalories={entry.active_calories}
                 />
                 <HydrationSection
                   data={entry.hydration_ml}
