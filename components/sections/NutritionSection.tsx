@@ -663,7 +663,7 @@ export default function NutritionSection({ currentDate, sessions = [], basalCalo
                   {([
                     { label: 'Eaten',     value: fmt(consumed),        color: 'var(--color-navy)' },
                     { label: 'Target',    value: fmt(targets.calories), color: 'var(--color-navy)' },
-                    { label: 'Remaining', value: fmt(remaining),       color: remainingColor },
+                    { label: 'Left',      value: fmt(remaining),       color: remainingColor },
                     { label: 'Burned',    value: fmt(burned),          color: 'var(--color-navy)' },
                   ] as { label: string; value: string; color: string }[]).map(({ label, value, color }) => (
                     <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 0', minWidth: 0 }}>
