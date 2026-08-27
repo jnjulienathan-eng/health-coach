@@ -4,14 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { TrainingSession } from '@/lib/types'
 import { MACRO_TARGETS } from '@/lib/types'
+import { computeNutritionTargets, BASE_TEE, TARGET_DEFICIT } from '@/lib/nutritionTargets'
 import Section from '@/components/ui/Section'
 import MealLogger from '@/components/nutrition/MealLogger'
 
 interface Props {
   currentDate: string
   sessions?: TrainingSession[]
-  basalCalories?: number | null
-  activeCalories?: number | null
 }
 
 // ─── API types ────────────────────────────────────────────────────────────
@@ -502,17 +501,17 @@ function MealCard({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────
-export default function NutritionSection({ currentDate, sessions = [], basalCalories = null, activeCalories = null }: Props) {
+export default function NutritionSection({ currentDate, sessions = [] }: Props) {
   const [day, setDay] = useState<DayResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showLogger, setShowLogger] = useState(false)
   const [loggerInitialScreen, setLoggerInitialScreen] = useState<'menu' | 'library'>('menu')
   const [editingMealId, setEditingMealId] = useState<string | null>(null)
+  const [showTeeBreakdown, setShowTeeBreakdown] = useState(false)
 
-  const dailyCalories = (basalCalories != null && activeCalories != null)
-    ? basalCalories + activeCalories
-    : null
+  const todayTrainingKcal = sessions.reduce((sum, s) => sum + (s.active_calories ?? 0), 0)
+  const targets = useMemo(() => computeNutritionTargets(todayTrainingKcal), [todayTrainingKcal])
 
   const fetchDay = useCallback(async () => {
     setLoading(true)
@@ -546,16 +545,17 @@ export default function NutritionSection({ currentDate, sessions = [], basalCalo
     && (totals.protein ?? 0) >= MACRO_TARGETS.protein.min
     && (totals.fiber   ?? 0) >= MACRO_TARGETS.fiber.min
 
-  // Dynamic macro targets derived from basal + active calories
-  const fatTarget    = dailyCalories != null ? { min: 0, max: Math.round((dailyCalories * 0.40) / 9) } : null
-  const carbsTarget  = dailyCalories != null ? { min: 0, max: Math.round((dailyCalories * 0.30) / 4) } : null
-  const calorieTargetRange = dailyCalories != null ? { min: Math.round(dailyCalories * 0.9), max: dailyCalories } : null
+  // Fixed macro targets, carbs/calories adjusted on high-training-load days
+  const fatTarget   = { min: 0, max: targets.fat }
+  const carbsTarget = { min: 0, max: targets.carbs }
 
-  // Surplus / deficit
-  const consumedCalories = totals.calories
-  const calorieDiff = (consumedCalories != null && consumedCalories > 0 && dailyCalories != null)
-    ? consumedCalories - dailyCalories
-    : null
+  // Remaining calories
+  const consumed = totals.calories ?? 0
+  const remaining = targets.calories - consumed
+  const remainingColor =
+    remaining < 0 ? 'var(--color-danger)'
+    : remaining < 150 ? 'var(--color-amber)'
+    : 'var(--color-status-optimal)'
 
   // Compact summary used in the collapsed Section header
   const summaryBars = totals.protein != null && totals.protein > 0 ? (
@@ -627,13 +627,13 @@ export default function NutritionSection({ currentDate, sessions = [], basalCalo
           <MacroBar
             label="Protein"
             value={totals.protein ?? 0}
-            target={MACRO_TARGETS.protein}
+            target={{ min: MACRO_TARGETS.protein.min, max: targets.protein }}
             flagBelow={MACRO_TARGETS.protein.flagBelow}
           />
           <MacroBar
             label="Fiber"
             value={totals.fiber ?? 0}
-            target={MACRO_TARGETS.fiber}
+            target={{ min: MACRO_TARGETS.fiber.min, max: targets.fiber }}
             flagBelow={MACRO_TARGETS.fiber.flagBelow}
           />
           <MacroBar
@@ -646,19 +646,32 @@ export default function NutritionSection({ currentDate, sessions = [], basalCalo
             value={totals.fat ?? 0}
             target={fatTarget}
           />
-          <MacroBar
-            label="Calories"
-            value={totals.calories ?? 0}
-            target={calorieTargetRange}
-            unit=" kcal"
-          />
-          {calorieDiff != null && (
-            <div style={{
-              fontSize: 'var(--fs-label)',
-              color: calorieDiff <= 0 ? 'var(--color-status-optimal)' : 'var(--color-amber)',
-              marginTop: 2,
-            }}>
-              {Math.abs(Math.round(calorieDiff))} kcal {calorieDiff <= 0 ? 'under' : 'over'}
+          {day && (
+            <div>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowTeeBreakdown(v => !v)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setShowTeeBreakdown(v => !v) }}
+                style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'pointer' }}
+              >
+                <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>Calories</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 26, fontWeight: 700, color: remainingColor }}>
+                  {remaining >= 0 ? `${r(remaining)} kcal left` : `${r(Math.abs(remaining))} kcal over`}
+                </span>
+              </div>
+              {targets.adjustment.active && (
+                <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                  Training day: +{targets.adjustment.addedKcal} kcal, +{targets.adjustment.addedCarbs}g carbs
+                </div>
+              )}
+              {showTeeBreakdown && (
+                <div style={{ fontSize: 'var(--fs-label)', color: 'var(--color-text-dim)', marginTop: 2 }}>
+                  {targets.adjustment.active
+                    ? `${targets.calories} kcal target (${BASE_TEE} TEE − ${TARGET_DEFICIT} deficit + ${targets.adjustment.addedKcal} today's training)`
+                    : `${targets.calories} kcal target (${BASE_TEE} TEE − ${TARGET_DEFICIT} deficit)`}
+                </div>
+              )}
             </div>
           )}
         </div>

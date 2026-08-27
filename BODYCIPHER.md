@@ -1,6 +1,6 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: August 24, 2026 (health_appointments dedup bugfix — seedDefaultAppointments() was a plain insert gated by a non-atomic, total-row-count check, so a concurrent double-fire of the first-load useEffect could insert the 9 default appointment rows twice; fixed to an upsert with onConflict/ignoreDuplicates against a new unique constraint on (user_id, appointment_type) that Julie added directly in Supabase after a manual dedup. Vaccination rows were unaffected — confirmed never seeded by app code. Previous: August 24, 2026 — GLP-1 calendar bugfix — the "Last 4 Weeks" grid was a trailing 28-day window ending today, which showed zero future days once today sat late in its own week-row; replaced with a rolling ±14-day window rounded out to full Monday–Sunday weeks, always 35 days / 5 rows with today in the middle row and due dates up to a week out visible. Previous: August 21, 2026 — Body Composition card bugfixes — manual Body Scan save (body_fat_pct, waist_cm, visceral_fat_l) switched from plain insert to upsert so re-saving a value for an already-logged date no longer fails; collapsed-state weight badge now hidden, shown only when the card is expanded. Previous: August 19, 2026 — New Body Composition long-term goal card below VO2 Max + Body Scan subsection; Health Auto Export weight mapping wired to `weight_body_mass` — overwrite-on-change, field name not yet verified against a real payload; New GLP-1 tracking card + inline refill reminder sub-card on the Today tab; HRT protocol changes — Estradiol split into AM/PM toggles, Testosterone AM toggle added)_
+_Last updated: August 27, 2026 (Fixed-baseline Nutrition Targets — the May 2026 Dynamic Nutrition Targets model, which derived calorie/fat/carb targets from daily_entries.basal_calories + active_calories (noisy Apple Watch all-day HAE figures), was replaced with a mostly-fixed daily target (lib/nutritionTargets.ts) that only adjusts on days with genuinely high structured training load, sourced from training_sessions.active_calories instead. Protein/Fat/Fiber stay fixed; Carbs and Calories get a credit above a 750kcal training-day threshold, capped at a 2100kcal ceiling. Calories bar replaced with a "remaining" display (three-colour states) plus a tap-to-reveal TEE breakdown and a training-day adjustment note. Behavior Score and the Training tab's Basal/Active/Total energy strip were explicitly not touched. Previous: August 24, 2026 — health_appointments dedup bugfix — seedDefaultAppointments() was a plain insert gated by a non-atomic, total-row-count check, so a concurrent double-fire of the first-load useEffect could insert the 9 default appointment rows twice; fixed to an upsert with onConflict/ignoreDuplicates against a new unique constraint on (user_id, appointment_type) that Julie added directly in Supabase after a manual dedup. Vaccination rows were unaffected — confirmed never seeded by app code. Previous: August 24, 2026 — GLP-1 calendar bugfix — the "Last 4 Weeks" grid was a trailing 28-day window ending today, which showed zero future days once today sat late in its own week-row; replaced with a rolling ±14-day window rounded out to full Monday–Sunday weeks, always 35 days / 5 rows with today in the middle row and due dates up to a week out visible. Previous: August 21, 2026 — Body Composition card bugfixes — manual Body Scan save (body_fat_pct, waist_cm, visceral_fat_l) switched from plain insert to upsert so re-saving a value for an already-logged date no longer fails; collapsed-state weight badge now hidden, shown only when the card is expanded. Previous: August 19, 2026 — New Body Composition long-term goal card below VO2 Max + Body Scan subsection; Health Auto Export weight mapping wired to `weight_body_mass` — overwrite-on-change, field name not yet verified against a real payload; New GLP-1 tracking card + inline refill reminder sub-card on the Today tab; HRT protocol changes — Estradiol split into AM/PM toggles, Testosterone AM toggle added)_
 
 ---
 
@@ -49,7 +49,9 @@ _Last updated: August 24, 2026 (health_appointments dedup bugfix — seedDefault
 
 ## CURRENT STATE — WHAT IS BUILT
 
-### Dynamic Nutrition Targets (May 2026)
+### Dynamic Nutrition Targets (May 2026) — superseded August 27, 2026
+
+**Superseded by "Fixed-Baseline Nutrition Targets" directly below.** Section kept for history; the calorie/fat/carbs target derivation described here (basal + active calories, 40%/30% split) is no longer live code.
 
 Daily calorie total = `basal_calories + active_calories` from `daily_entries`. If either field is null, show `—` throughout — no fallback numbers. Fat target = `ROUND((calories × 0.40) / 9)`g. Carbs target = `ROUND((calories × 0.30) / 4)`g. Protein (135g) and Fiber (32g) are fixed. `basal_calories` and `active_calories` use "overwrite if higher" — the webhook writes the incoming value only when the stored value is null or the incoming value is greater, so the figure updates through the day without a smaller or zero value overwriting a real reading. Training section shows Basal / Active / Total energy strip above quick-add pills. Nutrition section shows surplus/deficit line below Calories bar (`--color-status-optimal` when under, `--color-amber` when over, `--fs-label`, only rendered when both consumed and total are non-null and consumed > 0).
 
@@ -59,6 +61,36 @@ Daily calorie total = `basal_calories + active_calories` from `daily_entries`. I
 - `app/page.tsx`: both fields passed as props to `TrainingSection` and `NutritionSection`.
 - `components/sections/NutritionSection.tsx`: `getDailyCalorieTarget()` removed; dynamic calorie/fat/carbs targets computed from props; `MacroBar` accepts nullable target; surplus/deficit line added below Calories bar.
 - `components/sections/TrainingSection.tsx`: energy strip (Basal / Active / Total) added above quick-add pills.
+
+### Fixed-Baseline Nutrition Targets (August 27, 2026)
+
+Replaces the May 2026 Dynamic Nutrition Targets model above. The old model derived calorie/fat/carb targets from `daily_entries.basal_calories + active_calories` — noisy Apple Watch all-day HAE figures that include non-training movement, not just structured training. The new model is a mostly-fixed daily target that only adjusts on days with genuinely high structured training load, sourced from `training_sessions.active_calories` for the currently-navigated date instead.
+
+**Constants and pure function — `lib/nutritionTargets.ts`** (same pure-module pattern as `lib/trainingLoad.ts`, no Supabase calls):
+- `BASE_TEE = 2300`, `TARGET_DEFICIT = 500`, `BASE_CAL_TARGET = 1800` (= TEE − deficit)
+- `PROTEIN_TARGET = 140`, `FIBER_TARGET = 35`, `FAT_TARGET = 60`, `CARB_TARGET = 175` — fixed, never adjusted
+- `TRAINING_OUTLIER_THRESHOLD_KCAL = 750`, `EXCESS_CREDIT_RATE = 0.5`, `CALORIE_CEILING = 2100`
+- `computeNutritionTargets(todayTrainingKcal)`: below/at the 750kcal threshold, returns the fixed baseline (`adjustment.active = false`). Above it, `excess = todayTrainingKcal − 750`, `addedKcal = round(min(excess × 0.5, 2100 − 1800))`, `calories = 1800 + addedKcal`, `addedCarbs = round(addedKcal / 4)`, `carbs = 175 + addedCarbs`. Protein/fat/fiber never change. `adjustment.active = true`.
+
+**Training-kcal input:** `todayTrainingKcal` is the sum of `active_calories` across `entry.training.sessions` for the currently-navigated date. `entry.training.sessions` was already being passed into `NutritionSection` as the `sessions` prop (same data `TrainingSection`/Training Load already use) — no new query or fetch/prop-threading was needed. Computed inline in `NutritionSection.tsx`; `basalCalories`/`activeCalories` props (and the `entry.basal_calories`/`entry.active_calories` pass-through in `app/page.tsx`) were removed from `NutritionSection` since nothing in it reads them anymore. `TrainingSection` still receives `basalCalories`/`activeCalories` for its own energy strip — untouched.
+
+**Nutrition section UI (`components/sections/NutritionSection.tsx`):**
+- Protein and Fiber bars: unchanged fill-toward-target rendering; `target.max` now sourced from `targets.protein`/`targets.fiber` instead of `MACRO_TARGETS.protein.max`/`MACRO_TARGETS.fiber.max` directly (same numeric values, 140/35 — no visual change).
+- Carbs and Fat bars: unchanged fill-toward-target rendering; `target.max` sourced from `targets.carbs`/`targets.fat` (carbs reflects the training-day credit when active).
+- **Calories → "remaining" display:** the old consumed/target progress bar is gone. `remaining = target − consumed`. Large number reads `"{remaining} kcal left"` (remaining ≥ 0) or `"{abs(remaining)} kcal over"` (remaining < 0) — no clamping to zero. Colour: `--color-status-optimal` (remaining ≥ 150) / `--color-amber` (0 ≤ remaining < 150) / `--color-danger` (remaining < 0). Only rendered once `day` (the fetched day response) is non-null — same "don't show a number before real data exists" convention as the rest of the component; on a day with zero meals logged it correctly shows the full target as remaining, not `—`.
+- **Adjustment note:** when `adjustment.active`, a small always-visible `--fs-label` line reads `"Training day: +{addedKcal} kcal, +{addedCarbs}g carbs"` directly below the remaining-calories number. Absent when not active.
+- **Tap-to-reveal TEE breakdown:** tapping the remaining-calories number toggles a local `showTeeBreakdown` boolean (component state, not persisted — same tap-to-reveal pattern as the VO2 sparkline). Reveals `"{target} kcal target (2300 TEE − 500 deficit)"` on non-adjusted days, or `"{target} kcal target (2300 TEE − 500 deficit + {addedKcal} today's training)"` on adjusted days.
+
+**Explicitly not touched (confirmed):**
+- **Behavior Score (`lib/scores.ts → behaviorScore()`):** its active-calories component (weight 15%) already reads from `training_sessions.active_calories` summed + `cycling_calories`, not `daily_entries.active_calories` — this change doesn't affect it at all. No edits made.
+- **Training tab's Basal/Active/Total energy strip (`components/sections/TrainingSection.tsx`):** still reads `entry.basal_calories`/`entry.active_calories` (the all-day Apple HAE figures) exactly as before. Unchanged.
+- Protein/Carbs/Fat/Fiber bars stay fill-toward-target — none of them switch to a "remaining" display, only Calories does.
+- No DB migrations — `training_sessions.active_calories` already existed and was already summed elsewhere (Training Load).
+
+**Files changed:**
+- `lib/nutritionTargets.ts` (new): constants + `computeNutritionTargets()`.
+- `components/sections/NutritionSection.tsx`: `basalCalories`/`activeCalories` props removed; `dailyCalories`/`fatTarget`/`carbsTarget`/`calorieTargetRange`/`calorieDiff` derivation removed; `todayTrainingKcal` computed from the `sessions` prop; `computeNutritionTargets()` wired in; Calories bar replaced with the remaining-calories display, adjustment note, and tap-to-reveal TEE breakdown (`showTeeBreakdown` state added).
+- `app/page.tsx`: `basalCalories={entry.basal_calories}` / `activeCalories={entry.active_calories}` removed from the `<NutritionSection>` call (still passed to `<TrainingSection>`, untouched).
 
 ### Navigation (4 tabs — restructured April 30, 2026)
 
@@ -823,6 +855,7 @@ Supplement confirm route built. All three sessions complete — push notificatio
 5. Responsive design / mobile layout
 6. Apple Health XML import — deferred indefinitely
 7. Regression analysis — revisit July 2026
+8. Next-day carryover/compensation for calorie-overshoot days — explicitly deferred when the Fixed-Baseline Nutrition Targets model (August 27, 2026) was built. Not designed, not built.
 
 ### Greeting — resolved (April 28, 2026; content replaced July 12, 2026)
 
