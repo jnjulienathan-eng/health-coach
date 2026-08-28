@@ -1378,14 +1378,36 @@ function ScreenScan({
         if (stopped) return
         scanner = new mod.Html5Qrcode(SCANNER_DIV_ID)
         scannerRef.current = scanner as unknown as { stop: () => Promise<void>; clear: () => void }
-        await scanner.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 260, height: 140 } },
-          (decoded) => { void handleBarcode(decoded) },
-          () => { /* per-frame decode failures are normal — ignore */ },
-        )
+
+        // On iOS, backgrounding then resuming the installed home-screen PWA
+        // can leave getUserMedia() permanently pending — no permission
+        // prompt, no rejection, camera just never starts. Race a timeout so
+        // that hang surfaces the normal error/retry UI instead of a dead
+        // screen. Cleared below if start() settles first.
+        let timeoutId: ReturnType<typeof setTimeout> | undefined
+        const timeout = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Camera did not respond. Try again.')), 7000)
+        })
+        try {
+          await Promise.race([
+            scanner.start(
+              { facingMode: 'environment' },
+              { fps: 10, qrbox: { width: 260, height: 140 } },
+              (decoded) => { void handleBarcode(decoded) },
+              () => { /* per-frame decode failures are normal — ignore */ },
+            ),
+            timeout,
+          ])
+        } finally {
+          if (timeoutId) clearTimeout(timeoutId)
+        }
       } catch (e) {
         if (stopped) return
+        // Best-effort: if we bailed out via the timeout above, a late-
+        // resolving start() could still bring the camera up in the
+        // background after we've already shown the error — stop it so it
+        // doesn't keep running (or fire a decode) behind the error screen.
+        if (scanner) { try { void scanner.stop().then(() => scanner?.clear()) } catch {} }
         const msg = e instanceof Error ? e.message : String(e)
         setError(/Permission|NotAllowed/i.test(msg)
           ? 'Camera access denied. Allow it in your browser settings, then try again.'
