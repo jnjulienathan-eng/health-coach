@@ -650,7 +650,8 @@ export default function NutritionSection({ currentDate, sessions = [], basalCalo
           />
           {day && (() => {
             const burned = (basalCalories != null && activeCalories != null) ? basalCalories + activeCalories : null
-            const fmt = (n: number | null) => n != null ? r(n).toLocaleString() + ' kcal' : '—'
+            const fmt = (n: number | null): { value: string; unit: string | null } =>
+              n != null ? { value: r(n).toLocaleString(), unit: 'kcal' } : { value: '—', unit: null }
             return (
               <div>
                 <div
@@ -661,11 +662,11 @@ export default function NutritionSection({ currentDate, sessions = [], basalCalo
                   style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-xs)', cursor: 'pointer' }}
                 >
                   {([
-                    { label: 'Eaten',     value: fmt(consumed),        color: 'var(--color-navy)' },
-                    { label: 'Target',    value: fmt(targets.calories), color: 'var(--color-navy)' },
-                    { label: 'Left',      value: fmt(remaining),       color: remainingColor },
-                    { label: 'Burned',    value: fmt(burned),          color: 'var(--color-navy)' },
-                  ] as { label: string; value: string; color: string }[]).map(({ label, value, color }) => (
+                    { label: 'Eaten',     ...fmt(consumed),        color: 'var(--color-navy)' },
+                    { label: 'Target',    ...fmt(targets.calories), color: 'var(--color-navy)' },
+                    { label: 'Left',      ...fmt(remaining),       color: remainingColor },
+                    { label: 'Burned',    ...fmt(burned),          color: 'var(--color-navy)' },
+                  ] as { label: string; value: string; unit: string | null; color: string }[]).map(({ label, value, unit, color }) => (
                     <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 0', minWidth: 0 }}>
                       <span style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-secondary)', overflowWrap: 'anywhere' }}>
                         {label}
@@ -673,6 +674,11 @@ export default function NutritionSection({ currentDate, sessions = [], basalCalo
                       <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color }}>
                         {value}
                       </span>
+                      {unit && (
+                        <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-bold)', color }}>
+                          {unit}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
