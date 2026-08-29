@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData, Glp1Injection } from './types'
+import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData, Glp1Injection, BodyCompositionData } from './types'
 import { emptyEntry } from './types'
 
 export const supabase = createClient(
@@ -562,6 +562,7 @@ export async function getVo2SparklineData(): Promise<BiomarkerReading[]> {
 // Up to 90 most-recent weight readings, reversed to chronological order
 // (query fetches newest-first via .limit so the cap keeps the most recent
 // readings, then reverses for left-to-right chronological plotting).
+// Superseded by getBodyCompositionData() below — remove once nothing calls it.
 export async function getWeightSparklineData(): Promise<BiomarkerReading[]> {
   const { data, error } = await supabase
     .from('biomarker_readings')
@@ -573,6 +574,153 @@ export async function getWeightSparklineData(): Promise<BiomarkerReading[]> {
 
   if (error) throw error
   return ((data ?? []) as BiomarkerReading[]).reverse()
+}
+
+// ─── getBodyCompositionData ────────────────────────────────────────
+// Body Composition card (v3). Two independent anchors:
+//   - Anchor A: the earliest weight row ever recorded — feeds totalDelta
+//     (headline "since Feb" number). Not date-windowed.
+//   - Anchor B: the first date with BOTH a weight and a body_fat_pct
+//     reading — feeds the fat/lean split, since fat mass can't be computed
+//     before the first body-composition scan. Also not date-windowed — the
+//     split always runs from the actual first paired reading, however old.
+// Fat mass (weight × body_fat_pct / 100) is computed here and never stored;
+// it only exists on dates where both a weight and a body_fat_pct row exist —
+// never carried forward onto a date missing a body-fat reading.
+// Chart series are the exception: those ARE windowed, to the trailing 60
+// calendar days, at full density (one entry per day, null where no reading —
+// same shape the Dashboard HrvChart already segments its polylines around).
+export async function getBodyCompositionData(): Promise<BodyCompositionData> {
+  const today = new Date()
+  const windowStart = new Date(today)
+  windowStart.setDate(windowStart.getDate() - 59)
+
+  const [markersRes, earliestWeightRes, latestWeightRes] = await Promise.all([
+    supabase
+      .from('biomarker_readings')
+      .select('*')
+      .eq('user_id', 'julie')
+      .in('marker', ['body_fat_pct', 'smm_kg', 'waist_cm'])
+      .order('recorded_on', { ascending: true })
+      .limit(500),
+    supabase
+      .from('biomarker_readings')
+      .select('*')
+      .eq('user_id', 'julie')
+      .eq('marker', 'weight')
+      .order('recorded_on', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('biomarker_readings')
+      .select('*')
+      .eq('user_id', 'julie')
+      .eq('marker', 'weight')
+      .order('recorded_on', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  if (markersRes.error) throw markersRes.error
+  if (earliestWeightRes.error) throw earliestWeightRes.error
+  if (latestWeightRes.error) throw latestWeightRes.error
+
+  const markerRows  = (markersRes.data ?? []) as BiomarkerReading[]
+  const bodyFatRows = markerRows.filter(r => r.marker === 'body_fat_pct')
+  const smmRows     = markerRows.filter(r => r.marker === 'smm_kg')
+  const waistRows   = markerRows.filter(r => r.marker === 'waist_cm')
+
+  const anchorARow      = earliestWeightRes.data as BiomarkerReading | null
+  const latestWeightRow = latestWeightRes.data as BiomarkerReading | null
+
+  // Query 4: weight rows on the same dates as the body_fat_pct rows above —
+  // this is what lets fat mass be computed without a per-date round trip.
+  const bodyFatDates = bodyFatRows.map(r => r.recorded_on)
+  const weightForBodyFatDatesRes = bodyFatDates.length > 0
+    ? await supabase
+        .from('biomarker_readings')
+        .select('*')
+        .eq('user_id', 'julie')
+        .eq('marker', 'weight')
+        .in('recorded_on', bodyFatDates)
+    : { data: [] as BiomarkerReading[], error: null }
+
+  if (weightForBodyFatDatesRes.error) throw weightForBodyFatDatesRes.error
+
+  const weightByDate: Record<string, number> = {}
+  for (const row of (weightForBodyFatDatesRes.data ?? []) as BiomarkerReading[]) {
+    weightByDate[row.recorded_on] = row.value
+  }
+  const bodyFatByDate: Record<string, number> = {}
+  for (const row of bodyFatRows) bodyFatByDate[row.recorded_on] = row.value
+  const smmByDate: Record<string, number> = {}
+  for (const row of smmRows) smmByDate[row.recorded_on] = row.value
+  const waistByDate: Record<string, number> = {}
+  for (const row of waistRows) waistByDate[row.recorded_on] = row.value
+
+  const fatMassAt = (date: string) => weightByDate[date] * bodyFatByDate[date] / 100
+
+  // Paired dates = dates with both a weight and a body_fat_pct reading, ascending.
+  const pairedDates = bodyFatDates.filter(d => weightByDate[d] !== undefined).sort()
+  const anchorBDate       = pairedDates[0] ?? null
+  const latestPairedDate  = pairedDates[pairedDates.length - 1] ?? null
+
+  const anchorA = anchorARow ? { date: anchorARow.recorded_on, value: anchorARow.value } : null
+  const currentWeight = latestWeightRow ? latestWeightRow.value : null
+  const totalDelta = (currentWeight != null && anchorA != null) ? currentWeight - anchorA.value : null
+
+  let deltaFat: number | null = null
+  let deltaWeight: number | null = null
+  let deltaLeanWater: number | null = null
+  let fatShare: number | null = null
+  if (anchorBDate && latestPairedDate) {
+    deltaFat = fatMassAt(latestPairedDate) - fatMassAt(anchorBDate)
+    deltaWeight = weightByDate[latestPairedDate] - weightByDate[anchorBDate]
+    deltaLeanWater = deltaWeight - deltaFat
+    fatShare = deltaWeight !== 0 ? (deltaFat / deltaWeight) * 100 : null
+  }
+  const anchorB = anchorBDate ? { date: anchorBDate } : null
+
+  const latestMuscle     = smmRows.length     > 0 ? { value: smmRows[smmRows.length - 1].value,         date: smmRows[smmRows.length - 1].recorded_on }     : null
+  const latestBodyFatPct = bodyFatRows.length > 0 ? { value: bodyFatRows[bodyFatRows.length - 1].value, date: bodyFatRows[bodyFatRows.length - 1].recorded_on } : null
+  const latestWaist      = waistRows.length   > 0 ? { value: waistRows[waistRows.length - 1].value,     date: waistRows[waistRows.length - 1].recorded_on }   : null
+
+  // 60-day window, full density — one entry per calendar day, nulls left in
+  // place for the component to segment around (no thinning, no smoothing).
+  const chart1: BodyCompositionData['chart1'] = []
+  const chart2: BodyCompositionData['chart2'] = []
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(windowStart)
+    d.setDate(d.getDate() + i)
+    const dateStr = d.toISOString().split('T')[0]
+    const hasFatPair = weightByDate[dateStr] !== undefined && bodyFatByDate[dateStr] !== undefined
+    chart1.push({
+      date: dateStr,
+      fatMass: hasFatPair ? fatMassAt(dateStr) : null,
+      smmKg: smmByDate[dateStr] ?? null,
+    })
+    chart2.push({
+      date: dateStr,
+      waistCm: waistByDate[dateStr] ?? null,
+    })
+  }
+
+  return {
+    currentWeight,
+    anchorA,
+    totalDelta,
+    anchorB,
+    latestPairedDate,
+    deltaFat,
+    deltaWeight,
+    deltaLeanWater,
+    fatShare,
+    latestMuscle,
+    latestBodyFatPct,
+    latestWaist,
+    chart1,
+    chart2,
+  }
 }
 
 // ─── getVo2Rolling60DayAvg ────────────────────────────────────────
@@ -745,14 +893,19 @@ export async function saveHba1cReading(value: number, recordedOn: string): Promi
 }
 
 // ─── saveBodyScanReading ──────────────────────────────────────────
-// Body Scan measurements (Body Fat %, Waist Circumference, Visceral Fat) are
-// manual lab entries — upsert on (user_id, marker, recorded_on) so re-saving
-// a value for a date that's already logged overwrites it instead of hitting
-// the unique constraint. Not insert-only like saveVo2Reading, and not the
-// select-then-conditional-upsert of the weight webhook — a plain upsert is
-// correct here since the user is knowingly editing that date's value.
+// Manual biomarker entry — upsert on (user_id, marker, recorded_on) so
+// re-saving a value for a date that's already logged overwrites it instead
+// of hitting the unique constraint. Not insert-only like saveVo2Reading, and
+// not the select-then-conditional-upsert of the weight/body-fat/waist
+// webhook — a plain upsert is correct here since the user is knowingly
+// editing that date's value.
+// 'body_fat_pct' | 'waist_cm' | 'visceral_fat_l' are legacy manual-entry
+// markers from the pre-v3 Body Scan subsection (now webhook-only, see
+// health-import route). 'smm_kg' (skeletal muscle mass) is manual-only —
+// HealthKit has no corresponding type — and is the only marker the v3
+// Body Composition card's Muscle tile writes through this function.
 export async function saveBodyScanReading(
-  marker: 'body_fat_pct' | 'waist_cm' | 'visceral_fat_l',
+  marker: 'body_fat_pct' | 'waist_cm' | 'visceral_fat_l' | 'smm_kg',
   value: number,
   unit: string,
   recordedOn: string

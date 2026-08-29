@@ -236,6 +236,26 @@ export interface GoalsData {
   appointments: HealthAppointment[]
 }
 
+// ─── Body Composition card (v3) ────────────────────────────────────
+// All derived values (totalDelta, fat mass, the anchorB split) are computed
+// at read time in getBodyCompositionData() — none of them are stored markers.
+export interface BodyCompositionData {
+  currentWeight: number | null
+  anchorA: { date: string; value: number } | null
+  totalDelta: number | null
+  anchorB: { date: string } | null
+  latestPairedDate: string | null
+  deltaFat: number | null
+  deltaWeight: number | null
+  deltaLeanWater: number | null
+  fatShare: number | null
+  latestMuscle: { value: number; date: string } | null
+  latestBodyFatPct: { value: number; date: string } | null
+  latestWaist: { value: number; date: string } | null
+  chart1: { date: string; fatMass: number | null; smmKg: number | null }[]
+  chart2: { date: string; waistCm: number | null }[]
+}
+
 // ─── Score helpers ────────────────────────────────────────────────
 export function scoreColor(score: number): string {
   if (score >= 75) return 'var(--color-success)'
