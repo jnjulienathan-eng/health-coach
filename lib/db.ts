@@ -398,7 +398,9 @@ export async function getGoalsData(): Promise<GoalsData> {
       .from('biomarker_readings')
       .select('*')
       .eq('user_id', 'julie')
-      .in('marker', ['vo2_max', 'ldl', 'hdl', 'hba1c', 'weight', 'body_fat_pct', 'waist_cm', 'visceral_fat_l'])
+      // 'visceral_fat_l' dropped from this filter — dead marker, rows retained
+      // in the table but unread (see BODYCIPHER.md).
+      .in('marker', ['vo2_max', 'ldl', 'hdl', 'hba1c', 'weight', 'body_fat_pct', 'waist_cm'])
       .order('recorded_on', { ascending: false }),
     supabase
       .from('daily_entries')
@@ -556,24 +558,6 @@ export async function getVo2SparklineData(): Promise<BiomarkerReading[]> {
 
   if (error) throw error
   return (data ?? []) as BiomarkerReading[]
-}
-
-// ─── getWeightSparklineData ────────────────────────────────────────
-// Up to 90 most-recent weight readings, reversed to chronological order
-// (query fetches newest-first via .limit so the cap keeps the most recent
-// readings, then reverses for left-to-right chronological plotting).
-// Superseded by getBodyCompositionData() below — remove once nothing calls it.
-export async function getWeightSparklineData(): Promise<BiomarkerReading[]> {
-  const { data, error } = await supabase
-    .from('biomarker_readings')
-    .select('*')
-    .eq('user_id', 'julie')
-    .eq('marker', 'weight')
-    .order('recorded_on', { ascending: false })
-    .limit(90)
-
-  if (error) throw error
-  return ((data ?? []) as BiomarkerReading[]).reverse()
 }
 
 // ─── getBodyCompositionData ────────────────────────────────────────

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg, getWeightSparklineData, saveBodyScanReading, loadGlp1Injections, logGlp1Injection, getBodyCompositionData } from '@/lib/db'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg, saveBodyScanReading, loadGlp1Injections, logGlp1Injection, getBodyCompositionData } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment, Glp1Injection, BodyCompositionData } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
@@ -215,14 +215,6 @@ function vo2NextTier(value: number): string | null {
 }
 
 // ─── Body Composition helpers ──────────────────────────────────────
-// Target tick uses the same bar+tick treatment as the VO2 Max spectrum bar's
-// target-at-40 tick, without the named Poor/Fair/Good bands VO2 has — weight
-// has no such tiering. Scale runs 0–100kg so the ~65kg target and typical
-// current readings sit comfortably left of the bar's midpoint, mirroring how
-// VO2's 40 target sits well inside its own 0–50 scale.
-const WEIGHT_SCALE_MAX = 100
-const WEIGHT_TARGET_KG = 65
-
 function fmtSparkDate(s: string): string {
   return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
@@ -1439,120 +1431,6 @@ function HistoryRow({ entry, onSelectDate }: { entry: DailyEntry; onSelectDate: 
   )
 }
 
-// ─── Body Scan row (Body Composition card — Log/Update inline form,
-// same interaction pattern as the HbA1c row in the Glucose Stability card) ──
-function BodyScanRow({
-  label, reading, unit, precision, onSave,
-}: {
-  label: string
-  reading: BiomarkerReading | null
-  unit: string
-  precision: number
-  onSave: (value: number, date: string) => Promise<void>
-}) {
-  const [open, setOpen] = useState(false)
-  const [value, setValue] = useState('')
-  const [date, setDate] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  function openEntry(e: React.MouseEvent) {
-    e.stopPropagation()
-    setValue(reading ? String(reading.value) : '')
-    setDate(new Date().toISOString().split('T')[0])
-    setError(null)
-    setOpen(v => !v)
-  }
-
-  async function handleSave() {
-    const val = parseFloat(value)
-    if (isNaN(val)) return
-    const d = date || new Date().toISOString().split('T')[0]
-    setSaving(true)
-    setError(null)
-    try {
-      await onSave(val, d)
-      setOpen(false)
-      setValue('')
-      setDate('')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
-            {label}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
-            {reading != null
-              ? new Date(reading.recorded_on + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-              : 'Not yet logged'}
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {reading != null && (
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-text-primary)' }}>
-                {parseFloat(reading.value.toFixed(precision))}
-              </span>
-              <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>{unit}</span>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={openEntry}
-            style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
-          >
-            {reading != null ? 'Update' : 'Log'}
-          </button>
-        </div>
-      </div>
-
-      {open && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>Value ({unit})</div>
-              <input
-                type="number"
-                step="0.1"
-                value={value}
-                onChange={e => setValue(e.target.value)}
-                style={{ width: '100%', minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--fs-body)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', boxSizing: 'border-box' }}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>Date</div>
-              <input
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                style={{ width: '100%', minHeight: 48, padding: 'var(--space-sm) var(--space-md)', fontSize: 'var(--fs-body)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-          {error && <div style={{ fontSize: 12, color: 'var(--color-danger)' }}>{error}</div>}
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleSave}
-            disabled={saving || !value}
-            style={{ height: 52, opacity: saving ? 0.6 : 1 }}
-          >
-            {saving ? 'Saving…' : `Save ${label}`}
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ─── Main app ─────────────────────────────────────────────────────
 export default function App() {
   const [showSplash,    setShowSplash]    = useState(true)
@@ -1590,9 +1468,6 @@ export default function App() {
 
   // ── Body Composition state ────────────────────────────────────────
   const [bodyCompExpanded,     setBodyCompExpanded]     = useState(false)
-  const [weightSparkline,      setWeightSparkline]      = useState<BiomarkerReading[]>([])
-  const [weightSparklineLoaded, setWeightSparklineLoaded] = useState(false)
-  const [weightActiveIndex,    setWeightActiveIndex]    = useState<number | null>(null)
   const [bodyComp,             setBodyComp]             = useState<BodyCompositionData | null>(null)
   const [bodyCompLoaded,       setBodyCompLoaded]       = useState(false)
   const [chart1ActiveIndex,    setChart1ActiveIndex]    = useState<number | null>(null)
