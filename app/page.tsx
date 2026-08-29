@@ -305,18 +305,23 @@ function BodyCompFatMuscleChart({
   const range = maxV - minV || 1
   const yOf = (v: number) => BC_CHART_PAD_Y + BC_CHART_H * (1 - (v - minV) / range)
 
-  const buildSegments = (values: (number | null)[]) => {
-    const segments: string[][] = []
-    let cur: string[] = []
-    values.forEach((v, i) => {
-      if (v == null) { if (cur.length) { segments.push(cur); cur = [] } }
-      else cur.push(`${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`)
-    })
-    if (cur.length) segments.push(cur)
-    return segments
-  }
-  const fatSegments = buildSegments(data.map(d => d.fatMass))
-  const smmSegments = buildSegments(data.map(d => d.smmKg))
+  // Connect each series' own actual readings directly, in date order,
+  // regardless of how many empty calendar days separate them — `data` is a
+  // dense 60-slot-per-day array, but a day with no reading for a series
+  // isn't a gap to render around, it's simply not a point on that series'
+  // line. (Breaking on every null here — i.e. on every empty calendar day —
+  // was the bug: real readings are rarely on literally adjacent days, so
+  // almost every pair landed in its own 1-point segment, and a polyline
+  // with one coordinate renders nothing. A series with exactly one reading
+  // still correctly renders as a single dot with no line — nothing to
+  // connect it to.)
+  const buildLine = (values: (number | null)[]): string =>
+    values
+      .map((v, i) => (v == null ? null : `${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`))
+      .filter((p): p is string => p != null)
+      .join(' ')
+  const fatLine = buildLine(data.map(d => d.fatMass))
+  const smmLine = buildLine(data.map(d => d.smmKg))
 
   const labelStep = Math.ceil(n / 5) || 1
   const active = activeIndex !== null ? data[activeIndex] : null
@@ -326,12 +331,8 @@ function BodyCompFatMuscleChart({
   return (
     <svg viewBox={`0 0 ${BC_CHART_W} 100`} width="100%" style={{ display: 'block' }}>
       <rect x="0" y="0" width={BC_CHART_W} height="100" fill="transparent" pointerEvents="all" onClick={() => onActiveChange(null)} />
-      {fatSegments.map((pts, si) => (
-        <polyline key={`f${si}`} points={pts.join(' ')} fill="none" stroke="var(--color-navy)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      ))}
-      {smmSegments.map((pts, si) => (
-        <polyline key={`m${si}`} points={pts.join(' ')} fill="none" stroke="var(--color-amber)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      ))}
+      <polyline points={fatLine} fill="none" stroke="var(--color-navy)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <polyline points={smmLine} fill="none" stroke="var(--color-amber)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
       {data.map((d, i) => d.fatMass != null && (
         <circle key={`fd${i}`} cx={xOf(i)} cy={yOf(d.fatMass)} r={i === activeIndex ? 5 : 2.5} fill="var(--color-navy)" />
       ))}
@@ -409,13 +410,13 @@ function BodyCompWaistChart({
   const range = maxV - minV || 1
   const yOf = (v: number) => BC_CHART_PAD_Y + BC_CHART_H * (1 - (v - minV) / range)
 
-  const segments: string[][] = []
-  let cur: string[] = []
-  data.forEach((d, i) => {
-    if (d.waistCm == null) { if (cur.length) { segments.push(cur); cur = [] } }
-    else cur.push(`${xOf(i).toFixed(1)},${yOf(d.waistCm).toFixed(1)}`)
-  })
-  if (cur.length) segments.push(cur)
+  // Connect the series' own actual readings directly, in date order — see
+  // buildLine's comment in BodyCompFatMuscleChart above for why this isn't
+  // gap-segmented against the dense 60-day array.
+  const waistLine = data
+    .map((d, i) => (d.waistCm == null ? null : `${xOf(i).toFixed(1)},${yOf(d.waistCm).toFixed(1)}`))
+    .filter((p): p is string => p != null)
+    .join(' ')
 
   const labelStep = Math.ceil(n / 5) || 1
   const active = activeIndex !== null ? data[activeIndex] : null
@@ -434,9 +435,7 @@ function BodyCompWaistChart({
       <line x1={BC_CHART_PAD_X} y1={targetY} x2={BC_CHART_W - BC_CHART_PAD_X} y2={targetY} stroke="var(--color-amber)" strokeOpacity="0.7" strokeWidth="1.5" strokeDasharray="4 4" />
       <line x1={BC_CHART_W - BC_CHART_PAD_X} y1={targetY - 5} x2={BC_CHART_W - BC_CHART_PAD_X} y2={targetY + 5} stroke="var(--color-navy)" strokeWidth="2" />
       <text x={BC_CHART_PAD_X} y="12" textAnchor="start" fontSize="8" style={{ fill: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>target {WAIST_TARGET_CM}</text>
-      {segments.map((pts, si) => (
-        <polyline key={si} points={pts.join(' ')} fill="none" stroke="var(--color-navy)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      ))}
+      <polyline points={waistLine} fill="none" stroke="var(--color-navy)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
       {data.map((d, i) => d.waistCm != null && (
         <circle key={i} cx={xOf(i)} cy={yOf(d.waistCm)} r={i === activeIndex ? 5 : 2.5} fill="var(--color-navy)" />
       ))}
