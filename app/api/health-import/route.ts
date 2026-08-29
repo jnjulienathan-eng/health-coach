@@ -48,6 +48,8 @@ const RECOGNIZED_METRIC_NAMES = new Set([
   'vo2_max',
   'heart_rate_variability',
   'weight_body_mass',
+  'body_fat_percentage',
+  'waist_circumference',
 ])
 
 // ── Metric data point ────────────────────────────────────────────────────────
@@ -132,6 +134,8 @@ export async function POST(req: NextRequest) {
     const byDate: Record<string, DayMetrics> = {}
     const vo2MaxByDate: Record<string, number> = {}
     const weightByDate: Record<string, number> = {}
+    const bodyFatByDate: Record<string, number> = {}
+    const waistByDate: Record<string, number> = {}
 
     for (const metric of metrics) {
       for (const point of metric.data ?? []) {
@@ -165,10 +169,16 @@ export async function POST(req: NextRequest) {
         } else if (metric.name === 'heart_rate_variability' && point.qty !== undefined) {
           byDate[date].apple_hrv_avg = point.qty
         } else if (metric.name === 'weight_body_mass' && point.qty !== undefined) {
-          // 'weight_body_mass' is HAE's standard identifier for Apple's body-mass
-          // metric — not yet confirmed against a real payload (see BODYCIPHER.md).
+          // 'weight_body_mass' — HAE's identifier for Apple's body-mass metric,
+          // confirmed against a real payload 29 Aug 2026 (see BODYCIPHER.md).
           const kg = metric.units === 'lb' ? point.qty * 0.453592 : point.qty
           weightByDate[date] = Math.round(kg * 10) / 10
+        } else if (metric.name === 'body_fat_percentage' && point.qty !== undefined) {
+          // Confirmed against a real payload 29 Aug 2026 — arrives in '%', no conversion.
+          bodyFatByDate[date] = Math.round(point.qty * 10) / 10
+        } else if (metric.name === 'waist_circumference' && point.qty !== undefined) {
+          // Confirmed against a real payload 29 Aug 2026 — arrives in 'cm', no conversion.
+          waistByDate[date] = Math.round(point.qty * 10) / 10
         }
       }
     }
@@ -355,6 +365,84 @@ export async function POST(req: NextRequest) {
       console.log(`[health-import] weight ${date}: ${value}kg — ${stored !== null ? `updated (was ${stored}kg)` : 'imported'}`)
     }
 
+    // ── BODY FAT % → biomarker_readings (overwrite-on-change, same pattern
+    // as weight above — the webhook always wins, no manual-entry protection) ──
+    let bodyFatImported = 0
+    for (const [date, value] of Object.entries(bodyFatByDate)) {
+      const { data: existing, error: selectError } = await supabase
+        .from('biomarker_readings')
+        .select('value')
+        .eq('user_id', 'julie')
+        .eq('marker', 'body_fat_pct')
+        .eq('recorded_on', date)
+        .maybeSingle()
+
+      if (selectError) {
+        console.error(`[health-import] body_fat_pct ${date}: select failed —`, JSON.stringify(selectError))
+        throw new Error(`biomarker_readings select failed for body_fat_pct ${date}: ${selectError.message ?? JSON.stringify(selectError)}`)
+      }
+
+      const stored = (existing as { value: number } | null)?.value ?? null
+      if (stored !== null && stored === value) {
+        console.log(`[health-import] body_fat_pct ${date}: unchanged (${value}%) — skipped`)
+        continue
+      }
+
+      const { error } = await supabase
+        .from('biomarker_readings')
+        .upsert(
+          { user_id: 'julie', marker: 'body_fat_pct', value, unit: '%', recorded_on: date },
+          { onConflict: 'user_id,marker,recorded_on' }
+        )
+
+      if (error) {
+        console.error(`[health-import] body_fat_pct ${date}: upsert failed —`, JSON.stringify(error))
+        throw new Error(`biomarker_readings upsert failed for body_fat_pct ${date}: ${error.message ?? JSON.stringify(error)}`)
+      }
+
+      bodyFatImported++
+      console.log(`[health-import] body_fat_pct ${date}: ${value}% — ${stored !== null ? `updated (was ${stored}%)` : 'imported'}`)
+    }
+
+    // ── WAIST → biomarker_readings (overwrite-on-change, same pattern as
+    // weight above — the webhook always wins, no manual-entry protection) ────
+    let waistImported = 0
+    for (const [date, value] of Object.entries(waistByDate)) {
+      const { data: existing, error: selectError } = await supabase
+        .from('biomarker_readings')
+        .select('value')
+        .eq('user_id', 'julie')
+        .eq('marker', 'waist_cm')
+        .eq('recorded_on', date)
+        .maybeSingle()
+
+      if (selectError) {
+        console.error(`[health-import] waist_cm ${date}: select failed —`, JSON.stringify(selectError))
+        throw new Error(`biomarker_readings select failed for waist_cm ${date}: ${selectError.message ?? JSON.stringify(selectError)}`)
+      }
+
+      const stored = (existing as { value: number } | null)?.value ?? null
+      if (stored !== null && stored === value) {
+        console.log(`[health-import] waist_cm ${date}: unchanged (${value}cm) — skipped`)
+        continue
+      }
+
+      const { error } = await supabase
+        .from('biomarker_readings')
+        .upsert(
+          { user_id: 'julie', marker: 'waist_cm', value, unit: 'cm', recorded_on: date },
+          { onConflict: 'user_id,marker,recorded_on' }
+        )
+
+      if (error) {
+        console.error(`[health-import] waist_cm ${date}: upsert failed —`, JSON.stringify(error))
+        throw new Error(`biomarker_readings upsert failed for waist_cm ${date}: ${error.message ?? JSON.stringify(error)}`)
+      }
+
+      waistImported++
+      console.log(`[health-import] waist_cm ${date}: ${value}cm — ${stored !== null ? `updated (was ${stored}cm)` : 'imported'}`)
+    }
+
     // ── WORKOUTS → training_sessions ────────────────────────────────────────
     for (const workout of workouts) {
       const date = extractDate(workout.start)
@@ -402,8 +490,8 @@ export async function POST(req: NextRequest) {
       console.log(`[health-import] workout ${date} ${activityType} ${durationMin}min ${calories != null ? calories + 'kcal' : 'no calories'}: imported`)
     }
 
-    console.log(`[health-import] done — metrics: ${metricsImported} written, vo2_max: ${vo2MaxImported} written, weight: ${weightImported} written, workouts: ${workoutsImported} written`)
-    return NextResponse.json({ imported: { metrics: metricsImported, vo2Max: vo2MaxImported, weight: weightImported, workouts: workoutsImported } })
+    console.log(`[health-import] done — metrics: ${metricsImported} written, vo2_max: ${vo2MaxImported} written, weight: ${weightImported} written, body_fat_pct: ${bodyFatImported} written, waist_cm: ${waistImported} written, workouts: ${workoutsImported} written`)
+    return NextResponse.json({ imported: { metrics: metricsImported, vo2Max: vo2MaxImported, weight: weightImported, bodyFat: bodyFatImported, waist: waistImported, workouts: workoutsImported } })
 
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err)
