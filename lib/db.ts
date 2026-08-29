@@ -666,7 +666,8 @@ export async function getBodyCompositionData(): Promise<BodyCompositionData> {
   const latestPairedDate  = pairedDates[pairedDates.length - 1] ?? null
 
   const anchorA = anchorARow ? { date: anchorARow.recorded_on, value: anchorARow.value } : null
-  const currentWeight = latestWeightRow ? latestWeightRow.value : null
+  const currentWeight     = latestWeightRow ? latestWeightRow.value : null
+  const currentWeightDate = latestWeightRow ? latestWeightRow.recorded_on : null
   const totalDelta = (currentWeight != null && anchorA != null) ? currentWeight - anchorA.value : null
 
   let deltaFat: number | null = null
@@ -707,6 +708,7 @@ export async function getBodyCompositionData(): Promise<BodyCompositionData> {
 
   return {
     currentWeight,
+    currentWeightDate,
     anchorA,
     totalDelta,
     anchorB,

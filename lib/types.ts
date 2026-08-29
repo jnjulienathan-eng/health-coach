@@ -241,6 +241,7 @@ export interface GoalsData {
 // at read time in getBodyCompositionData() — none of them are stored markers.
 export interface BodyCompositionData {
   currentWeight: number | null
+  currentWeightDate: string | null
   anchorA: { date: string; value: number } | null
   totalDelta: number | null
   anchorB: { date: string } | null
