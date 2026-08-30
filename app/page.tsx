@@ -770,13 +770,13 @@ function getBehaviorBullets(
   const sup = entry.supplements
   const isSick = entry.context.is_sick === true
 
-  const suppLogged = sup.morning_stack_taken || sup.evening_stack_taken || sup.progesterone_taken || sup.estradiol_am_taken || sup.estradiol_pm_taken || sup.testosterone_taken
+  const suppLogged = sup.morning_stack_taken || sup.evening_stack_taken || sup.progesterone_taken || sup.estradiol_am_taken || sup.testosterone_taken
   if (suppLogged) {
     const parts = [
       sup.morning_stack_taken && 'AM',
       sup.evening_stack_taken && 'PM',
       sup.progesterone_taken && 'Prog',
-      (sup.estradiol_am_taken || sup.estradiol_pm_taken) && 'E2',
+      sup.estradiol_am_taken && 'E2',
       sup.testosterone_taken && 'T',
     ].filter(Boolean).join(', ')
     bullets.push({ text: `Supplements taken (${parts})`, ok: true })
@@ -1336,7 +1336,7 @@ function EntryDetail({ entry }: { entry: DailyEntry }) {
     sup.morning_stack_taken ? 'AM ✓'   : null,
     sup.evening_stack_taken ? 'PM ✓'   : null,
     sup.progesterone_taken  ? 'Prog ✓' : null,
-    (sup.estradiol_am_taken || sup.estradiol_pm_taken) ? 'E2 ✓' : null,
+    sup.estradiol_am_taken ? 'E2 ✓' : null,
     sup.testosterone_taken  ? 'T ✓'    : null,
   ].filter(Boolean).join(' · ')
 

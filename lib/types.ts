@@ -69,10 +69,10 @@ export interface SupplementsData {
   progesterone_mg: number | null   // mg per day, e.g. 200
   estradiol_taken: boolean         // RETIRED — replaced by estradiol_am/pm_taken (Aug 2026 split dosing). Do not read/write from new code.
   estradiol_sprays: number | null  // RETIRED — see estradiol_taken
-  estradiol_am_taken: boolean
-  estradiol_am_sprays: number | null  // spray count, e.g. 1
-  estradiol_pm_taken: boolean
-  estradiol_pm_sprays: number | null  // spray count, e.g. 1
+  estradiol_am_taken: boolean          // single daily dose again (Aug 2026 revert), now 2 sprays
+  estradiol_am_sprays: number | null   // spray count, e.g. 2
+  estradiol_pm_taken: boolean          // RETIRED — AM/PM split reverted to AM-only (Aug 2026). Do not read/write from new code.
+  estradiol_pm_sprays: number | null   // RETIRED — see estradiol_pm_taken
   testosterone_taken: boolean
   testosterone_pumps: number | null   // pump count, e.g. 1
   ashwagandha_taken: boolean       // cyclic

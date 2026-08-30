@@ -49,15 +49,15 @@ export function behaviorScore(
   }
 
   // 2. Supplements — 20%: morning 40%, evening 30%, progesterone 15%, estradiol 15%
-  // Estradiol split AM/PM (Aug 2026, twice-daily dosing): "estradiol confirmed"
-  // requires BOTH doses taken — mirrors the old single toggle's all-or-nothing
-  // credit (a lone AM or PM dose is partial-day compliance, not a confirmed
-  // day). estradiol_taken (retired) is no longer read here.
+  // Estradiol reverted to single AM-only dosing (Aug 2026): "estradiol confirmed"
+  // is just estradiol_am_taken. estradiol_pm_taken is now a dead field (see
+  // BODYCIPHER.md) and is no longer read here. estradiol_taken (retired) is
+  // also no longer read here.
   // Testosterone is NOT folded into this locked 40/30/15/15 weighting — adding
   // a 5th bucket would mean re-deriving the split on a scoring model marked
   // "do not change without explicit instruction". Left out pending Julie's call.
   const sup = entry.supplements
-  const estradiolConfirmed = sup.estradiol_am_taken && sup.estradiol_pm_taken
+  const estradiolConfirmed = sup.estradiol_am_taken
   if (sup.morning_stack_taken || sup.evening_stack_taken || sup.progesterone_taken || estradiolConfirmed) {
     const s =
       (sup.morning_stack_taken ? 40 : 0) +
