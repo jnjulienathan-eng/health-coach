@@ -50,6 +50,7 @@ const RECOGNIZED_METRIC_NAMES = new Set([
   'weight_body_mass',
   'body_fat_percentage',
   'waist_circumference',
+  'blood_glucose',
 ])
 
 // ── Metric data point ────────────────────────────────────────────────────────
@@ -150,6 +151,7 @@ export async function POST(req: NextRequest) {
     const weightByDate: Record<string, number> = {}
     const bodyFatByDate: Record<string, number> = {}
     const waistByDate: Record<string, number> = {}
+    const cgmReadings: Array<{ recorded_at: string; value_mmol: number; source: string | null }> = []
 
     for (const metric of metrics) {
       for (const point of metric.data ?? []) {
@@ -193,6 +195,14 @@ export async function POST(req: NextRequest) {
         } else if (metric.name === 'waist_circumference' && point.qty !== undefined) {
           // Confirmed against a real payload 29 Aug 2026 — arrives in 'cm', no conversion.
           waistByDate[date] = Math.round(point.qty * 10) / 10
+        } else if (metric.name === 'blood_glucose' && point.qty !== undefined) {
+          // Confirmed against a real payload 7 Sept 2026 — units mmol/L, no
+          // conversion. One row per reading, not per day — every point in
+          // the metric's data array is pushed individually, unlike the
+          // byDate aggregation above. point.date is already a Postgres-
+          // parseable "YYYY-MM-DD HH:MM:SS +offset" timestamptz string
+          // (same convention as workout.start below), passed through as-is.
+          cgmReadings.push({ recorded_at: point.date, value_mmol: point.qty, source: point.source ?? null })
         }
       }
     }
@@ -457,6 +467,46 @@ export async function POST(req: NextRequest) {
       console.log(`[health-import] waist_cm ${date}: ${value}cm — ${stored !== null ? `updated (was ${stored}cm)` : 'imported'}`)
     }
 
+    // ── CGM (blood_glucose) → cgm_readings ──────────────────────────────────
+    // Exact metric-name match only — tightened from the broader glucose-
+    // substring logging hook above, which stays in place unchanged so any
+    // other glucose-related metric that isn't this confirmed one still gets
+    // logged. cgm_readings is one row per timestamped reading, not a daily
+    // aggregate, so every entry in the metric's data array gets its own
+    // insert. Duplicate skip on (user_id, recorded_at) via the unique
+    // constraint — same insert + catch-23505 pattern as vo2_max above —
+    // never overwrites an existing reading. Requires the cgm_readings table
+    // and its (user_id, recorded_at) unique constraint to exist — see
+    // BODYCIPHER.md DATA MODEL → cgm_readings for the migration SQL.
+    let cgmImported = 0
+    let cgmSkipped = 0
+    for (const reading of cgmReadings) {
+      const { error } = await supabase
+        .from('cgm_readings')
+        .insert({
+          user_id: 'julie',
+          recorded_at: reading.recorded_at,
+          value_mmol: reading.value_mmol,
+          source: reading.source,
+        })
+
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === '23505') {
+          cgmSkipped++
+          console.log(`[health-import] cgm_readings ${reading.recorded_at}: already exists — skipped`)
+        } else {
+          console.error(`[health-import] cgm_readings ${reading.recorded_at}: insert failed —`, JSON.stringify(error))
+          throw new Error(`cgm_readings insert failed for ${reading.recorded_at}: ${error.message ?? JSON.stringify(error)}`)
+        }
+      } else {
+        cgmImported++
+      }
+    }
+    if (cgmReadings.length) {
+      console.log(`[health-import] cgm_readings: ${cgmImported} written, ${cgmSkipped} skipped as duplicate`)
+    }
+
     // ── WORKOUTS → training_sessions ────────────────────────────────────────
     for (const workout of workouts) {
       const date = extractDate(workout.start)
@@ -504,8 +554,8 @@ export async function POST(req: NextRequest) {
       console.log(`[health-import] workout ${date} ${activityType} ${durationMin}min ${calories != null ? calories + 'kcal' : 'no calories'}: imported`)
     }
 
-    console.log(`[health-import] done — metrics: ${metricsImported} written, vo2_max: ${vo2MaxImported} written, weight: ${weightImported} written, body_fat_pct: ${bodyFatImported} written, waist_cm: ${waistImported} written, workouts: ${workoutsImported} written`)
-    return NextResponse.json({ imported: { metrics: metricsImported, vo2Max: vo2MaxImported, weight: weightImported, bodyFat: bodyFatImported, waist: waistImported, workouts: workoutsImported } })
+    console.log(`[health-import] done — metrics: ${metricsImported} written, vo2_max: ${vo2MaxImported} written, weight: ${weightImported} written, body_fat_pct: ${bodyFatImported} written, waist_cm: ${waistImported} written, cgm_readings: ${cgmImported} written (${cgmSkipped} skipped as duplicate), workouts: ${workoutsImported} written`)
+    return NextResponse.json({ imported: { metrics: metricsImported, vo2Max: vo2MaxImported, weight: weightImported, bodyFat: bodyFatImported, waist: waistImported, cgm: cgmImported, cgmSkipped, workouts: workoutsImported } })
 
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err)
