@@ -10,6 +10,12 @@
 import { recomputeScores } from '@/lib/scores-server'
 import { supaAdmin, nutritionUserId } from '@/lib/nutrition'
 
+// This is the route that actually feeds the Today tab's visible Behavior/
+// Outcome Score numbers — force per-request execution, no caching at any
+// layer. See BODYCIPHER.md RLS fix session 2 bugfix note.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(req: Request) {
   const url  = new URL(req.url)
   const date = url.searchParams.get('date')

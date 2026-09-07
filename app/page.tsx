@@ -1437,19 +1437,19 @@ function HistoryRow({ entry, onSelectDate }: { entry: DailyEntry; onSelectDate: 
 // instead of a direct browser Supabase call. RLS fix, session 2 — see
 // BODYCIPHER.md.
 async function fetchEntry(date: string): Promise<DailyEntry> {
-  const res = await fetch(`/api/entries?date=${encodeURIComponent(date)}`)
+  const res = await fetch(`/api/entries?date=${encodeURIComponent(date)}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to load entry: ${res.status}`)
   return res.json()
 }
 
 async function fetchRecentEntries(days: number): Promise<DailyEntry[]> {
-  const res = await fetch(`/api/entries?days=${days}`)
+  const res = await fetch(`/api/entries?days=${days}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to load recent entries: ${res.status}`)
   return res.json()
 }
 
 async function fetchAllEntries(): Promise<DailyEntry[]> {
-  const res = await fetch('/api/entries?all=true')
+  const res = await fetch('/api/entries?all=true', { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to load all entries: ${res.status}`)
   return res.json()
 }
@@ -1459,26 +1459,27 @@ async function postEntry(entry: DailyEntry): Promise<void> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(entry),
+    cache: 'no-store',
   })
   if (!res.ok) throw new Error(`Failed to save entry: ${res.status}`)
 }
 
 async function fetchSleepLogged(date: string): Promise<boolean> {
-  const res = await fetch(`/api/entries/sleep-logged?date=${encodeURIComponent(date)}`)
+  const res = await fetch(`/api/entries/sleep-logged?date=${encodeURIComponent(date)}`, { cache: 'no-store' })
   if (!res.ok) return false
   const { logged } = await res.json() as { logged: boolean }
   return logged
 }
 
 async function fetchDeriveCycleDay(): Promise<number | null> {
-  const res = await fetch('/api/entries/cycle-day')
+  const res = await fetch('/api/entries/cycle-day', { cache: 'no-store' })
   if (!res.ok) return null
   const { cycleDay } = await res.json() as { cycleDay: number | null }
   return cycleDay
 }
 
 async function fetchGoalsData(): Promise<GoalsData> {
-  const res = await fetch('/api/goals')
+  const res = await fetch('/api/goals', { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to load goals data: ${res.status}`)
   return res.json()
 }
@@ -1496,6 +1497,11 @@ export default function App() {
   const [showYesterday, setShowYesterday] = useState(false)
   const [skipYesterday, setSkipYesterday] = useState(false)
   const loadedDateRef = useRef<string | null>(null)
+  // Tracks the date the most recent loadDay() call was asked to load — lets a
+  // slow, out-of-order response for an earlier navigation detect that a newer
+  // one has since superseded it and bail out instead of overwriting fresher
+  // state. See BODYCIPHER.md RLS fix session 2 bugfix note.
+  const latestEntryDateRef = useRef<string | null>(null)
 
   // ── Score cards state (from DashboardTab) ───────────────────────
   const [todayScored,  setTodayScored]  = useState<TodayScored | null>(null)
@@ -1577,13 +1583,19 @@ export default function App() {
   // silent re-fetches (same date, on focus, on tab re-select) keep existing
   // session data visible until the fresh data arrives.
   const loadDay = useCallback(async (date: string) => {
+    latestEntryDateRef.current = date
     const isNewDate = loadedDateRef.current !== date
     if (isNewDate) setLoading(true)
     try {
       const data = await fetchEntry(date)
+      // A newer loadDay() call has since been made (rapid date-picker
+      // navigation) — this response is stale, discard it rather than
+      // overwrite state a later request already set.
+      if (latestEntryDateRef.current !== date) return
       // Auto-derive cycle day for today if not stored yet
       if (date === todayStr() && data.context.notes === '') {
         const derived = await fetchDeriveCycleDay()
+        if (latestEntryDateRef.current !== date) return
         if (derived != null) setCycleDay(derived)
       } else {
         const cd = (data.context as unknown as Record<string, unknown>).cycle_day
@@ -1623,12 +1635,22 @@ export default function App() {
 
   // Load recent entries + scores for Today tab score cards (from DashboardTab)
   useEffect(() => {
+    // Rapid date-picker navigation can fire this effect faster than the
+    // in-flight requests resolve, and responses can land out of order. The
+    // `cancelled` flag (set by the cleanup below when currentDate changes
+    // again before this resolves) stops a stale response for a previous
+    // date from overwriting todayScored/dashEntries with the wrong date's
+    // data — this is what was showing inconsistent Behavior Score values
+    // for the same date across successive loads. See BODYCIPHER.md RLS fix
+    // session 2 bugfix note.
+    let cancelled = false
     Promise.all([
       fetchRecentEntries(30),
-      fetch(`/api/scores?date=${currentDate}`).then(r => r.json() as Promise<TodayScored>),
-      fetch('/api/nutrition/chart?days=31').then(r => r.json() as Promise<Array<{ date: string; protein: number | null; fiber: number | null }>>),
+      fetch(`/api/scores?date=${currentDate}`, { cache: 'no-store' }).then(r => r.json() as Promise<TodayScored>),
+      fetch('/api/nutrition/chart?days=31', { cache: 'no-store' }).then(r => r.json() as Promise<Array<{ date: string; protein: number | null; fiber: number | null }>>),
     ])
       .then(([recent, scored, nutRows]) => {
+        if (cancelled) return
         setDashEntries(recent)
         setTodayScored(scored)
         // Build a map keyed by plain YYYY-MM-DD string — no new Date() conversion so
@@ -1639,7 +1661,8 @@ export default function App() {
         }
         setNutritionSummaries(nutMap)
       })
-      .catch(console.error)
+      .catch(e => { if (!cancelled) console.error(e) })
+    return () => { cancelled = true }
   }, [currentDate])
 
   // Load goals data for long-term goals + health calendar (from GoalsTab)
@@ -1675,7 +1698,7 @@ export default function App() {
   // Goes through /api/glp1 (service-role) rather than a direct browser
   // Supabase call — see BODYCIPHER.md RLS section.
   const loadGlp1 = useCallback(() => {
-    fetch('/api/glp1')
+    fetch('/api/glp1', { cache: 'no-store' })
       .then(r => { if (!r.ok) throw new Error(`GLP-1 load failed: ${r.status}`); return r.json() })
       .then(setGlp1Injections)
       .catch(e => console.error('GLP-1 load error:', JSON.stringify(e)))
@@ -1687,6 +1710,7 @@ export default function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
+      cache: 'no-store',
     })
     if (!res.ok) throw new Error(`GLP-1 log failed: ${res.status}`)
     await loadGlp1()
@@ -1710,6 +1734,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: entryToSave.date }),
+        cache: 'no-store',
       }).catch(console.error)
       setSavedSection(sectionName)
       setTimeout(() => setSavedSection(null), 2000)

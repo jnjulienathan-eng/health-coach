@@ -13,6 +13,13 @@ import { supaAdmin } from '@/lib/nutrition'
 import { loadEntry, loadRecentEntries, loadAllEntries, saveEntry } from '@/lib/db'
 import type { DailyEntry } from '@/lib/types'
 
+// Force per-request execution, no caching at any layer (Next.js Data/Route
+// Cache, Vercel's CDN, or the browser) — daily_entries/training_sessions
+// change on every save and must always read fresh. See BODYCIPHER.md RLS
+// fix session 2 bugfix note.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(req: NextRequest) {
   const url  = new URL(req.url)
   const date = url.searchParams.get('date')

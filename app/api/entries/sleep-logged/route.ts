@@ -7,6 +7,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supaAdmin } from '@/lib/nutrition'
 import { isSleepLogged } from '@/lib/db'
 
+// See BODYCIPHER.md RLS fix session 2 bugfix note.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(req: NextRequest) {
   const url  = new URL(req.url)
   const date = url.searchParams.get('date')

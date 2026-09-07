@@ -14,6 +14,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supaAdmin } from '@/lib/nutrition'
 import type { Glp1Injection } from '@/lib/types'
 
+// See BODYCIPHER.md RLS fix session 2 bugfix note.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET() {
   const supabase = supaAdmin()
   const { data, error } = await supabase
