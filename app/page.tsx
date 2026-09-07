@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg, saveBodyScanReading, getBodyCompositionData } from '@/lib/db'
+import { getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, getVo2Rolling60DayAvg, saveBodyScanReading, getBodyCompositionData } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment, Glp1Injection, BodyCompositionData } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
@@ -1430,6 +1430,59 @@ function HistoryRow({ entry, onSelectDate }: { entry: DailyEntry; onSelectDate: 
   )
 }
 
+// ─── Entries / Goals API fetch helpers ─────────────────────────────
+// daily_entries + training_sessions (via app/api/entries/*) and
+// daily_entries + biomarker_readings + health_appointments (via
+// app/api/goals) now go through server routes (service-role client)
+// instead of a direct browser Supabase call. RLS fix, session 2 — see
+// BODYCIPHER.md.
+async function fetchEntry(date: string): Promise<DailyEntry> {
+  const res = await fetch(`/api/entries?date=${encodeURIComponent(date)}`)
+  if (!res.ok) throw new Error(`Failed to load entry: ${res.status}`)
+  return res.json()
+}
+
+async function fetchRecentEntries(days: number): Promise<DailyEntry[]> {
+  const res = await fetch(`/api/entries?days=${days}`)
+  if (!res.ok) throw new Error(`Failed to load recent entries: ${res.status}`)
+  return res.json()
+}
+
+async function fetchAllEntries(): Promise<DailyEntry[]> {
+  const res = await fetch('/api/entries?all=true')
+  if (!res.ok) throw new Error(`Failed to load all entries: ${res.status}`)
+  return res.json()
+}
+
+async function postEntry(entry: DailyEntry): Promise<void> {
+  const res = await fetch('/api/entries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entry),
+  })
+  if (!res.ok) throw new Error(`Failed to save entry: ${res.status}`)
+}
+
+async function fetchSleepLogged(date: string): Promise<boolean> {
+  const res = await fetch(`/api/entries/sleep-logged?date=${encodeURIComponent(date)}`)
+  if (!res.ok) return false
+  const { logged } = await res.json() as { logged: boolean }
+  return logged
+}
+
+async function fetchDeriveCycleDay(): Promise<number | null> {
+  const res = await fetch('/api/entries/cycle-day')
+  if (!res.ok) return null
+  const { cycleDay } = await res.json() as { cycleDay: number | null }
+  return cycleDay
+}
+
+async function fetchGoalsData(): Promise<GoalsData> {
+  const res = await fetch('/api/goals')
+  if (!res.ok) throw new Error(`Failed to load goals data: ${res.status}`)
+  return res.json()
+}
+
 // ─── Main app ─────────────────────────────────────────────────────
 export default function App() {
   const [showSplash,    setShowSplash]    = useState(true)
@@ -1527,10 +1580,10 @@ export default function App() {
     const isNewDate = loadedDateRef.current !== date
     if (isNewDate) setLoading(true)
     try {
-      const data = await loadEntry(date)
+      const data = await fetchEntry(date)
       // Auto-derive cycle day for today if not stored yet
       if (date === todayStr() && data.context.notes === '') {
-        const derived = await deriveCycleDay()
+        const derived = await fetchDeriveCycleDay()
         if (derived != null) setCycleDay(derived)
       } else {
         const cd = (data.context as unknown as Record<string, unknown>).cycle_day
@@ -1563,7 +1616,7 @@ export default function App() {
   useEffect(() => {
     if (skipYesterday) return
     const yesterday = yesterdayStr()
-    isSleepLogged(yesterday).then((logged) => {
+    fetchSleepLogged(yesterday).then((logged) => {
       setShowYesterday(!logged)
     })
   }, [skipYesterday, savedSection])
@@ -1571,7 +1624,7 @@ export default function App() {
   // Load recent entries + scores for Today tab score cards (from DashboardTab)
   useEffect(() => {
     Promise.all([
-      loadRecentEntries(30),
+      fetchRecentEntries(30),
       fetch(`/api/scores?date=${currentDate}`).then(r => r.json() as Promise<TodayScored>),
       fetch('/api/nutrition/chart?days=31').then(r => r.json() as Promise<Array<{ date: string; protein: number | null; fiber: number | null }>>),
     ])
@@ -1592,7 +1645,7 @@ export default function App() {
   // Load goals data for long-term goals + health calendar (from GoalsTab)
   useEffect(() => {
     getVo2Rolling60DayAvg().then(setVo2RollingAvg).catch(console.error)
-    getGoalsData()
+    fetchGoalsData()
       .then(async d => {
         if (d.appointments.length === 0 && !seededAppointmentsRef.current) {
           seededAppointmentsRef.current = true
@@ -1611,7 +1664,7 @@ export default function App() {
 
   // Load all entries for History section in Dashboard tab (from HistoryTab)
   useEffect(() => {
-    loadAllEntries()
+    fetchAllEntries()
       .then(setHistoryEntries)
       .catch(e => setHistoryError(e instanceof Error ? e.message : 'Failed to load history'))
       .finally(() => setHistoryLoading(false))
@@ -1651,7 +1704,7 @@ export default function App() {
           ...( cycleDay != null ? { cycle_day: cycleDay } as Record<string, unknown> : {} ),
         } as DailyEntry['context'],
       }
-      await saveEntry(entryToSave)
+      await postEntry(entryToSave)
       // Recompute scores server-side (reads daily_nutrition_summary via service-role).
       fetch('/api/scores', {
         method: 'POST',
@@ -1741,7 +1794,7 @@ export default function App() {
     try {
       await saveVo2Reading(val, vo2EntryDate)
       const [fresh, sparkline] = await Promise.all([
-        getGoalsData(),
+        fetchGoalsData(),
         getVo2SparklineData(),
       ])
       setGoalsData(fresh)
@@ -1830,7 +1883,7 @@ export default function App() {
     setCardioSaving(true)
     try {
       await saveCardioReading(ldlN, hdlN, cardioEntryDate)
-      const fresh = await getGoalsData()
+      const fresh = await fetchGoalsData()
       setGoalsData(fresh)
       setCardioEntryOpen(false)
     } catch (err) {
@@ -1852,7 +1905,7 @@ export default function App() {
       setHba1cEntryOpen(false)
       setHba1cValueInput('')
       setHba1cDateInput('')
-      const fresh = await getGoalsData()
+      const fresh = await fetchGoalsData()
       setGoalsData(fresh)
     } catch (e) {
       setHba1cError(e instanceof Error ? e.message : 'Save failed')
@@ -1936,7 +1989,7 @@ export default function App() {
     ;(updated.context as Record<string, unknown>).cycle_day = 1
     setEntry(updated as DailyEntry)
     try {
-      await saveEntry(updated as DailyEntry)
+      await postEntry(updated as DailyEntry)
     } catch (e) {
       console.error('Failed to save cycle reset:', e)
     }

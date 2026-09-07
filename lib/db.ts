@@ -149,8 +149,16 @@ export async function loadSessionsForDates(dates: string[], client: SupabaseClie
   return map
 }
 
-// ─── saveEntry ────────────────────────────────────────────────────
-export async function saveEntry(entry: DailyEntry): Promise<void> {
+// ─── saveEntry, loadEntry, loadAllEntries, loadRecentEntries, ─────
+// ─── isSleepLogged, deriveCycleDay, getGoalsData ───────────────────
+// RLS fix, session 2 (Sept 2026): these seven functions are no longer
+// called directly from the browser. app/page.tsx now calls
+// app/api/entries/* and app/api/goals/* instead, which call these with
+// the service-role client. The `client` param defaults to the anon
+// `supabase` above only so the functions still type-check standalone —
+// nothing should rely on that default going forward. Do not re-wire
+// these back to a direct browser import once RLS is enabled.
+export async function saveEntry(entry: DailyEntry, client: SupabaseClient = supabase): Promise<void> {
   const cycleDay = (entry.context as unknown as Record<string, unknown>).cycle_day as number | undefined
 
   const flat = {
@@ -247,7 +255,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     // Scores are recomputed server-side via /api/scores after this save.
   }
 
-  const { error: upsertError } = await supabase
+  const { error: upsertError } = await client
     .from('daily_entries')
     .upsert(flat, { onConflict: 'user_id,date' })
 
@@ -257,7 +265,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
   }
 
   // ── Training sessions: replace all for this date ───────────────
-  const { error: deleteError } = await supabase
+  const { error: deleteError } = await client
     .from('training_sessions')
     .delete()
     .eq('date', entry.date)
@@ -269,7 +277,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
   }
 
   if (entry.training.sessions.length > 0) {
-    const { error: insertError } = await supabase
+    const { error: insertError } = await client
       .from('training_sessions')
       .insert(
         entry.training.sessions.map(s => ({
@@ -293,10 +301,10 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
 }
 
 // ─── loadEntry ────────────────────────────────────────────────────
-export async function loadEntry(date: string): Promise<DailyEntry> {
+export async function loadEntry(date: string, client: SupabaseClient = supabase): Promise<DailyEntry> {
   const [rowResult, sessionsMap] = await Promise.all([
-    supabase.from('daily_entries').select('*').eq('date', date).maybeSingle(),
-    loadSessionsForDates([date]),
+    client.from('daily_entries').select('*').eq('date', date).maybeSingle(),
+    loadSessionsForDates([date], client),
   ])
 
   if (rowResult.error) throw rowResult.error
@@ -305,8 +313,8 @@ export async function loadEntry(date: string): Promise<DailyEntry> {
 }
 
 // ─── loadAllEntries ───────────────────────────────────────────────
-export async function loadAllEntries(): Promise<DailyEntry[]> {
-  const { data, error } = await supabase
+export async function loadAllEntries(client: SupabaseClient = supabase): Promise<DailyEntry[]> {
+  const { data, error } = await client
     .from('daily_entries')
     .select('*')
     .order('date', { ascending: false })
@@ -314,17 +322,17 @@ export async function loadAllEntries(): Promise<DailyEntry[]> {
   if (error) throw error
   const rows = (data ?? []) as Record<string, unknown>[]
   const dates = rows.map(r => r.date as string)
-  const sessionsMap = await loadSessionsForDates(dates)
+  const sessionsMap = await loadSessionsForDates(dates, client)
   return rows.map(r => rowToEntry(r, sessionsMap[r.date as string] ?? []))
 }
 
 // ─── loadRecentEntries ────────────────────────────────────────────
-export async function loadRecentEntries(days: number): Promise<DailyEntry[]> {
+export async function loadRecentEntries(days: number, client: SupabaseClient = supabase): Promise<DailyEntry[]> {
   const since = new Date()
   since.setDate(since.getDate() - days)
   const sinceStr = since.toISOString().split('T')[0]
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('daily_entries')
     .select('*')
     .gte('date', sinceStr)
@@ -333,13 +341,13 @@ export async function loadRecentEntries(days: number): Promise<DailyEntry[]> {
   if (error) throw error
   const rows = (data ?? []) as Record<string, unknown>[]
   const dates = rows.map(r => r.date as string)
-  const sessionsMap = await loadSessionsForDates(dates)
+  const sessionsMap = await loadSessionsForDates(dates, client)
   return rows.map(r => rowToEntry(r, sessionsMap[r.date as string] ?? []))
 }
 
 // ─── isSleepLogged ────────────────────────────────────────────────
-export async function isSleepLogged(date: string): Promise<boolean> {
-  const { data, error } = await supabase
+export async function isSleepLogged(date: string, client: SupabaseClient = supabase): Promise<boolean> {
+  const { data, error } = await client
     .from('daily_entries')
     .select('hrv, sleep_duration_min')
     .eq('date', date)
@@ -351,12 +359,12 @@ export async function isSleepLogged(date: string): Promise<boolean> {
 }
 
 // ─── deriveCycleDay ───────────────────────────────────────────────
-export async function deriveCycleDay(): Promise<number | null> {
+export async function deriveCycleDay(client: SupabaseClient = supabase): Promise<number | null> {
   const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
   const yStr = yesterday.toISOString().split('T')[0]
 
-  const { data } = await supabase
+  const { data } = await client
     .from('daily_entries')
     .select('cycle_day')
     .eq('date', yStr)
@@ -381,20 +389,20 @@ export interface BreakfastTemplate {
 }
 
 // ─── getGoalsData ─────────────────────────────────────────────────
-export async function getGoalsData(): Promise<GoalsData> {
+export async function getGoalsData(client: SupabaseClient = supabase): Promise<GoalsData> {
   const today = new Date().toISOString().split('T')[0]
   const since7d = new Date()
   since7d.setDate(since7d.getDate() - 7)
   const since7dStr = since7d.toISOString().split('T')[0]
 
   const [scoresRes, biomarkersRes, glucoseRes, appointmentsRes] = await Promise.all([
-    supabase
+    client
       .from('daily_entries')
       .select('behavior_score, outcome_score')
       .eq('user_id', 'julie')
       .eq('date', today)
       .maybeSingle(),
-    supabase
+    client
       .from('biomarker_readings')
       .select('*')
       .eq('user_id', 'julie')
@@ -402,14 +410,14 @@ export async function getGoalsData(): Promise<GoalsData> {
       // in the table but unread (see BODYCIPHER.md).
       .in('marker', ['vo2_max', 'ldl', 'hdl', 'hba1c', 'weight', 'body_fat_pct', 'waist_cm'])
       .order('recorded_on', { ascending: false }),
-    supabase
+    client
       .from('daily_entries')
       .select('fasting_glucose_mmol')
       .eq('user_id', 'julie')
       .gte('date', since7dStr)
       .lte('date', today)
       .order('date', { ascending: false }),
-    supabase
+    client
       .from('health_appointments')
       .select('*')
       .eq('user_id', 'julie')
