@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, getVo2Rolling60DayAvg, saveBodyScanReading, getBodyCompositionData } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
-import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment, Glp1Injection, BodyCompositionData } from '@/lib/types'
+import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment, Glp1Injection, BodyCompositionData, CgmReading } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
 import { behaviorScore, outcomeScore } from '@/lib/scores'
 import SleepSection from '@/components/sections/SleepSection'
@@ -33,6 +33,16 @@ function shiftDay(dateStr: string, delta: number) {
   const d = new Date(dateStr + 'T00:00:00Z')
   d.setUTCDate(d.getUTCDate() + delta)
   return d.toISOString().split('T')[0]
+}
+
+// "today" / "yesterday" / a short date — for the CGM reading's "as of" label.
+// Takes a timestamptz string (cgm_readings.recorded_at); compares by
+// YYYY-MM-DD only, same convention as todayStr()/yesterdayStr() above.
+function formatAsOf(recordedAt: string) {
+  const dateOnly = recordedAt.slice(0, 10)
+  if (dateOnly === todayStr()) return 'today'
+  if (dateOnly === yesterdayStr()) return 'yesterday'
+  return new Date(dateOnly + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function formatDate(dateStr: string) {
@@ -1484,6 +1494,13 @@ async function fetchGoalsData(): Promise<GoalsData> {
   return res.json()
 }
 
+// cgm_readings — read-only, service-role via /api/cgm. See BODYCIPHER.md.
+async function fetchLatestCgmReading(): Promise<CgmReading | null> {
+  const res = await fetch('/api/cgm', { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Failed to load CGM reading: ${res.status}`)
+  return res.json()
+}
+
 // health_appointments — RLS fix session 3. Goes through /api/health-appointments
 // (service-role) rather than a direct browser Supabase call — see BODYCIPHER.md.
 async function fetchHealthAppointments(): Promise<HealthAppointment[]> {
@@ -1575,6 +1592,7 @@ export default function App() {
   // ── Glucose Stability state ───────────────────────────────────────
   const [glucoseExpanded, setGlucoseExpanded] = useState(false)
   const [cgmEnabled,      setCgmEnabled]      = useState(false)
+  const [cgmReading,      setCgmReading]      = useState<CgmReading | null>(null)
   const [hba1cEntryOpen,  setHba1cEntryOpen]  = useState(false)
   const [hba1cValueInput, setHba1cValueInput] = useState('')
   const [hba1cDateInput,  setHba1cDateInput]  = useState('')
@@ -1716,6 +1734,7 @@ export default function App() {
         setGoalsData(d)
       })
       .catch(e => console.error('Goals data load error:', e))
+    fetchLatestCgmReading().then(setCgmReading).catch(e => console.error('CGM reading load error:', e))
   }, [])
 
   // Load all entries for History section in Dashboard tab (from HistoryTab)
@@ -3431,24 +3450,42 @@ export default function App() {
                       <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
                         CGM Data
                       </div>
-                      {!cgmEnabled && (
+                      {cgmReading == null && (
                         <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
                           CGM data not connected
                         </div>
                       )}
-                      {cgmEnabled && (
+                      {cgmReading != null && (
                         <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                          CGM data not connected
+                          As of {formatAsOf(cgmReading.recorded_at)}
                         </div>
                       )}
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={cgmEnabled}
-                      onChange={e => setCgmEnabled(e.target.checked)}
-                      className="toggle"
-                      aria-label="Enable CGM data"
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {cgmReading != null && (
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                          <span style={{
+                            fontSize: 'var(--fs-body)',
+                            fontWeight: 'var(--fw-semibold)',
+                            color: cgmReading.value_mmol <= 4.8
+                              ? 'var(--color-status-optimal)'
+                              : cgmReading.value_mmol <= 5.6
+                              ? 'var(--color-status-moderate)'
+                              : 'var(--color-status-low)',
+                          }}>
+                            {cgmReading.value_mmol.toFixed(1)}
+                          </span>
+                          <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>mmol/L</span>
+                        </div>
+                      )}
+                      <input
+                        type="checkbox"
+                        checked={cgmEnabled}
+                        onChange={e => setCgmEnabled(e.target.checked)}
+                        className="toggle"
+                        aria-label="Enable CGM data"
+                      />
+                    </div>
                   </div>
                 </div>
               )}

@@ -195,6 +195,13 @@ export interface Glp1Injection {
   created_at: string | null
 }
 
+// ─── Glucose Stability card — CGM read path ────────────────────────
+export interface CgmReading {
+  recorded_at: string   // timestamptz, passed through as-is
+  value_mmol: number
+  source: string | null
+}
+
 // ─── Goals tab ────────────────────────────────────────────────────
 export interface BiomarkerReading {
   id: string
