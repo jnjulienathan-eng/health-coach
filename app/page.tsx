@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg, saveBodyScanReading, loadGlp1Injections, logGlp1Injection, getBodyCompositionData } from '@/lib/db'
+import { loadEntry, saveEntry, isSleepLogged, deriveCycleDay, loadRecentEntries, getGoalsData, getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, loadAllEntries, getVo2Rolling60DayAvg, saveBodyScanReading, getBodyCompositionData } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment, Glp1Injection, BodyCompositionData } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
@@ -1619,13 +1619,23 @@ export default function App() {
 
   // Load GLP-1 injections — not date-navigable, always reflects "today"
   // regardless of which day is selected on the Today tab.
+  // Goes through /api/glp1 (service-role) rather than a direct browser
+  // Supabase call — see BODYCIPHER.md RLS section.
   const loadGlp1 = useCallback(() => {
-    loadGlp1Injections().then(setGlp1Injections).catch(e => console.error('GLP-1 load error:', JSON.stringify(e)))
+    fetch('/api/glp1')
+      .then(r => { if (!r.ok) throw new Error(`GLP-1 load failed: ${r.status}`); return r.json() })
+      .then(setGlp1Injections)
+      .catch(e => console.error('GLP-1 load error:', JSON.stringify(e)))
   }, [])
   useEffect(() => { loadGlp1() }, [loadGlp1])
 
   const handleLogGlp1 = async (params: { date: string; dose_mg?: number }) => {
-    await logGlp1Injection(params)
+    const res = await fetch('/api/glp1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    })
+    if (!res.ok) throw new Error(`GLP-1 log failed: ${res.status}`)
     await loadGlp1()
   }
 

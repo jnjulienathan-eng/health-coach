@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import type { DailyEntry } from '@/lib/types'
 import { zone3Intensity } from '@/lib/types'
@@ -245,11 +244,6 @@ async function getCoachContext(
   userId: string | null,
   currentDate: string,
 ): Promise<{ history30: DailyEntry[]; todayEntry: DailyEntry | null; nutritionSummary: NutritionSummary | null }> {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
-
   const since = new Date(currentDate + 'T00:00:00')
   since.setDate(since.getDate() - 30)
   const sinceStr = since.toISOString().split('T')[0]
@@ -258,7 +252,7 @@ async function getCoachContext(
   const nutUserId = nutritionUserId()
 
   const [entriesResult, nutritionResult] = await Promise.all([
-    supabase
+    adminClient
       .from('daily_entries')
       .select('*')
       .gte('date', sinceStr)
@@ -275,7 +269,7 @@ async function getCoachContext(
 
   const rows = entriesResult.data || []
   const dates = rows.map(r => (r as Record<string, unknown>).date as string)
-  const sessionsMap = await loadSessionsForDates(dates)
+  const sessionsMap = await loadSessionsForDates(dates, adminClient)
 
   const history30: DailyEntry[] = rows.map((row) =>
     rowToEntry(
@@ -491,9 +485,9 @@ export async function POST(req: NextRequest) {
 
     const { history30, nutritionSummary } = await getCoachContext(null, currentDate)
     // Personal HRV baseline: rolling 28-day median of manual hrv (fallback 88).
-    const hrvBaseline = Math.round(await getHrvRolling28DayMedian(currentDate))
+    const hrvBaseline = Math.round(await getHrvRolling28DayMedian(currentDate, supaAdmin()))
     // Personal bedtime target: rolling 30-day circular average of manual bedtime (fallback 21:45).
-    const bedtimeTarget = await getBedtimeRolling30DayAvg(currentDate)
+    const bedtimeTarget = await getBedtimeRolling30DayAvg(currentDate, supaAdmin())
 
     const ctx = buildContext(history30, today, cycleDay, currentDate, currentMonth, hrvBaseline, bedtimeTarget, nutritionSummary)
     // Prefer client-supplied mode (computed from local time) over server-side derivation from UTC ISO string

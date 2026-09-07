@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData, Glp1Injection, BodyCompositionData } from './types'
 import { emptyEntry } from './types'
 
@@ -118,9 +118,9 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
 }
 
 // ─── Load training sessions for a set of dates ────────────────────
-export async function loadSessionsForDates(dates: string[]): Promise<Record<string, TrainingSession[]>> {
+export async function loadSessionsForDates(dates: string[], client: SupabaseClient = supabase): Promise<Record<string, TrainingSession[]>> {
   if (!dates.length) return {}
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('training_sessions')
     .select('*')
     .in('date', dates)
@@ -498,6 +498,15 @@ export async function seedDefaultAppointments(): Promise<void> {
 }
 
 // ─── GLP-1 injections ─────────────────────────────────────────────
+// Superseded by app/api/glp1/route.ts (GET/POST, service-role client) as of
+// the RLS-safety pass — app/page.tsx now calls that route instead of these
+// two functions directly. Left in place, unused, rather than deleted: this
+// is the first of a multi-session change and glp1_injections' RLS hasn't
+// been enabled yet, so keeping the old anon-client path intact costs
+// nothing and simplifies rollback if the new route needs adjustment. Do not
+// wire these back up once RLS is on — the anon client can no longer read
+// this table at that point.
+//
 // Loads all rows (course is at most 24 injections — small table, no
 // need to window the query). Ordered ascending by date for the grid.
 export async function loadGlp1Injections(): Promise<Glp1Injection[]> {
@@ -733,14 +742,14 @@ export async function getVo2Rolling60DayAvg(): Promise<number | null> {
 // (default = today in Europe/Berlin). Nulls skipped. Returns 88 (the
 // historical default) when fewer than 14 non-null readings exist.
 // Compute-not-store — no DB column. NOT computed from apple_hrv_avg.
-export async function getHrvRolling28DayMedian(asOfDate?: string): Promise<number> {
+export async function getHrvRolling28DayMedian(asOfDate?: string, client: SupabaseClient = supabase): Promise<number> {
   const endStr = asOfDate
     ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
   const start = new Date(endStr + 'T00:00:00Z')
   start.setUTCDate(start.getUTCDate() - 27) // 28 calendar days inclusive
   const startStr = start.toISOString().split('T')[0]
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('daily_entries')
     .select('hrv')
     .eq('user_id', 'julie')
@@ -772,14 +781,14 @@ export async function getHrvRolling28DayMedian(asOfDate?: string): Promise<numbe
 // shifted -720 (centred on noon, where nobody's bedtime falls) before
 // averaging to avoid the midnight-wraparound bug — e.g. 23:30 and 00:15
 // must NOT average to ~11:52.
-export async function getBedtimeRolling30DayAvg(asOfDate?: string): Promise<string> {
+export async function getBedtimeRolling30DayAvg(asOfDate?: string, client: SupabaseClient = supabase): Promise<string> {
   const endStr = asOfDate
     ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
   const start = new Date(endStr + 'T00:00:00Z')
   start.setUTCDate(start.getUTCDate() - 29) // 30 calendar days inclusive
   const startStr = start.toISOString().split('T')[0]
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('daily_entries')
     .select('bedtime')
     .eq('user_id', 'julie')
@@ -812,7 +821,7 @@ export async function getBedtimeRolling30DayAvg(asOfDate?: string): Promise<stri
 // max(0, 450 - effectiveDur) to a running total — days >= 450min contribute
 // 0 (no negative debt, no banking of surplus). Returns 0 if fewer than 3
 // qualifying days exist in the window. Compute-not-store — no DB column.
-export async function getSleepDebtRolling7Day(asOfDate?: string): Promise<number> {
+export async function getSleepDebtRolling7Day(asOfDate?: string, client: SupabaseClient = supabase): Promise<number> {
   const endStr = asOfDate
     ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
   const windowEnd = new Date(endStr + 'T00:00:00Z')
@@ -822,7 +831,7 @@ export async function getSleepDebtRolling7Day(asOfDate?: string): Promise<number
   windowStart.setUTCDate(windowStart.getUTCDate() - 7)
   const windowStartStr = windowStart.toISOString().split('T')[0]
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('daily_entries')
     .select('sleep_duration_min, nap_minutes, is_sick')
     .eq('user_id', 'julie')

@@ -7,7 +7,6 @@
 // daily_entries + daily_nutrition_summary (service-role), then writing back.
 // Called after saveEntry() (from the client) and after each meal operation.
 
-import { createClient } from '@supabase/supabase-js'
 import { recomputeScores } from '@/lib/scores-server'
 import { supaAdmin, nutritionUserId } from '@/lib/nutrition'
 
@@ -16,15 +15,11 @@ export async function GET(req: Request) {
   const date = url.searchParams.get('date')
   if (!date) return Response.json({ error: 'date is required' }, { status: 400 })
 
-  const anonClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
   const adminClient = supaAdmin()
   const nutUserId   = nutritionUserId()
 
   const [scoresResult, nutritionResult] = await Promise.all([
-    anonClient
+    adminClient
       .from('daily_entries')
       .select('behavior_score, outcome_score')
       .eq('user_id', 'julie')

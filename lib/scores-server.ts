@@ -2,7 +2,7 @@
 // by reading daily_entries + daily_nutrition_summary and writing back the result.
 // Import only from API routes and server components — never from client components.
 
-import { supabase, rowToEntry, loadSessionsForDates, getHrvRolling28DayMedian, getBedtimeRolling30DayAvg, getSleepDebtRolling7Day } from './db'
+import { rowToEntry, loadSessionsForDates, getHrvRolling28DayMedian, getBedtimeRolling30DayAvg, getSleepDebtRolling7Day } from './db'
 import { supaAdmin, nutritionUserId } from './nutrition'
 import { behaviorScore, outcomeScore } from './scores'
 import type { NutritionSummaryForScore } from './scores'
@@ -12,14 +12,14 @@ export async function recomputeScores(date: string): Promise<void> {
   const nutUserId   = nutritionUserId()
 
   const [entryResult, nutritionResult, sessionsMap] = await Promise.all([
-    supabase.from('daily_entries').select('*').eq('date', date).maybeSingle(),
+    adminClient.from('daily_entries').select('*').eq('date', date).maybeSingle(),
     adminClient
       .from('daily_nutrition_summary')
       .select('protein, fiber, meal_count')
       .eq('user_id', nutUserId)
       .eq('date', date)
       .maybeSingle(),
-    loadSessionsForDates([date]),
+    loadSessionsForDates([date], adminClient),
   ])
 
   if (entryResult.error || !entryResult.data) return
@@ -41,16 +41,16 @@ export async function recomputeScores(date: string): Promise<void> {
 
   // Forward-only: bedtime target is the 30-day rolling average as of this date.
   // Historical stored scores are not bulk-backfilled.
-  const bedtimeTarget = await getBedtimeRolling30DayAvg(date)
+  const bedtimeTarget = await getBedtimeRolling30DayAvg(date, adminClient)
   const bScore = behaviorScore(entry, nutritionSummary, bedtimeTarget)
   // Forward-only: baseline is the 28-day rolling median as of this date.
   // Historical stored scores are not bulk-backfilled.
-  const hrvBaseline = await getHrvRolling28DayMedian(date)
+  const hrvBaseline = await getHrvRolling28DayMedian(date, adminClient)
   // Forward-only: sleep debt is the 7-day trailing deficit as of this date.
-  const sleepDebt = await getSleepDebtRolling7Day(date)
+  const sleepDebt = await getSleepDebtRolling7Day(date, adminClient)
   const oScore = outcomeScore(entry, hrvBaseline, sleepDebt)
 
-  const { error } = await supabase
+  const { error } = await adminClient
     .from('daily_entries')
     .update({ behavior_score: bScore, outcome_score: oScore })
     .eq('date', date)
