@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, saveHealthAppointment, fetchHealthAppointments, seedDefaultAppointments, getVo2Rolling60DayAvg, saveBodyScanReading, getBodyCompositionData } from '@/lib/db'
+import { getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, getVo2Rolling60DayAvg, saveBodyScanReading, getBodyCompositionData } from '@/lib/db'
 import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment, Glp1Injection, BodyCompositionData } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
@@ -1482,6 +1482,39 @@ async function fetchGoalsData(): Promise<GoalsData> {
   const res = await fetch('/api/goals', { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to load goals data: ${res.status}`)
   return res.json()
+}
+
+// health_appointments — RLS fix session 3. Goes through /api/health-appointments
+// (service-role) rather than a direct browser Supabase call — see BODYCIPHER.md.
+async function fetchHealthAppointments(): Promise<HealthAppointment[]> {
+  const res = await fetch('/api/health-appointments', { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Failed to load health appointments: ${res.status}`)
+  return res.json()
+}
+
+async function seedDefaultAppointments(): Promise<void> {
+  const res = await fetch('/api/health-appointments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seed: true }),
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`Failed to seed appointments: ${res.status}`)
+}
+
+async function saveHealthAppointment(data: {
+  id: string
+  last_completed_date?: string | null
+  next_due_date?: string | null
+  notes?: string | null
+}): Promise<void> {
+  const res = await fetch('/api/health-appointments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`Failed to save appointment: ${res.status}`)
 }
 
 // ─── Main app ─────────────────────────────────────────────────────

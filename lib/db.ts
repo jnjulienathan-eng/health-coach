@@ -443,15 +443,23 @@ export async function getGoalsData(client: SupabaseClient = supabase): Promise<G
   return { todayScores, biomarkers, fastingGlucose7d, appointments }
 }
 
-// ─── saveHealthAppointment ────────────────────────────────────────
+// ─── saveHealthAppointment, fetchHealthAppointments, ──────────────
+// ─── seedDefaultAppointments ────────────────────────────────────────
+// RLS fix, session 3 (Sept 2026): these three functions are no longer
+// called directly from the browser. app/page.tsx now calls
+// app/api/health-appointments instead, which calls these with the
+// service-role client. The `client` param defaults to the anon
+// `supabase` above only so the functions still type-check standalone —
+// nothing should rely on that default going forward. Do not re-wire
+// these back to a direct browser import once RLS is enabled.
 export async function saveHealthAppointment(data: {
   id: string
   last_completed_date?: string | null
   next_due_date?: string | null
   notes?: string | null
-}): Promise<void> {
+}, client: SupabaseClient = supabase): Promise<void> {
   const { id, ...fields } = data
-  const { error } = await supabase
+  const { error } = await client
     .from('health_appointments')
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', id)
@@ -460,8 +468,8 @@ export async function saveHealthAppointment(data: {
 }
 
 // ─── fetchHealthAppointments ──────────────────────────────────────
-export async function fetchHealthAppointments() {
-  const { data, error } = await supabase
+export async function fetchHealthAppointments(client: SupabaseClient = supabase) {
+  const { data, error } = await client
     .from('health_appointments')
     .select('*')
     .eq('user_id', 'julie')
@@ -479,7 +487,7 @@ export async function fetchHealthAppointments() {
 // already exists for this user. Relies on the unique constraint on
 // (user_id, appointment_type) — a concurrent/duplicate call is a
 // harmless no-op rather than a duplicate insert.
-export async function seedDefaultAppointments(): Promise<void> {
+export async function seedDefaultAppointments(client: SupabaseClient = supabase): Promise<void> {
   const defaults = [
     { appointment_type: 'dermatologist',    interval_months: 6   },
     { appointment_type: 'dentist',          interval_months: 6   },
@@ -492,7 +500,7 @@ export async function seedDefaultAppointments(): Promise<void> {
     { appointment_type: 'colonoscopy',      interval_months: 120 },
   ]
   console.error('seedDefaultAppointments: attempting upsert, user_id=julie, row count=', defaults.length)
-  const { error } = await supabase
+  const { error } = await client
     .from('health_appointments')
     .upsert(defaults.map(d => ({ ...d, user_id: 'julie' })), {
       onConflict: 'user_id,appointment_type',
