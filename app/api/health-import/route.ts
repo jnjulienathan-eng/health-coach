@@ -111,11 +111,25 @@ export async function POST(req: NextRequest) {
     // Debug: log name + units (not the full payload — sleep-type payloads can
     // truncate in the log viewer) for any metric this endpoint doesn't yet
     // recognize. Used to confirm the real HAE field name for a new metric
-    // (currently: weight/body mass) before wiring a mapping — see BODYCIPHER.md
+    // before wiring a mapping — see BODYCIPHER.md
     // "Health Auto Export → biomarker_readings mapping" backlog note.
     for (const metric of metrics) {
       if (!RECOGNIZED_METRIC_NAMES.has(metric.name)) {
         console.log(`[health-import] unrecognized metric: name=${metric.name} units=${metric.units}`)
+      }
+
+      // CGM prep (defensive only — no cgm_readings writes here yet). Expected
+      // HAE field name for Apple's "Blood Glucose" category is 'blood_glucose'
+      // (unconfirmed — inferred from HAE's naming pattern for other metrics,
+      // e.g. heart_rate_variability/resting_heart_rate). Match on a
+      // case-insensitive substring of "glucose" rather than the exact expected
+      // name, in case the real field name differs, and log a small sample of
+      // raw entries (not the full payload) so the real shape can be read from
+      // logs once a genuine payload arrives. See BODYCIPHER.md DATA MODEL →
+      // cgm_readings.
+      if (metric.name.toLowerCase().includes('glucose')) {
+        const sample = (metric.data ?? []).slice(0, 3)
+        console.log(`[health-import] CGM prep — glucose-matching metric: name=${metric.name} units=${metric.units} sample=${JSON.stringify(sample)}`)
       }
     }
 
