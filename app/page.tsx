@@ -36,12 +36,21 @@ function shiftDay(dateStr: string, delta: number) {
 }
 
 // "today" / "yesterday" / a short date — for the CGM reading's "as of" label.
-// Takes a timestamptz string (cgm_readings.recorded_at); compares by
-// YYYY-MM-DD only, same convention as todayStr()/yesterdayStr() above.
+// Takes a timestamptz string (cgm_readings.recorded_at). Compares Berlin
+// calendar dates (getTodayBerlin(), same technique used elsewhere in this
+// file and in NutritionSection.tsx), NOT the raw UTC date component of the
+// ISO string — cgm_readings' daily-average row is stamped to Berlin local
+// midnight, which Postgres/Supabase return as a UTC timestamp on the
+// *previous* UTC calendar date (Berlin is UTC+1/+2), so a plain
+// recordedAt.slice(0, 10) vs. todayStr()/yesterdayStr() (both UTC-based)
+// comparison misclassified today's own reading as "yesterday" for most of
+// each Berlin day — the self-contradictory "Today's average so far · as of
+// yesterday" bug found in live testing.
 function formatAsOf(recordedAt: string) {
-  const dateOnly = recordedAt.slice(0, 10)
-  if (dateOnly === todayStr()) return 'today'
-  if (dateOnly === yesterdayStr()) return 'yesterday'
+  const dateOnly = new Date(recordedAt).toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
+  const todayBerlin = getTodayBerlin()
+  if (dateOnly === todayBerlin) return 'today'
+  if (dateOnly === shiftDay(todayBerlin, -1)) return 'yesterday'
   return new Date(dateOnly + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
@@ -3356,7 +3365,7 @@ export default function App() {
                         Wearing CGM
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 2 }}>
-                        Turns off Day Average + Low Events
+                        Gates Day Average and Low Events
                       </div>
                     </div>
                     <input
@@ -3406,7 +3415,12 @@ export default function App() {
                         </div>
                         <div style={{ fontSize: 11.5, color: 'var(--color-text-dim)', marginTop: 3 }}>
                           {dayAverageReading != null
-                            ? `Today's average so far · as of ${formatAsOf(dayAverageReading.recorded_at)}`
+                            ? (() => {
+                                const asOf = formatAsOf(dayAverageReading.recorded_at)
+                                return asOf === 'today'
+                                  ? `Today's average so far · as of ${asOf}`
+                                  : `Full-day average · ${asOf}`
+                              })()
                             : 'No CGM data'}
                         </div>
                       </div>
