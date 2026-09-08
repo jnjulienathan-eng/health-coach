@@ -45,6 +45,14 @@ function formatAsOf(recordedAt: string) {
   return new Date(dateOnly + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// Three-colour glucose threshold shared by the Glucose Stability card's
+// Waking Glucose and Day Average rows — optimal ≤4.8 / moderate ≤5.6 / low above.
+function glucoseColor(value: number): string {
+  if (value <= 4.8) return 'var(--color-status-optimal)'
+  if (value <= 5.6) return 'var(--color-status-moderate)'
+  return 'var(--color-status-low)'
+}
+
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
   const isThisYear = d.getFullYear() === new Date().getFullYear()
@@ -1494,11 +1502,24 @@ async function fetchGoalsData(): Promise<GoalsData> {
   return res.json()
 }
 
-// cgm_readings — read-only, service-role via /api/cgm. See BODYCIPHER.md.
-async function fetchLatestCgmReading(): Promise<CgmReading | null> {
-  const res = await fetch('/api/cgm', { cache: 'no-store' })
+// cgm_readings — read-only, service-role via /api/cgm. Optional `source`
+// filters to that source (e.g. 'GlucosePhone', the HAE daily-average feed) —
+// see BODYCIPHER.md.
+async function fetchLatestCgmReading(source?: string): Promise<CgmReading | null> {
+  const url = source ? `/api/cgm?source=${encodeURIComponent(source)}` : '/api/cgm'
+  const res = await fetch(url, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to load CGM reading: ${res.status}`)
   return res.json()
+}
+
+// Meal Spikes Today (Glucose Stability card) — count of today's (Europe/Berlin,
+// 05:00 boundary) logged meals with peak_glucose_mmol > 7.5. Reuses the
+// existing /api/nutrition/day?date= route rather than a new query.
+async function fetchMealSpikesToday(): Promise<number> {
+  const res = await fetch(`/api/nutrition/day?date=${getTodayBerlin()}`, { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Failed to load today's meals: ${res.status}`)
+  const data = await res.json() as { meals: Array<{ peak_glucose_mmol: number | null }> }
+  return data.meals.filter(m => m.peak_glucose_mmol != null && m.peak_glucose_mmol > 7.5).length
 }
 
 // health_appointments — RLS fix session 3. Goes through /api/health-appointments
@@ -1590,9 +1611,10 @@ export default function App() {
   const [cardioExpanded,  setCardioExpanded]  = useState(false)
 
   // ── Glucose Stability state ───────────────────────────────────────
-  const [glucoseExpanded, setGlucoseExpanded] = useState(false)
-  const [cgmEnabled,      setCgmEnabled]      = useState(false)
-  const [cgmReading,      setCgmReading]      = useState<CgmReading | null>(null)
+  const [glucoseExpanded,   setGlucoseExpanded]   = useState(false)
+  const [cgmEnabled,        setCgmEnabled]        = useState(false)
+  const [dayAverageReading, setDayAverageReading] = useState<CgmReading | null>(null)
+  const [mealSpikesToday,   setMealSpikesToday]   = useState<number | null>(null)
   const [hba1cEntryOpen,  setHba1cEntryOpen]  = useState(false)
   const [hba1cValueInput, setHba1cValueInput] = useState('')
   const [hba1cDateInput,  setHba1cDateInput]  = useState('')
@@ -1734,7 +1756,8 @@ export default function App() {
         setGoalsData(d)
       })
       .catch(e => console.error('Goals data load error:', e))
-    fetchLatestCgmReading().then(setCgmReading).catch(e => console.error('CGM reading load error:', e))
+    fetchLatestCgmReading('GlucosePhone').then(setDayAverageReading).catch(e => console.error('CGM reading load error:', e))
+    fetchMealSpikesToday().then(setMealSpikesToday).catch(e => console.error('Meal spikes load error:', e))
   }, [])
 
   // Load all entries for History section in Dashboard tab (from HistoryTab)
@@ -1827,10 +1850,6 @@ export default function App() {
   const ldl        = goalsLatestBiomarker('ldl')
   const hdl        = goalsLatestBiomarker('hdl')
   const hba1c      = goalsLatestBiomarker('hba1c')
-  const validGlucose = (goalsData?.fastingGlucose7d ?? []).filter((v): v is number => v != null)
-  const glucoseAvg = validGlucose.length > 0
-    ? validGlucose.reduce((a, b) => a + b, 0) / validGlucose.length
-    : null
 
   // Body Composition v3 card sources its own data via getBodyCompositionData()
   // (bodyComp state, loaded in handleBodyCompToggle below) rather than
@@ -3317,7 +3336,9 @@ export default function App() {
                   Glucose Stability
                 </span>
                 <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                  {glucoseAvg != null ? `${glucoseAvg.toFixed(1)} mmol/L` : 'No data'}
+                  {cgmEnabled
+                    ? (dayAverageReading != null ? `${dayAverageReading.value_mmol.toFixed(1)} mmol/L` : 'No data')
+                    : '—'}
                 </span>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={`chevron${glucoseExpanded ? ' open' : ''}`} style={{ flexShrink: 0, color: 'var(--color-text-muted)' }}>
                   <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -3326,32 +3347,119 @@ export default function App() {
 
               {glucoseExpanded && (
                 <div style={{ padding: '16px', borderTop: '1px solid var(--color-border-subtle)', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {/* 7-day fasting glucose average */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
+                  {/* Wearing CGM toggle — gates Day Average + Low Events only.
+                      Unpersisted (resets on reload); see BODYCIPHER.md open decision. */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 'var(--fw-semibold)', color: 'var(--color-text-primary)' }}>
+                        Wearing CGM
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 2 }}>
+                        Turns off Day Average + Low Events
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={cgmEnabled}
+                      onChange={e => setCgmEnabled(e.target.checked)}
+                      className="toggle"
+                      aria-label="Wearing CGM"
+                    />
+                  </div>
+
+                  {/* Row 1 — Waking Glucose. Manual only this session: reads
+                      daily_entries.fasting_glucose_mmol for the currently-navigated
+                      date. Deliberately NOT sourced from cgm_readings — that's a
+                      daily average, not a waking reading. Always renders regardless
+                      of the CGM toggle. */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 13, borderBottom: '1px solid var(--color-border-subtle)' }}>
                     <div>
                       <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
-                        Fasting Glucose (7-day avg)
+                        Waking Glucose
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--color-text-dim)', marginTop: 3 }}>
+                        Manual entry · edit in Sleep
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
                       <span style={{
                         fontSize: 'var(--fs-body)',
                         fontWeight: 'var(--fw-semibold)',
-                        color: glucoseAvg == null
-                          ? 'var(--color-text-muted)'
-                          : glucoseAvg <= 4.8
-                          ? 'var(--color-status-optimal)'
-                          : glucoseAvg <= 5.6
-                          ? 'var(--color-status-moderate)'
-                          : 'var(--color-status-low)',
+                        color: entry.sleep.fasting_glucose_mmol == null ? 'var(--color-text-muted)' : glucoseColor(entry.sleep.fasting_glucose_mmol),
                       }}>
-                        {glucoseAvg != null ? glucoseAvg.toFixed(1) : '—'}
+                        {entry.sleep.fasting_glucose_mmol != null ? entry.sleep.fasting_glucose_mmol.toFixed(1) : '—'}
                       </span>
                       <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>mmol/L</span>
                     </div>
                   </div>
 
-                  {/* HbA1c */}
+                  {/* Row 2 — Day Average. Same-day running average from cgm_readings
+                      (source = GlucosePhone, the HAE feed), not a live intraday
+                      reading — closes the backlog item about the card implying more
+                      precision than it has. Gated by the CGM toggle. */}
+                  {cgmEnabled && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 13, borderBottom: '1px solid var(--color-border-subtle)' }}>
+                      <div>
+                        <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                          Day Average
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--color-text-dim)', marginTop: 3 }}>
+                          {dayAverageReading != null
+                            ? `Today's average so far · as of ${formatAsOf(dayAverageReading.recorded_at)}`
+                            : 'No CGM data'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                        <span style={{
+                          fontSize: 'var(--fs-body)',
+                          fontWeight: 'var(--fw-semibold)',
+                          color: dayAverageReading == null ? 'var(--color-text-muted)' : glucoseColor(dayAverageReading.value_mmol),
+                        }}>
+                          {dayAverageReading != null ? dayAverageReading.value_mmol.toFixed(1) : '—'}
+                        </span>
+                        <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>mmol/L</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Row 3 — Meal Spikes Today. Always renders regardless of the
+                      CGM toggle. Sourced from the existing /api/nutrition/day?date=
+                      response (05:00 Europe/Berlin boundary), not a new query. */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 13, borderBottom: '1px solid var(--color-border-subtle)' }}>
+                    <div>
+                      <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                        Meal Spikes Today
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--color-text-dim)', marginTop: 3 }}>
+                        Peaks &gt;7.5 mmol/L · from logged meals
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-navy)' }}>
+                      {mealSpikesToday != null ? mealSpikesToday : '—'}
+                    </span>
+                  </div>
+
+                  {/* Row 4 — Low Events Today. Empty state only this session — no
+                      data source exists yet (a future connector will supply it).
+                      Gated by the CGM toggle. */}
+                  {cgmEnabled && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 13, borderBottom: '1px solid var(--color-border-subtle)' }}>
+                      <div>
+                        <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                          Low Events Today
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--color-text-dim)', marginTop: 3 }}>
+                          No connector yet — coming in a future session
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-text-muted)' }}>
+                        —
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Row 5 — HbA1c. Unchanged from before this rebuild. */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
@@ -3444,49 +3552,6 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* CGM toggle */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid var(--color-border-subtle)' }}>
-                    <div>
-                      <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
-                        CGM Data
-                      </div>
-                      {cgmReading == null && (
-                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                          CGM data not connected
-                        </div>
-                      )}
-                      {cgmReading != null && (
-                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                          As of {formatAsOf(cgmReading.recorded_at)}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      {cgmReading != null && (
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                          <span style={{
-                            fontSize: 'var(--fs-body)',
-                            fontWeight: 'var(--fw-semibold)',
-                            color: cgmReading.value_mmol <= 4.8
-                              ? 'var(--color-status-optimal)'
-                              : cgmReading.value_mmol <= 5.6
-                              ? 'var(--color-status-moderate)'
-                              : 'var(--color-status-low)',
-                          }}>
-                            {cgmReading.value_mmol.toFixed(1)}
-                          </span>
-                          <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>mmol/L</span>
-                        </div>
-                      )}
-                      <input
-                        type="checkbox"
-                        checked={cgmEnabled}
-                        onChange={e => setCgmEnabled(e.target.checked)}
-                        className="toggle"
-                        aria-label="Enable CGM data"
-                      />
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
