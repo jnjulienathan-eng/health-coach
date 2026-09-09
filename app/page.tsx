@@ -54,6 +54,13 @@ function formatAsOf(recordedAt: string) {
   return new Date(dateOnly + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// "HH:MM" in Berlin local time — for the Waking Glucose row's "as of" caption,
+// which needs the reading's exact time (it's a single nearest-match reading,
+// not a day-level value like Day Average's "today"/"yesterday").
+function formatBerlinTime(recordedAt: string) {
+  return new Date(recordedAt).toLocaleTimeString('en-GB', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 // Three-colour glucose threshold shared by the Glucose Stability card's
 // Waking Glucose and Day Average rows — optimal ≤4.8 / moderate ≤5.6 / low above.
 function glucoseColor(value: number): string {
@@ -1521,6 +1528,28 @@ async function fetchLatestCgmReading(source?: string): Promise<CgmReading | null
   return res.json()
 }
 
+// Waking Glucose (Glucose Stability card) — the LibreView reading nearest to
+// that date's daily_entries.wake_time, or null when there's no wake_time
+// logged or nothing within the 120-minute match cap (see /api/cgm/waking,
+// lib/db.ts → getNearestCgmReading). The card falls back to the manual
+// fasting_glucose_mmol entry in either null case.
+async function fetchWakingCgmReading(date: string): Promise<CgmReading | null> {
+  const res = await fetch(`/api/cgm/waking?date=${date}`, { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Failed to load waking CGM reading: ${res.status}`)
+  const data = await res.json() as { wakeTime: string | null; reading: CgmReading | null }
+  return data.reading
+}
+
+// Low Events Today (Glucose Stability card) — real "today" (Europe/Berlin
+// midnight-to-midnight), not the currently-navigated date. See
+// /api/cgm/low-events-today, lib/db.ts → getLowEventsToday.
+async function fetchLowEventsToday(): Promise<number> {
+  const res = await fetch('/api/cgm/low-events-today', { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Failed to load low events today: ${res.status}`)
+  const data = await res.json() as { count: number }
+  return data.count
+}
+
 // Meal Spikes Today (Glucose Stability card) — count of today's (Europe/Berlin,
 // 05:00 boundary) logged meals with peak_glucose_mmol > 7.5. Reuses the
 // existing /api/nutrition/day?date= route rather than a new query.
@@ -1623,7 +1652,9 @@ export default function App() {
   const [glucoseExpanded,   setGlucoseExpanded]   = useState(false)
   const [cgmEnabled,        setCgmEnabled]        = useState(false)
   const [dayAverageReading, setDayAverageReading] = useState<CgmReading | null>(null)
+  const [wakingCgmReading,  setWakingCgmReading]  = useState<CgmReading | null>(null)
   const [mealSpikesToday,   setMealSpikesToday]   = useState<number | null>(null)
+  const [lowEventsToday,    setLowEventsToday]    = useState<number | null>(null)
   const [hba1cEntryOpen,  setHba1cEntryOpen]  = useState(false)
   const [hba1cValueInput, setHba1cValueInput] = useState('')
   const [hba1cDateInput,  setHba1cDateInput]  = useState('')
@@ -1767,7 +1798,28 @@ export default function App() {
       .catch(e => console.error('Goals data load error:', e))
     fetchLatestCgmReading('GlucosePhone').then(setDayAverageReading).catch(e => console.error('CGM reading load error:', e))
     fetchMealSpikesToday().then(setMealSpikesToday).catch(e => console.error('Meal spikes load error:', e))
+    fetchLowEventsToday().then(setLowEventsToday).catch(e => console.error('Low events load error:', e))
   }, [])
+
+  // Waking Glucose (Glucose Stability card) — date-navigated, unlike Day
+  // Average/Low Events Today. Respects the Wearing CGM toggle: when off,
+  // skip the lookup entirely and let the row fall back to the manual
+  // fasting_glucose_mmol entry, same as the toggle already gates the other
+  // CGM-sourced rows.
+  useEffect(() => {
+    if (!cgmEnabled) {
+      setWakingCgmReading(null)
+      return
+    }
+    let cancelled = false
+    fetchWakingCgmReading(currentDate)
+      .then(reading => { if (!cancelled) setWakingCgmReading(reading) })
+      .catch(e => {
+        console.error('Waking CGM reading load error:', e)
+        if (!cancelled) setWakingCgmReading(null)
+      })
+    return () => { cancelled = true }
+  }, [currentDate, cgmEnabled])
 
   // Load all entries for History section in Dashboard tab (from HistoryTab)
   useEffect(() => {
@@ -3377,28 +3429,41 @@ export default function App() {
                     />
                   </div>
 
-                  {/* Row 1 — Waking Glucose. Manual only this session: reads
-                      daily_entries.fasting_glucose_mmol for the currently-navigated
-                      date. Deliberately NOT sourced from cgm_readings — that's a
-                      daily average, not a waking reading. Always renders regardless
-                      of the CGM toggle. */}
+                  {/* Row 1 — Waking Glucose. When the CGM toggle is on and a
+                      LibreView reading was found within 120 minutes of that
+                      date's daily_entries.wake_time (via /api/cgm/waking),
+                      shows that reading with an "as of HH:MM" caption. Falls
+                      back to the manual daily_entries.fasting_glucose_mmol
+                      entry — no time caption, since it's typed, not matched —
+                      when the toggle is off, no wake_time is logged, or
+                      nothing was within the cap. Always renders regardless of
+                      the CGM toggle (the toggle only decides which source
+                      backs it). */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 13, borderBottom: '1px solid var(--color-border-subtle)' }}>
                     <div>
                       <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
                         Waking Glucose
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--color-text-dim)', marginTop: 3 }}>
-                        Manual entry · edit in Sleep
+                        {cgmEnabled && wakingCgmReading != null
+                          ? `Waking reading · as of ${formatBerlinTime(wakingCgmReading.recorded_at)}`
+                          : 'Manual entry · edit in Sleep'}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                      <span style={{
-                        fontSize: 'var(--fs-body)',
-                        fontWeight: 'var(--fw-semibold)',
-                        color: entry.sleep.fasting_glucose_mmol == null ? 'var(--color-text-muted)' : glucoseColor(entry.sleep.fasting_glucose_mmol),
-                      }}>
-                        {entry.sleep.fasting_glucose_mmol != null ? entry.sleep.fasting_glucose_mmol.toFixed(1) : '—'}
-                      </span>
+                      {cgmEnabled && wakingCgmReading != null ? (
+                        <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: glucoseColor(wakingCgmReading.value_mmol) }}>
+                          {wakingCgmReading.value_mmol.toFixed(1)}
+                        </span>
+                      ) : (
+                        <span style={{
+                          fontSize: 'var(--fs-body)',
+                          fontWeight: 'var(--fw-semibold)',
+                          color: entry.sleep.fasting_glucose_mmol == null ? 'var(--color-text-muted)' : glucoseColor(entry.sleep.fasting_glucose_mmol),
+                        }}>
+                          {entry.sleep.fasting_glucose_mmol != null ? entry.sleep.fasting_glucose_mmol.toFixed(1) : '—'}
+                        </span>
+                      )}
                       <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>mmol/L</span>
                     </div>
                   </div>
@@ -3454,9 +3519,10 @@ export default function App() {
                     </span>
                   </div>
 
-                  {/* Row 4 — Low Events Today. Empty state only this session — no
-                      data source exists yet (a future connector will supply it).
-                      Gated by the CGM toggle. */}
+                  {/* Row 4 — Low Events Today. Counts real "today" (Europe/Berlin
+                      midnight-to-midnight) LibreView readings below 3.9 mmol/L —
+                      see lib/db.ts → getLowEventsToday. Not date-navigated, same
+                      always-live pattern as Day Average. Gated by the CGM toggle. */}
                   {cgmEnabled && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 13, borderBottom: '1px solid var(--color-border-subtle)' }}>
                       <div>
@@ -3464,11 +3530,11 @@ export default function App() {
                           Low Events Today
                         </div>
                         <div style={{ fontSize: 11.5, color: 'var(--color-text-dim)', marginTop: 3 }}>
-                          No connector yet — coming in a future session
+                          Below 3.9 mmol/L
                         </div>
                       </div>
-                      <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-text-muted)' }}>
-                        —
+                      <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-navy)' }}>
+                        {lowEventsToday != null ? lowEventsToday : '—'}
                       </span>
                     </div>
                   )}

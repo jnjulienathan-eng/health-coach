@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData, Glp1Injection, BodyCompositionData } from './types'
+import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData, Glp1Injection, BodyCompositionData, CgmReading } from './types'
 import { emptyEntry } from './types'
 
 export const supabase = createClient(
@@ -864,6 +864,137 @@ export async function getSleepDebtRolling7Day(asOfDate?: string, client: Supabas
     const effectiveDur = (r.sleep_duration_min ?? 0) + (r.nap_minutes ?? 0)
     return sum + Math.max(0, 450 - effectiveDur)
   }, 0)
+}
+
+// ─── Berlin wall-clock → UTC instant ────────────────────────────────
+// Converts a Berlin-local YYYY-MM-DD + HH:MM into the UTC instant it
+// represents, correctly across CET/CEST. Needed because cgm_readings.
+// recorded_at is a real timestamptz instant, while wake_time/"today" are
+// Berlin wall-clock values — every other Berlin helper in this file only
+// ever compares calendar dates, not instants.
+//
+// Europe/Berlin only ever runs at UTC+1 (CET) or UTC+2 (CEST), so rather
+// than a guess-and-correct approach (which misfires for wall-clock times
+// that fall within the ~1-3am DST-transition window on the two days a
+// year that applies, since the initial guess can land on the wrong side
+// of the transition), try both offsets and pick whichever one's Berlin
+// rendering round-trips back to the requested wall-clock time.
+function berlinTimeParts(ms: number): { y: number; m: number; d: number; h: number; mi: number } {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Berlin', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  })
+  const parts: Record<string, string> = {}
+  for (const p of fmt.formatToParts(new Date(ms))) if (p.type !== 'literal') parts[p.type] = p.value
+  return {
+    y: parseInt(parts.year, 10), m: parseInt(parts.month, 10), d: parseInt(parts.day, 10),
+    h: parseInt(parts.hour, 10) % 24, mi: parseInt(parts.minute, 10),
+  }
+}
+
+function berlinWallClockToUtcMs(dateStr: string, timeStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const [hh, mi] = timeStr.split(':').map(Number)
+  const naiveUtcMs = Date.UTC(y, m - 1, d, hh, mi, 0)
+  for (const offsetHours of [1, 2]) {
+    const candidateMs = naiveUtcMs - offsetHours * 3_600_000
+    const p = berlinTimeParts(candidateMs)
+    if (p.y === y && p.m === m && p.d === d && p.h === hh && p.mi === mi) return candidateMs
+  }
+  // Nonexistent local time (the 02:00-03:00 spring-forward gap) — not a
+  // real wake_time or day-boundary value, so this shouldn't occur.
+  return naiveUtcMs - 3_600_000
+}
+
+function addDaysToDateStr(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().split('T')[0]
+}
+
+// ─── getNearestCgmReading ────────────────────────────────────────────
+// Given a Berlin calendar date and an HH:MM wake_time (daily_entries.
+// wake_time), finds the cgm_readings row (source = 'LibreView' only —
+// the HAE 'GlucosePhone' feed writes one same-day running average, not
+// intraday readings, so it can't answer "nearest to wake time") whose
+// recorded_at is closest to that date+wakeTime instant. Fetches only
+// that Berlin calendar date's readings (midnight to midnight) rather
+// than the whole table, since wake_time always falls within it.
+//
+// NEAREST_MATCH_CAP_MINUTES: if the nearest reading is more than this far
+// from the target wake time, treat it as no match (return null) rather
+// than showing a distant reading under a label that implies precision —
+// same honesty principle as the Day Average Berlin-date caption fix
+// (BODYCIPHER.md, Sept 8, 2026 bugfix pass).
+const NEAREST_CGM_MATCH_CAP_MINUTES = 120
+
+export async function getNearestCgmReading(date: string, wakeTime: string, client: SupabaseClient = supabase): Promise<CgmReading | null> {
+  const dayStartMs = berlinWallClockToUtcMs(date, '00:00')
+  const dayEndMs    = berlinWallClockToUtcMs(addDaysToDateStr(date, 1), '00:00')
+  const targetMs    = berlinWallClockToUtcMs(date, wakeTime)
+
+  const { data, error } = await client
+    .from('cgm_readings')
+    .select('recorded_at, value_mmol, source')
+    .eq('user_id', 'julie')
+    .eq('source', 'LibreView')
+    .gte('recorded_at', new Date(dayStartMs).toISOString())
+    .lt('recorded_at', new Date(dayEndMs).toISOString())
+  if (error) throw error
+
+  const rows = (data ?? []) as CgmReading[]
+  let nearest: CgmReading | null = null
+  let nearestDiffMs = Infinity
+  for (const row of rows) {
+    const diffMs = Math.abs(new Date(row.recorded_at).getTime() - targetMs)
+    if (diffMs < nearestDiffMs) {
+      nearestDiffMs = diffMs
+      nearest = row
+    }
+  }
+  if (!nearest || nearestDiffMs > NEAREST_CGM_MATCH_CAP_MINUTES * 60_000) return null
+  return nearest
+}
+
+// ─── getLowEventsToday ───────────────────────────────────────────────
+// Counts cgm_readings rows below the low-glucose threshold, source =
+// 'LibreView', for real-world "today" — Europe/Berlin midnight-to-
+// midnight calendar date.
+//
+// Deliberately does NOT use the app's other day-boundary convention,
+// the 05:00 Berlin nutrition boundary (dayKeyFromTimestamp in
+// lib/nutrition.ts) — flagging the conflict rather than silently picking
+// one, per instruction. That boundary exists so a very-late meal is
+// attributed to the day it's conceptually "for" (last night's dinner
+// logged at 1am still counts as yesterday). A glucose low is not a
+// day-owned entry the same way — it's a continuous physiological
+// reading — and cgm_readings' own existing per-day convention (the HAE
+// daily-average rows are stamped to Berlin midnight; the Day Average
+// row's Sept 8, 2026 caption fix already compares Berlin midnight-to-
+// midnight dates, not the 05:00 boundary, for the same reason) already
+// treats "today" as a plain Berlin calendar date. Applying the 05:00
+// boundary here would misclassify any low between midnight and 05:00 as
+// belonging to the wrong day — the same class of bug that fix corrected.
+// Threshold and window are computed at query time — no stored flag, no
+// new table, per the locked design decision.
+const LOW_GLUCOSE_THRESHOLD_MMOL = 3.9
+
+export async function getLowEventsToday(client: SupabaseClient = supabase): Promise<number> {
+  const todayBerlin = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
+  const dayStartMs = berlinWallClockToUtcMs(todayBerlin, '00:00')
+  const dayEndMs    = berlinWallClockToUtcMs(addDaysToDateStr(todayBerlin, 1), '00:00')
+
+  const { count, error } = await client
+    .from('cgm_readings')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', 'julie')
+    .eq('source', 'LibreView')
+    .lt('value_mmol', LOW_GLUCOSE_THRESHOLD_MMOL)
+    .gte('recorded_at', new Date(dayStartMs).toISOString())
+    .lt('recorded_at', new Date(dayEndMs).toISOString())
+  if (error) throw error
+
+  return count ?? 0
 }
 
 // ─── saveVo2Reading ───────────────────────────────────────────────
