@@ -958,31 +958,33 @@ export async function getNearestCgmReading(date: string, wakeTime: string, clien
 
 // ─── getLowEventsToday ───────────────────────────────────────────────
 // Counts cgm_readings rows below the low-glucose threshold, source =
-// 'LibreView', for real-world "today" — Europe/Berlin midnight-to-
-// midnight calendar date.
-//
-// Deliberately does NOT use the app's other day-boundary convention,
-// the 05:00 Berlin nutrition boundary (dayKeyFromTimestamp in
-// lib/nutrition.ts) — flagging the conflict rather than silently picking
-// one, per instruction. That boundary exists so a very-late meal is
-// attributed to the day it's conceptually "for" (last night's dinner
-// logged at 1am still counts as yesterday). A glucose low is not a
-// day-owned entry the same way — it's a continuous physiological
-// reading — and cgm_readings' own existing per-day convention (the HAE
-// daily-average rows are stamped to Berlin midnight; the Day Average
-// row's Sept 8, 2026 caption fix already compares Berlin midnight-to-
-// midnight dates, not the 05:00 boundary, for the same reason) already
-// treats "today" as a plain Berlin calendar date. Applying the 05:00
-// boundary here would misclassify any low between midnight and 05:00 as
-// belonging to the wrong day — the same class of bug that fix corrected.
+// 'LibreView', for real-world "today" — using the app's existing 05:00
+// Europe/Berlin day boundary (the same one the nutrition day already
+// uses, dayKeyFromTimestamp in lib/nutrition.ts — not imported here,
+// replicated with the berlinTimeParts()/berlinWallClockToUtcMs() helpers
+// already in this file, per instruction, rather than a new cross-module
+// dependency). Confirmed by Julie, Sept 8, 2026: an overnight low should
+// split across app-days the same way sleep and fasting glucose already
+// do — a 02:41 low counts toward the prior day, a 05:09 low counts
+// toward the current day. (An earlier version of this function used
+// plain Berlin midnight-to-midnight instead, reasoning that a glucose
+// low isn't a "day-owned" entry the way a logged meal is — reversed by
+// this instruction, since Julie's actual intent was for it to behave
+// like sleep/fasting glucose, not like meals.)
+// "Today" means whichever 24h window the 05:00 boundary currently
+// applies to — before 05:00 Berlin, that's still [yesterday 05:00,
+// today 05:00), not [today 00:00, tomorrow 00:00).
 // Threshold and window are computed at query time — no stored flag, no
 // new table, per the locked design decision.
 const LOW_GLUCOSE_THRESHOLD_MMOL = 3.9
+const DAY_START_HOUR_BERLIN = 5
 
 export async function getLowEventsToday(client: SupabaseClient = supabase): Promise<number> {
-  const todayBerlin = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
-  const dayStartMs = berlinWallClockToUtcMs(todayBerlin, '00:00')
-  const dayEndMs    = berlinWallClockToUtcMs(addDaysToDateStr(todayBerlin, 1), '00:00')
+  const now = berlinTimeParts(Date.now())
+  const todayBerlin = `${now.y}-${String(now.m).padStart(2, '0')}-${String(now.d).padStart(2, '0')}`
+  const anchorDate = now.h < DAY_START_HOUR_BERLIN ? addDaysToDateStr(todayBerlin, -1) : todayBerlin
+  const dayStartMs = berlinWallClockToUtcMs(anchorDate, '05:00')
+  const dayEndMs    = berlinWallClockToUtcMs(addDaysToDateStr(anchorDate, 1), '05:00')
 
   const { count, error } = await client
     .from('cgm_readings')
