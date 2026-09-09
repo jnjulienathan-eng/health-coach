@@ -16,6 +16,7 @@
     "framer-motion": "^12.38.0",
     "html5-qrcode": "^2.3.8",
     "jose": "^6.2.3",
+    "libre-link-unofficial-api": "^1.0.0-alpha.7",
     "lucide-react": "^1.17.0",
     "mcp-handler": "^1.1.0",
     "next": "16.2.2",
