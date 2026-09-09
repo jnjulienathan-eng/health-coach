@@ -60,6 +60,7 @@ interface MetricPoint {
   // sleep_analysis aggregated fields
   totalSleep?: number
   inBedStart?: string
+  inBedEnd?: string
   source?: string
 }
 
@@ -140,6 +141,7 @@ export async function POST(req: NextRequest) {
       resting_hr_daytime?: number
       sleep_duration_min?: number
       bedtime?: string
+      wake_time?: string
       active_calories?: number
       basal_calories?: number
       walking_hr_avg?: number
@@ -173,6 +175,13 @@ export async function POST(req: NextRequest) {
           if (point.inBedStart) {
             // "2026-05-03 22:12:05 +0200" → "22:12"
             byDate[date].bedtime = point.inBedStart.substring(11, 16)
+          }
+          if (point.inBedEnd) {
+            // Same HH:MM extraction as inBedStart → bedtime above. Apple
+            // Watch's auto-detected sleep doesn't distinguish "stopped
+            // sleeping" from "got out of bed" — inBedEnd and sleepEnd have
+            // been identical in every real sync so far (see BODYCIPHER.md).
+            byDate[date].wake_time = point.inBedEnd.substring(11, 16)
           }
         } else if (metric.name === 'active_energy' && point.qty !== undefined) {
           const kcal = metric.units === 'kJ' ? kjToKcal(point.qty) : Math.round(point.qty)
@@ -213,7 +222,7 @@ export async function POST(req: NextRequest) {
       // Fetch existing row to apply COALESCE and overwrite-if-higher logic.
       const { data: existing } = await supabase
         .from('daily_entries')
-        .select('sleep_duration_min, bedtime, active_calories, basal_calories, resting_hr_daytime, walking_hr_avg, walking_running_km, apple_hrv_avg')
+        .select('sleep_duration_min, bedtime, wake_time, active_calories, basal_calories, resting_hr_daytime, walking_hr_avg, walking_running_km, apple_hrv_avg')
         .eq('user_id', 'julie')
         .eq('date', date)
         .maybeSingle()
@@ -270,6 +279,19 @@ export async function POST(req: NextRequest) {
           written.push('bedtime')
         } else {
           skipped.push('bedtime (manual value exists)')
+        }
+      }
+
+      // wake_time — overwrite-on-change, not COALESCE like bedtime above.
+      // There's no manual entry point for wake_time anywhere in the app, so
+      // there's nothing for a webhook write to clobber.
+      if (incoming.wake_time !== undefined) {
+        const storedWakeTime = row?.wake_time as string | null | undefined
+        if (storedWakeTime == null || incoming.wake_time !== storedWakeTime) {
+          upsert.wake_time = incoming.wake_time
+          written.push('wake_time')
+        } else {
+          skipped.push(`wake_time (unchanged ${storedWakeTime})`)
         }
       }
 

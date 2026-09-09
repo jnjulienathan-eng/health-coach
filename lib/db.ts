@@ -14,6 +14,7 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
     date: r.date as string,
     sleep: {
       bedtime:              (r.bedtime              as string  | null) ?? null,
+      wake_time:            (r.wake_time            as string  | null) ?? null,
       duration_min:         (r.sleep_duration_min   as number  | null) ?? null,
       hrv:                  (r.hrv                  as number  | null) ?? null,
       apple_hrv_avg:        (r.apple_hrv_avg        as number  | null) ?? null,

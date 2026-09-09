@@ -1,6 +1,7 @@
 // ─── Sleep ───────────────────────────────────────────────────────
 export interface SleepData {
   bedtime: string | null          // "HH:MM" 24h
+  wake_time: string | null        // "HH:MM" 24h, written by /api/health-import
   duration_min: number | null     // total sleep in minutes
   hrv: number | null              // ms (manual waking HRV)
   apple_hrv_avg: number | null    // ms, Apple all-day average HRV (HAE)
@@ -115,7 +116,7 @@ export interface DailyEntry {
 
 // ─── Defaults ────────────────────────────────────────────────────
 export function emptySleep(): SleepData {
-  return { bedtime: null, duration_min: null, hrv: null, apple_hrv_avg: null, rhr: null, rested: null, nap_minutes: null, fasting_glucose_mmol: null }
+  return { bedtime: null, wake_time: null, duration_min: null, hrv: null, apple_hrv_avg: null, rhr: null, rested: null, nap_minutes: null, fasting_glucose_mmol: null }
 }
 
 export function emptyTraining(): TrainingData {
