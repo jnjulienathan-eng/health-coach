@@ -132,6 +132,17 @@ export async function POST(req: NextRequest) {
         const sample = (metric.data ?? []).slice(0, 3)
         console.log(`[health-import] CGM prep — glucose-matching metric: name=${metric.name} units=${metric.units} sample=${JSON.stringify(sample)}`)
       }
+
+      // TEMPORARY DEBUG — sleep_analysis field-shape investigation. Logs the
+      // full raw metric (all keys HAE actually sends, not just the
+      // inBedStart/totalSleep fields extracted below) so an end-of-sleep or
+      // end-of-time-in-bed timestamp (e.g. inBedEnd/sleepEnd) can be
+      // confirmed or ruled out from Vercel logs. Read-only — does not affect
+      // parsing, field mapping, or the bedtime/sleep_duration_min writes
+      // below. Remove once confirmed.
+      if (metric.name === 'sleep_analysis') {
+        console.log(`[health-import] sleep_analysis debug — full raw metric: ${JSON.stringify(metric)}`)
+      }
     }
 
     // ── METRICS → daily_entries ─────────────────────────────────────────────
