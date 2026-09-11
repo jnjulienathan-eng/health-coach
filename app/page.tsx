@@ -1528,6 +1528,26 @@ async function fetchLatestCgmReading(source?: string): Promise<CgmReading | null
   return res.json()
 }
 
+// Wearing CGM toggle (Glucose Stability card) — persisted on user_profiles.wearing_cgm,
+// not daily_entries (sensor wear is a ~14-day cycle, not a per-date thing). See
+// BODYCIPHER.md DATA MODEL → user_profiles.
+async function fetchWearingCgm(): Promise<boolean> {
+  const res = await fetch('/api/user-profile', { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Failed to load user profile: ${res.status}`)
+  const data = await res.json() as { wearing_cgm: boolean }
+  return data.wearing_cgm
+}
+
+async function patchWearingCgm(wearingCgm: boolean): Promise<void> {
+  const res = await fetch('/api/user-profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wearing_cgm: wearingCgm }),
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`Failed to save wearing CGM: ${res.status}`)
+}
+
 // Waking Glucose (Glucose Stability card) — the LibreView reading nearest to
 // that date's daily_entries.wake_time, or null when there's no wake_time
 // logged or nothing within the 120-minute match cap (see /api/cgm/waking,
@@ -1651,6 +1671,8 @@ export default function App() {
   // ── Glucose Stability state ───────────────────────────────────────
   const [glucoseExpanded,   setGlucoseExpanded]   = useState(false)
   const [cgmEnabled,        setCgmEnabled]        = useState(false)
+  const [cgmEnabledLoaded,  setCgmEnabledLoaded]  = useState(false)
+  const [cgmToggleError,    setCgmToggleError]    = useState<string | null>(null)
   const [dayAverageReading, setDayAverageReading] = useState<CgmReading | null>(null)
   const [wakingCgmReading,  setWakingCgmReading]  = useState<CgmReading | null>(null)
   const [mealSpikesToday,   setMealSpikesToday]   = useState<number | null>(null)
@@ -1800,6 +1822,30 @@ export default function App() {
     fetchMealSpikesToday().then(setMealSpikesToday).catch(e => console.error('Meal spikes load error:', e))
     fetchLowEventsToday().then(setLowEventsToday).catch(e => console.error('Low events load error:', e))
   }, [])
+
+  // Wearing CGM toggle (Glucose Stability card) — persisted on
+  // user_profiles.wearing_cgm. Loaded once on mount; cgmEnabledLoaded gates
+  // the toggle UI so it doesn't flash the wrong default before the real
+  // value arrives. See fetchWearingCgm/patchWearingCgm above.
+  useEffect(() => {
+    fetchWearingCgm()
+      .then(value => setCgmEnabled(value))
+      .catch(e => console.error('Wearing CGM load error:', e))
+      .finally(() => setCgmEnabledLoaded(true))
+  }, [])
+
+  const handleToggleWearingCgm = useCallback(async (checked: boolean) => {
+    const previous = cgmEnabled
+    setCgmEnabled(checked)
+    setCgmToggleError(null)
+    try {
+      await patchWearingCgm(checked)
+    } catch (e) {
+      console.error('Wearing CGM save error:', e)
+      setCgmEnabled(previous)
+      setCgmToggleError('Could not save — try again')
+    }
+  }, [cgmEnabled])
 
   // Waking Glucose (Glucose Stability card) — date-navigated, unlike Day
   // Average/Low Events Today. Respects the Wearing CGM toggle: when off,
@@ -3410,8 +3456,10 @@ export default function App() {
                 <div style={{ padding: '16px', borderTop: '1px solid var(--color-border-subtle)', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                   {/* Wearing CGM toggle — gates Day Average + Low Events only.
-                      Unpersisted (resets on reload); see BODYCIPHER.md open decision. */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
+                      Persisted on user_profiles.wearing_cgm (not daily_entries —
+                      sensor wear is a ~14-day cycle, not a per-date thing). See
+                      BODYCIPHER.md DATA MODEL → user_profiles. */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', padding: '12px 14px', opacity: cgmEnabledLoaded ? 1 : 0.6 }}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 'var(--fw-semibold)', color: 'var(--color-text-primary)' }}>
                         Wearing CGM
@@ -3419,11 +3467,15 @@ export default function App() {
                       <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 2 }}>
                         Gates Day Average and Low Events
                       </div>
+                      {cgmToggleError && (
+                        <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 2 }}>{cgmToggleError}</div>
+                      )}
                     </div>
                     <input
                       type="checkbox"
                       checked={cgmEnabled}
-                      onChange={e => setCgmEnabled(e.target.checked)}
+                      onChange={e => handleToggleWearingCgm(e.target.checked)}
+                      disabled={!cgmEnabledLoaded}
                       className="toggle"
                       aria-label="Wearing CGM"
                     />
