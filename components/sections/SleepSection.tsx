@@ -69,21 +69,16 @@ function NumInput({
   onChange,
   placeholder = '—',
   width = 80,
-  step,
-  inputMode = 'numeric',
 }: {
   value: number | null
   onChange: (v: number | null) => void
   placeholder?: string
   width?: number
-  step?: string
-  inputMode?: 'numeric' | 'decimal'
 }) {
   return (
     <input
       type="number"
-      inputMode={inputMode}
-      step={step}
+      inputMode="numeric"
       value={value ?? ''}
       onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
       placeholder={placeholder}
@@ -242,18 +237,6 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
             <NumInput value={data.rhr} onChange={(v) => set('rhr', v)} />
           </Field>
         </div>
-
-        {/* Fasting glucose */}
-        <Field label="Fasting glucose" unit="mmol/L">
-          <NumInput
-            value={data.fasting_glucose_mmol}
-            onChange={(v) => set('fasting_glucose_mmol', v)}
-            placeholder="—"
-            width={80}
-            step="0.1"
-            inputMode="decimal"
-          />
-        </Field>
 
         {/* Rested scale */}
         <Field label="Rested on waking">

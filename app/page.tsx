@@ -3494,7 +3494,7 @@ export default function App() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 13, borderBottom: '1px solid var(--color-border-subtle)' }}>
                     <div>
                       <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
-                        Waking Glucose
+                        Fasting Glucose
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--color-text-dim)', marginTop: 3 }}>
                         {cgmEnabled && wakingCgmReading != null
