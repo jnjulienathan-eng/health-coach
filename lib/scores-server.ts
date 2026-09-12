@@ -2,10 +2,10 @@
 // by reading daily_entries + daily_nutrition_summary and writing back the result.
 // Import only from API routes and server components — never from client components.
 
-import { rowToEntry, loadSessionsForDates, getHrvRolling28DayMedian, getBedtimeRolling30DayAvg, getSleepDebtRolling7Day } from './db'
-import { supaAdmin, nutritionUserId } from './nutrition'
+import { rowToEntry, loadSessionsForDates, getHrvRolling28DayMedian, getBedtimeRolling30DayAvg, getSleepDebtRolling7Day, getNearestCgmReading } from './db'
+import { supaAdmin, nutritionUserId, getMealPeaksForDate } from './nutrition'
 import { behaviorScore, outcomeScore } from './scores'
-import type { NutritionSummaryForScore } from './scores'
+import type { NutritionSummaryForScore, CgmScoreInput } from './scores'
 
 export async function recomputeScores(date: string): Promise<void> {
   const adminClient = supaAdmin()
@@ -48,7 +48,31 @@ export async function recomputeScores(date: string): Promise<void> {
   const hrvBaseline = await getHrvRolling28DayMedian(date, adminClient)
   // Forward-only: sleep debt is the 7-day trailing deficit as of this date.
   const sleepDebt = await getSleepDebtRolling7Day(date, adminClient)
-  const oScore = outcomeScore(entry, hrvBaseline, sleepDebt)
+
+  // CGM component. Fasting: entry.sleep.wake_time is already read via
+  // rowToEntry() above — reused here rather than a second daily_entries
+  // query, then passed into the same getNearestCgmReading() lookup the
+  // Glucose Stability card and Coach use. A lookup failure (or missing
+  // wake_time) degrades to fastingMmol = null rather than failing the
+  // whole recompute, same as the Coach route's own call to this function.
+  let fastingMmol: number | null = null
+  if (entry.sleep.wake_time) {
+    try {
+      const reading = await getNearestCgmReading(date, entry.sleep.wake_time, adminClient)
+      fastingMmol = reading?.value_mmol ?? null
+    } catch (e) {
+      console.error('recomputeScores getNearestCgmReading error:', e instanceof Error ? e.message : JSON.stringify(e))
+    }
+  }
+  let mealPeaks = { peaksLoggedCount: 0, spikeCount: 0, severeSpikeCount: 0 }
+  try {
+    mealPeaks = await getMealPeaksForDate(date)
+  } catch (e) {
+    console.error('recomputeScores getMealPeaksForDate error:', e instanceof Error ? e.message : JSON.stringify(e))
+  }
+  const cgm: CgmScoreInput = { fastingMmol, ...mealPeaks }
+
+  const oScore = outcomeScore(entry, hrvBaseline, sleepDebt, cgm)
 
   const { error } = await adminClient
     .from('daily_entries')

@@ -187,3 +187,48 @@ export async function recomputeDailySummary(date: string): Promise<void> {
 
   if (upErr) throw upErr
 }
+
+// ─── Meal peak-glucose lookup for one date (Outcome Score CGM component) ───
+// Counts that date's (05:00 Berlin boundary) meal_logs by whether a
+// peak_glucose_mmol value was entered, and how many exceed the spike
+// thresholds already used for the Today tab's "Meal Spikes Today" row
+// (7.5 mmol/L) and the locked Outcome Score CGM penalty band (8.5
+// mmol/L). A day with meals logged but no peak values entered yields
+// peaksLoggedCount 0, same as a day with no meals at all — both are
+// "peaks not logged" for scoring purposes (see BODYCIPHER.md).
+export interface MealPeaksForDate {
+  peaksLoggedCount: number
+  spikeCount:       number
+  severeSpikeCount: number
+}
+
+export async function getMealPeaksForDate(date: string): Promise<MealPeaksForDate> {
+  const supabase = supaAdmin()
+  const userId = nutritionUserId()
+
+  // Broad UTC window — filtered precisely in JS by 05:00 boundary, same
+  // pattern as recomputeDailySummary() above.
+  const startUtc = new Date(`${date}T00:00:00Z`)
+  startUtc.setUTCDate(startUtc.getUTCDate() - 1)
+  const endUtc = new Date(`${date}T00:00:00Z`)
+  endUtc.setUTCDate(endUtc.getUTCDate() + 2)
+
+  const { data, error } = await supabase
+    .from('meal_logs')
+    .select('logged_at, peak_glucose_mmol')
+    .eq('user_id', userId)
+    .gte('logged_at', startUtc.toISOString())
+    .lt('logged_at', endUtc.toISOString())
+  if (error) throw error
+
+  const dayLogs = (data ?? []).filter(l => dayKeyFromTimestamp(l.logged_at as string) === date)
+  const peaks = dayLogs
+    .map(l => l.peak_glucose_mmol as number | null)
+    .filter((p): p is number => p != null)
+
+  return {
+    peaksLoggedCount: peaks.length,
+    spikeCount:       peaks.filter(p => p > 7.5).length,
+    severeSpikeCount: peaks.filter(p => p > 8.5).length,
+  }
+}

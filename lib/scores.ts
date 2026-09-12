@@ -6,6 +6,46 @@ export interface NutritionSummaryForScore {
   meal_count: number | null
 }
 
+// CGM component input for the Outcome Score. `fastingMmol` comes from
+// getNearestCgmReading(date, wakeTime) — the same lookup the Glucose
+// Stability card and Coach use, null when there's no wake_time logged or
+// nothing within its match cap. `peaksLoggedCount` is the count of that
+// date's meal_logs with a non-null peak_glucose_mmol; `spikeCount`/
+// `severeSpikeCount` are the subsets above 7.5/8.5 mmol/L. A day with
+// meals logged but no peak values entered has peaksLoggedCount 0, same as
+// a day with no meals at all — both are "peaks not logged" here, matching
+// the locked spec's "missing meal peaks never penalised."
+export interface CgmScoreInput {
+  fastingMmol:      number | null
+  peaksLoggedCount: number
+  spikeCount:       number
+  severeSpikeCount: number
+}
+
+// Fasting-only band: ≤4.8 mmol/L = full credit, scaling down to 0 at 5.6.
+// The locked spec ("scales down toward 5.6") doesn't state a floor beyond
+// 5.6 — floored at 0 there rather than continuing to decline, matching
+// the Math.max(0, ...) floor convention used by every other band in this
+// file (HRV, RHR, sleep). Flag: this floor choice, not the 4.8/5.6
+// anchors themselves, is a judgment call.
+function cgmFastingScore(mmol: number): number {
+  if (mmol <= 4.8) return 100
+  if (mmol < 5.6)  return 100 - ((mmol - 4.8) / 0.8) * 100
+  return 0
+}
+
+// Peaks band: 0 spikes (>7.5) = full credit. Each spike costs 20 points;
+// each severe spike (>8.5, a subset of spikeCount) costs an additional 15,
+// matching the locked spec's "penalty above 8.5." The per-spike point
+// values are this session's judgment call — the locked spec names the
+// 7.5/8.5 thresholds but not a scoring curve between them, and the task
+// specifically asked for a spike *count* (same one "Meal Spikes Today"
+// already uses), not a per-meal average of raw peak values.
+function cgmPeaksScore(spikeCount: number, severeSpikeCount: number): number {
+  if (spikeCount === 0) return 100
+  return Math.max(0, 100 - spikeCount * 20 - severeSpikeCount * 15)
+}
+
 // ─── Behavior Score (0–100) ───────────────────────────────────────
 // What you controlled: nutrition, supplements, bedtime, training vs HRV, active calories
 export function behaviorScore(
@@ -151,7 +191,7 @@ export function behaviorScore(
 
 // ─── Outcome Score (0–100) ────────────────────────────────────────
 // What your body did: HRV vs baseline, sleep duration+rested, RHR vs baseline
-export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 88, sleepDebtMinutes: number = 0): number {
+export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 88, sleepDebtMinutes: number = 0, cgm?: CgmScoreInput | null): number {
   const components: { score: number; weight: number }[] = []
 
   // 1. HRV vs personal baseline (rolling 28-day median, default 88ms) — 30%
@@ -213,7 +253,27 @@ export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 88, sleepD
     components.push({ score: Math.max(0, s), weight: 20 })
   }
 
-  // CGM (20%) omitted until CGM section is built; weight redistributes to logged metrics
+  // 4. CGM glucose — 20%. Fasting-only or peaks-only both score alone at
+  // full weight when the other half is missing (same N/A-not-zero
+  // mechanism as every other component here); fasting 40% / peaks 60%
+  // when both are available; weight drops to 0% when neither is logged.
+  // The locked spec only names the fasting-only and fasting+peaks cases —
+  // scoring peaks alone (no fasting reading that day) at full weight
+  // rather than excluding it is this session's extension of the same
+  // "never penalise missing data" principle, not a stated case.
+  if (cgm) {
+    const fastingScore = cgm.fastingMmol != null ? cgmFastingScore(cgm.fastingMmol) : null
+    const peaksScore = cgm.peaksLoggedCount > 0
+      ? cgmPeaksScore(cgm.spikeCount, cgm.severeSpikeCount)
+      : null
+
+    let s: number | null = null
+    if (fastingScore != null && peaksScore != null) s = fastingScore * 0.4 + peaksScore * 0.6
+    else if (fastingScore != null) s = fastingScore
+    else if (peaksScore != null) s = peaksScore
+
+    if (s != null) components.push({ score: s, weight: 20 })
+  }
 
   if (!components.length) return 0
   const totalW = components.reduce((s, c) => s + c.weight, 0)
