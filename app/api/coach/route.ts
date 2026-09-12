@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import type { DailyEntry } from '@/lib/types'
 import { zone3Intensity } from '@/lib/types'
-import { rowToEntry, loadSessionsForDates, getHrvRolling28DayMedian, getBedtimeRolling30DayAvg } from '@/lib/db'
+import { rowToEntry, loadSessionsForDates, getHrvRolling28DayMedian, getBedtimeRolling30DayAvg, getNearestCgmReading } from '@/lib/db'
 import { supaAdmin, nutritionUserId } from '@/lib/nutrition'
 
 // ─── Julie's fixed health profile ─────────────────────────────────
@@ -106,7 +106,7 @@ function getCoachMode(currentTime: string | undefined): CoachMode {
 }
 
 // ─── Format a single day's entry compactly ────────────────────────
-function formatEntry(entry: DailyEntry, cd?: number | null, nutritionSummary?: NutritionSummary | null): string {
+function formatEntry(entry: DailyEntry, cd?: number | null, nutritionSummary?: NutritionSummary | null, computedFastingGlucose?: number | null): string {
   const s = entry.sleep
   const t = entry.training
   const n = entry.nutrition
@@ -155,7 +155,17 @@ function formatEntry(entry: DailyEntry, cd?: number | null, nutritionSummary?: N
   const contextCd = (c as unknown as Record<string, unknown>).cycle_day
   const effectiveCd = cd ?? (typeof contextCd === 'number' ? contextCd : null)
 
-  const fastingGlucose = s.fasting_glucose_mmol != null ? ` | Fasting glucose ${s.fasting_glucose_mmol}mmol/L` : ''
+  // computedFastingGlucose (from getNearestCgmReading, matched to wake_time)
+  // is only supplied for "today" — same asymmetry as nutritionSummary above.
+  // Falls back to the legacy manual field whenever there's no computed match
+  // (no wake_time, nothing within the match cap, or a historical entry in
+  // the 30-day window that never gets a computed value at all) — same
+  // fallback rule as the Glucose Stability card's Fasting Glucose row. The
+  // manual field itself is a dead column going forward (BODYCIPHER.md —
+  // manual Fasting Glucose input removed from Sleep, Sept 2026) but still
+  // holds real values for dates logged before that change.
+  const fastingGlucoseValue = computedFastingGlucose ?? s.fasting_glucose_mmol
+  const fastingGlucose = fastingGlucoseValue != null ? ` | Fasting glucose ${fastingGlucoseValue}mmol/L` : ''
 
   const lines = [
     `Date: ${entry.date}`,
@@ -194,6 +204,7 @@ function buildContext(
   hrvBaseline: number,
   bedtimeTarget: string,
   nutritionSummary?: NutritionSummary | null,
+  computedFastingGlucose?: number | null,
 ): string {
   const BAVARIA_FORAGING = BAVARIA_FORAGING_TEMPLATE.replace('{currentMonth}', currentMonth)
   // Inject the computed HRV baseline and bedtime target into the profile
@@ -232,7 +243,7 @@ function buildContext(
     `Current symptoms: ${today.context.symptoms.length ? today.context.symptoms.join(', ') : 'none'}`,
     '',
     `TODAY'S DATA`,
-    formatEntry(today, cycleDay, nutritionSummary),
+    formatEntry(today, cycleDay, nutritionSummary, computedFastingGlucose),
     '',
     `LAST 30 DAYS`,
     historyStr || '(no prior entries)',
@@ -489,7 +500,23 @@ export async function POST(req: NextRequest) {
     // Personal bedtime target: rolling 30-day circular average of manual bedtime (fallback 21:45).
     const bedtimeTarget = await getBedtimeRolling30DayAvg(currentDate, supaAdmin())
 
-    const ctx = buildContext(history30, today, cycleDay, currentDate, currentMonth, hrvBaseline, bedtimeTarget, nutritionSummary)
+    // Fasting glucose for today: computed from the LibreView reading nearest
+    // wake_time (same source as the Glucose Stability card's Fasting Glucose
+    // row), not the retired manual daily_entries.fasting_glucose_mmol input.
+    // Null when wake_time isn't logged or nothing is within the match cap —
+    // formatEntry falls back to the legacy manual field in that case too,
+    // same as the card.
+    let computedFastingGlucose: number | null = null
+    if (today.sleep.wake_time) {
+      try {
+        const reading = await getNearestCgmReading(currentDate, today.sleep.wake_time, supaAdmin())
+        computedFastingGlucose = reading?.value_mmol ?? null
+      } catch (e) {
+        console.error('Coach: computed fasting glucose lookup failed:', e instanceof Error ? e.message : JSON.stringify(e))
+      }
+    }
+
+    const ctx = buildContext(history30, today, cycleDay, currentDate, currentMonth, hrvBaseline, bedtimeTarget, nutritionSummary, computedFastingGlucose)
     // Prefer client-supplied mode (computed from local time) over server-side derivation from UTC ISO string
     const mode: CoachMode = clientMode ?? getCoachMode(currentTime)
 
