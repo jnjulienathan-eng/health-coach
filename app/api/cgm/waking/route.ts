@@ -4,8 +4,9 @@
 // LibreView cgm_readings row to that wake time (via getNearestCgmReading
 // in lib/db.ts). Returns { wakeTime, reading } — reading is null when
 // there's no wake_time logged for that date, or nothing within the
-// 120-minute match cap. The card falls back to the manual
-// fasting_glucose_mmol entry in either case.
+// 120-minute match cap. The card shows a "No CGM data" empty state in
+// either case — no manual-entry fallback (Sept 12, 2026,
+// fasting-glucose-consolidation session).
 //
 // Service-role client, same inline-query pattern as /api/cgm. See
 // BODYCIPHER.md DATA MODEL → cgm_readings / daily_entries.

@@ -1551,8 +1551,9 @@ async function patchWearingCgm(wearingCgm: boolean): Promise<void> {
 // Waking Glucose (Glucose Stability card) — the LibreView reading nearest to
 // that date's daily_entries.wake_time, or null when there's no wake_time
 // logged or nothing within the 120-minute match cap (see /api/cgm/waking,
-// lib/db.ts → getNearestCgmReading). The card falls back to the manual
-// fasting_glucose_mmol entry in either null case.
+// lib/db.ts → getNearestCgmReading). The card shows a "No CGM data" empty
+// state in either null case — no manual-entry fallback (Sept 12, 2026,
+// fasting-glucose-consolidation session).
 async function fetchWakingCgmReading(date: string): Promise<CgmReading | null> {
   const res = await fetch(`/api/cgm/waking?date=${date}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Failed to load waking CGM reading: ${res.status}`)
@@ -1849,9 +1850,8 @@ export default function App() {
 
   // Waking Glucose (Glucose Stability card) — date-navigated, unlike Day
   // Average/Low Events Today. Respects the Wearing CGM toggle: when off,
-  // skip the lookup entirely and let the row fall back to the manual
-  // fasting_glucose_mmol entry, same as the toggle already gates the other
-  // CGM-sourced rows.
+  // skip the lookup entirely and let the row fall back to its "No CGM data"
+  // empty state, same as the toggle already gates the other CGM-sourced rows.
   useEffect(() => {
     if (!cgmEnabled) {
       setWakingCgmReading(null)
@@ -3481,16 +3481,20 @@ export default function App() {
                     />
                   </div>
 
-                  {/* Row 1 — Waking Glucose. When the CGM toggle is on and a
+                  {/* Row 1 — Fasting Glucose. When the CGM toggle is on and a
                       LibreView reading was found within 120 minutes of that
                       date's daily_entries.wake_time (via /api/cgm/waking),
-                      shows that reading with an "as of HH:MM" caption. Falls
-                      back to the manual daily_entries.fasting_glucose_mmol
-                      entry — no time caption, since it's typed, not matched —
-                      when the toggle is off, no wake_time is logged, or
-                      nothing was within the cap. Always renders regardless of
-                      the CGM toggle (the toggle only decides which source
-                      backs it). */}
+                      shows that reading with an "as of HH:MM" caption.
+                      Otherwise shows a clean "No CGM data" empty state — same
+                      convention as Row 2 (Day Average) — when the toggle is
+                      off, no wake_time is logged, or nothing was within the
+                      cap. There is no manual-entry fallback: the manual
+                      fasting-glucose field was removed from the Sleep
+                      accordion (Sept 12, 2026, fasting-glucose-consolidation
+                      session), so daily_entries.fasting_glucose_mmol is a
+                      dead column and is no longer read here. Always renders
+                      regardless of the CGM toggle (the toggle only decides
+                      which source backs it, not whether the row appears). */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 13, borderBottom: '1px solid var(--color-border-subtle)' }}>
                     <div>
                       <div style={{ fontSize: 'var(--fs-label)', fontWeight: 'var(--fw-label-bold)', letterSpacing: 'var(--ls-label-bold)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
@@ -3499,7 +3503,7 @@ export default function App() {
                       <div style={{ fontSize: 11.5, color: 'var(--color-text-dim)', marginTop: 3 }}>
                         {cgmEnabled && wakingCgmReading != null
                           ? `Waking reading · as of ${formatBerlinTime(wakingCgmReading.recorded_at)}`
-                          : 'Manual entry · edit in Sleep'}
+                          : 'No CGM data'}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
@@ -3508,12 +3512,8 @@ export default function App() {
                           {wakingCgmReading.value_mmol.toFixed(1)}
                         </span>
                       ) : (
-                        <span style={{
-                          fontSize: 'var(--fs-body)',
-                          fontWeight: 'var(--fw-semibold)',
-                          color: entry.sleep.fasting_glucose_mmol == null ? 'var(--color-text-muted)' : glucoseColor(entry.sleep.fasting_glucose_mmol),
-                        }}>
-                          {entry.sleep.fasting_glucose_mmol != null ? entry.sleep.fasting_glucose_mmol.toFixed(1) : '—'}
+                        <span style={{ fontSize: 'var(--fs-body)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-text-muted)' }}>
+                          —
                         </span>
                       )}
                       <span style={{ fontSize: 'var(--fs-label-sm)', color: 'var(--color-text-muted)' }}>mmol/L</span>
