@@ -41,14 +41,18 @@ function weekdayColUTC(dateStr: string): number {
 // ─── Shared status computation (used by both collapsed badge + grid) ──
 interface Glp1Status {
   state: 'none' | 'taken' | 'due' | 'overdue'
-  doseNumber: number       // highest injection_number on file, 0 if none
+  doseNumber: number       // count of logged injections, 0 if none
   latestDate: string | null
   nextDueDate: string | null
   daysUntilDue: number     // only meaningful for state === 'due'
 }
 
 function computeGlp1Status(injections: Glp1Injection[], today: string): Glp1Status {
-  const doseNumber = injections.reduce((max, inj) => Math.max(max, inj.injection_number), 0)
+  // Row count, not max(injection_number) — that field only tracks logging
+  // order (assigned once at insert, never renumbered) and drifts out of
+  // sync with reality if a row is ever deleted outside the app (e.g. a
+  // duplicate removed directly in Supabase).
+  const doseNumber = injections.length
   if (injections.length === 0) {
     return { state: 'none', doseNumber: 0, latestDate: null, nextDueDate: null, daysUntilDue: 0 }
   }
@@ -367,8 +371,9 @@ export default function Glp1Section({ injections, onLog }: Props) {
 // Body Scan rows), rendered as the last element inside Glp1Section's
 // expanded content rather than as a top-level sibling card ─────────
 export function Glp1RefillCard({ injections }: { injections: Glp1Injection[] }) {
-  const highest = injections.reduce((max, inj) => Math.max(max, inj.injection_number), 0)
-  const dosesLeft = Math.max(0, COURSE_LENGTH - highest)
+  // Row count, not max(injection_number) — see computeGlp1Status above.
+  const dosesTaken = injections.length
+  const dosesLeft = Math.max(0, COURSE_LENGTH - dosesTaken)
   const urgent = dosesLeft <= 4
 
   return (
