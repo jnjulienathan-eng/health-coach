@@ -375,6 +375,7 @@ export function Glp1RefillCard({ injections }: { injections: Glp1Injection[] }) 
   const dosesTaken = injections.length
   const dosesLeft = Math.max(0, COURSE_LENGTH - dosesTaken)
   const urgent = dosesLeft <= 4
+  const refillZoneStart = COURSE_LENGTH - 4 + 1
 
   return (
     <div
@@ -384,7 +385,7 @@ export function Glp1RefillCard({ injections }: { injections: Glp1Injection[] }) 
         padding: 'var(--space-lg)',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-md)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-md)', marginBottom: 'var(--space-md)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
@@ -398,11 +399,8 @@ export function Glp1RefillCard({ injections }: { injections: Glp1Injection[] }) 
           >
             {urgent ? 'Refill Reminder — Call Now' : 'Refill Reminder'}
           </div>
-          <div style={{ fontSize: 'var(--fs-headline-lg)', fontWeight: 'var(--fw-headline-lg)', color: '#fff', marginBottom: 4 }}>
+          <div style={{ fontSize: 'var(--fs-headline-lg)', fontWeight: 'var(--fw-headline-lg)', color: '#fff' }}>
             Call endocrinologist
-          </div>
-          <div style={{ fontSize: 'var(--fs-body-md)', color: 'rgba(255,255,255,0.75)' }}>
-            Pen runs out at dose 24 — call by dose 20
           </div>
         </div>
         <span
@@ -420,6 +418,66 @@ export function Glp1RefillCard({ injections }: { injections: Glp1Injection[] }) 
           {dosesLeft} doses left
         </span>
       </div>
+
+      <DoseDotGrid dosesTaken={dosesTaken} refillZoneStart={refillZoneStart} />
+    </div>
+  )
+}
+
+// ─── Dose dot grid — two rows of 12, replacing the old "Dose X of Y /
+// call by dose Y" caption text. Last 4 doses of the course are the
+// refill-call zone (outlined red, fills solid red once taken).
+function DoseDotGrid({ dosesTaken, refillZoneStart }: { dosesTaken: number; refillZoneStart: number }) {
+  const perRow = 12
+  const rows = Math.ceil(COURSE_LENGTH / perRow)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 'var(--space-md)' }}>
+        {Array.from({ length: rows }, (_, r) => (
+          <div key={r} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {Array.from({ length: perRow }, (_, c) => {
+              const doseNumber = r * perRow + c + 1
+              const used = doseNumber <= dosesTaken
+              const inRefillZone = doseNumber >= refillZoneStart
+              const borderColor = inRefillZone ? 'var(--color-danger)' : used ? '#fff' : 'var(--color-border)'
+              const background = used ? (inRefillZone ? 'var(--color-danger)' : '#fff') : 'transparent'
+              const opacity = inRefillZone ? 1 : used ? 0.9 : 0.5
+
+              return (
+                <span
+                  key={doseNumber}
+                  style={{
+                    width: 13,
+                    height: 13,
+                    borderRadius: '50%',
+                    boxSizing: 'border-box',
+                    flexShrink: 0,
+                    border: `2px solid ${borderColor}`,
+                    background,
+                    opacity,
+                  }}
+                />
+              )
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)' }}>
+        <DoseLegendItem swatchStyle={{ background: '#fff', border: '2px solid #fff', opacity: 0.9 }} label="Used" />
+        <DoseLegendItem swatchStyle={{ border: '2px solid var(--color-border)', opacity: 0.5 }} label="Remaining" />
+        <DoseLegendItem swatchStyle={{ border: '2px solid var(--color-danger)' }} label="Call for refill" />
+      </div>
+    </div>
+  )
+}
+
+function DoseLegendItem({ swatchStyle, label }: { swatchStyle: React.CSSProperties; label: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ width: 11, height: 11, borderRadius: '50%', boxSizing: 'border-box', flexShrink: 0, ...swatchStyle }} />
+      <span style={{ fontSize: 'var(--fs-label-sm)', color: 'rgba(255,255,255,0.75)' }}>{label}</span>
     </div>
   )
 }
