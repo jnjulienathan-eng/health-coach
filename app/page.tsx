@@ -1728,14 +1728,16 @@ export default function App() {
       // navigation) — this response is stale, discard it rather than
       // overwrite state a later request already set.
       if (latestEntryDateRef.current !== date) return
-      // Auto-derive cycle day for today if not stored yet
-      if (date === todayStr() && data.context.notes === '') {
+      // A stored cycle_day always wins. Only auto-derive (yesterday + 1) for
+      // today when nothing is stored yet — the old `notes === ''` proxy for
+      // "not stored" discarded a saved Day 1 reset on reload.
+      const cd = (data.context as unknown as Record<string, unknown>).cycle_day
+      if (typeof cd === 'number') {
+        setCycleDay(cd)
+      } else if (date === todayStr()) {
         const derived = await fetchDeriveCycleDay()
         if (latestEntryDateRef.current !== date) return
         if (derived != null) setCycleDay(derived)
-      } else {
-        const cd = (data.context as unknown as Record<string, unknown>).cycle_day
-        if (typeof cd === 'number') setCycleDay(cd)
       }
       loadedDateRef.current = date
       setEntry(data)
