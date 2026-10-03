@@ -12,16 +12,9 @@ interface Props {
   saving?: boolean
 }
 
-function durationToHM(min: number | null): { h: string; m: string } {
-  if (min == null) return { h: '', m: '' }
-  return { h: String(Math.floor(min / 60)), m: String(min % 60) }
-}
-
-function hmToDuration(h: string, m: string): number | null {
-  const hv = parseInt(h)
-  const mv = parseInt(m)
-  if (isNaN(hv) && isNaN(mv)) return null
-  return (isNaN(hv) ? 0 : hv) * 60 + (isNaN(mv) ? 0 : mv)
+function formatDuration(min: number | null): string {
+  if (min == null) return '—'
+  return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`
 }
 
 function Field({
@@ -64,37 +57,12 @@ function Field({
   )
 }
 
-function NumInput({
-  value,
-  onChange,
-  placeholder = '—',
-  width = 80,
-}: {
-  value: number | null
-  onChange: (v: number | null) => void
-  placeholder?: string
-  width?: number
-}) {
+// Read-only value for Oura-owned fields (written by syncOuraRange, never saved from here).
+function ReadOnlyValue({ children }: { children: React.ReactNode }) {
   return (
-    <input
-      type="number"
-      inputMode="numeric"
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
-      placeholder={placeholder}
-      style={{
-        width,
-        minHeight: 48,
-        padding: 'var(--space-sm) var(--space-md)',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 'var(--fs-body)',
-        color: 'var(--color-text-primary)',
-        background: 'var(--color-surface)',
-        border: '1px solid var(--color-border)',
-        borderRadius: 'var(--radius-md)',
-        outline: 'none',
-      }}
-    />
+    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-body)', color: 'var(--color-text-primary)' }}>
+      {children}
+    </div>
   )
 }
 
@@ -102,19 +70,12 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
   const [localSaved, setLocalSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const [closeTick, setCloseTick] = useState(0)
-  const { h, m } = durationToHM(data.duration_min)
   const isComplete = data.hrv != null || data.duration_min != null
 
   const set = <K extends keyof SleepData>(k: K, v: SleepData[K]) => {
     setLocalSaved(false)
     setSaveError(false)
     onChange({ ...data, [k]: v })
-  }
-
-  const setDuration = (newH: string, newM: string) => {
-    setLocalSaved(false)
-    setSaveError(false)
-    onChange({ ...data, duration_min: hmToDuration(newH, newM) })
   }
 
   const handleSave = async () => {
@@ -174,45 +135,25 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
 
-        {/* Bedtime */}
-        <Field label="Bedtime">
-          <input
-            type="time"
-            value={data.bedtime ?? '21:45'}
-            onChange={(e) => set('bedtime', e.target.value || null)}
-            style={{
-              minHeight: 48,
-              padding: 'var(--space-sm) var(--space-md)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--fs-body)',
-              color: 'var(--color-text-primary)',
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-md)',
-              outline: 'none',
-            }}
-          />
-        </Field>
+        {/* Oura-owned fields — read-only, synced from Oura (lib/oura.ts → syncOuraRange) */}
+        <div
+          style={{
+            fontSize: 'var(--fs-label-sm)',
+            color: 'var(--color-text-dim)',
+            marginBottom: 'calc(-1 * var(--space-sm))',
+          }}
+        >
+          From Oura
+        </div>
 
-        {/* Duration */}
-        <Field label="Sleep duration">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <NumInput
-              value={h === '' ? null : Number(h)}
-              onChange={(v) => setDuration(v == null ? '' : String(v), m)}
-              width={72}
-              placeholder="—"
-            />
-            <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--fs-label)' }}>h</span>
-            <NumInput
-              value={m === '' ? null : Number(m)}
-              onChange={(v) => setDuration(h, v == null ? '' : String(v))}
-              width={72}
-              placeholder="—"
-            />
-            <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--fs-label)' }}>min</span>
-          </div>
-        </Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+          <Field label="Bedtime">
+            <ReadOnlyValue>{data.bedtime ? data.bedtime.slice(0, 5) : '—'}</ReadOnlyValue>
+          </Field>
+          <Field label="Sleep duration">
+            <ReadOnlyValue>{formatDuration(data.duration_min)}</ReadOnlyValue>
+          </Field>
+        </div>
 
         {/* Total sleep (duration + nap) — read-only, only shown when a nap is logged */}
         {!!data.nap_minutes && (
@@ -228,15 +169,20 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
           </Field>
         )}
 
-        {/* HRV + RHR */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <Field label="HRV" unit="ms">
-            <NumInput value={data.hrv} onChange={(v) => set('hrv', v)} />
+        {/* HRV + RHR — read-only, from Oura */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+          <Field label="HRV (overnight avg)" unit="ms">
+            <ReadOnlyValue>{data.hrv ?? '—'}</ReadOnlyValue>
           </Field>
-          <Field label="RHR" unit="bpm">
-            <NumInput value={data.rhr} onChange={(v) => set('rhr', v)} />
+          <Field label="RHR (lowest overnight)" unit="bpm">
+            <ReadOnlyValue>{data.rhr ?? '—'}</ReadOnlyValue>
           </Field>
         </div>
+
+        {/* Nap — read-only, from Oura */}
+        <Field label="Nap" unit="min">
+          <ReadOnlyValue>{data.nap_minutes ?? '—'}</ReadOnlyValue>
+        </Field>
 
         {/* Rested scale */}
         <Field label="Rested on waking">
@@ -246,11 +192,6 @@ export default function SleepSection({ data, onChange, onSave, saving }: Props) 
             lowLabel="exhausted"
             highLabel="great"
           />
-        </Field>
-
-        {/* Nap */}
-        <Field label="Nap" unit="min">
-          <NumInput value={data.nap_minutes} onChange={(v) => set('nap_minutes', v)} width={80} />
         </Field>
 
         {/* Save */}

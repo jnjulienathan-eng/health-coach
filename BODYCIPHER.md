@@ -299,6 +299,8 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 **Sleep section**
 - Fields: duration (min), HRV (ms), RHR (bpm), bedtime, rested score (1–5), nap duration (min), fasting glucose (mmol/L, optional)
 - All fields save to `daily_entries`
+- **Updated Oct 3, 2026 (Oura Session 2) — the list above is historical.** Bedtime, sleep duration, HRV, RHR and nap are now **read-only displays** sourced from Oura, under a small "From Oura" caption (`--fs-label-sm`, `--color-text-dim`). Labels are "HRV (overnight avg)" (Oura `average_hrv`, no longer a manual waking reading) and "RHR (lowest overnight)" (Oura `lowest_heart_rate`). The existing "Total sleep … incl. Xm nap" line is unchanged. **Rested on waking** stays an editable TapScale with the Save button. `NumInput`, `durationToHM()` and `hmToDuration()` were removed from `SleepSection.tsx` since nothing used them anymore. A small `formatDuration()` and a `ReadOnlyValue` wrapper were added. Fasting glucose had already been removed from this accordion (Sept 12).
+- **⚠️ For Session 3:** `hrv` now holds Oura's overnight average, not the manual waking HRV that the 28-day HRV baseline, the >100/80–100/60–80/<60 training bands and the Coach were designed around. Scoring logic is deliberately unchanged this session. Re-check the bands and baseline against the new data in Session 3.
 
 **Training section**
 - Multiple sessions per day. Per session: activity type, duration (min), zone3+ minutes, active calories.
@@ -1151,7 +1153,7 @@ Julie receives workouts auto-imported from Apple Health via the webhook, and the
 
 Any save logic that deletes and rewrites session rows must carry forward every field the webhook can write — currently external_id, source, active_calories, and start_time — not just the fields the UI controls. If a new webhook field is added in future, this list must be updated and the save logic must be checked.
 
-The same overwrite risk exists for daily_entries fields. Any field that the webhook can write — currently sleep_duration_min and rhr — must not be blindly overwritten by saveEntry() if the in-memory value is null. The fix is to omit null webhook-owned fields from the upsert payload rather than writing null over a real value. In lib/db.ts saveEntry(), sleep_duration_min and rhr use conditional spread: they are only included in the flat upsert object if the in-memory value is non-null.
+The same overwrite risk exists for daily_entries fields. **As of Oct 3, 2026 (Oura Session 2), these sleep fields are Oura-owned:** bedtime, wake_time, sleep_duration_min, hrv, rhr, nap_minutes and oura_readiness. They are written only by the Oura webhook/cron sync (`syncOuraRange()` in `lib/oura.ts`) and are **excluded from saveEntry() entirely**, not just when null. So a save from a stale page can never overwrite Oura data. `wake_time` and `apple_hrv_avg` already had this treatment. In the Sleep accordion they are read-only, and **Rested on waking is the only manual sleep field**, still saved through saveEntry(). Apple Health (`/api/health-import`) no longer writes bedtime, sleep_duration_min or wake_time (Task 5 of the same session). Any other webhook-owned daily_entries field added in future needs the same treatment.
 
 ---
 

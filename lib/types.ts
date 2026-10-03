@@ -1,13 +1,14 @@
 // ─── Sleep ───────────────────────────────────────────────────────
 export interface SleepData {
-  bedtime: string | null          // "HH:MM" 24h
-  wake_time: string | null        // "HH:MM" 24h, written by /api/health-import
-  duration_min: number | null     // total sleep in minutes
-  hrv: number | null              // ms (manual waking HRV)
+  bedtime: string | null          // "HH:MM" 24h, Oura-owned (syncOuraRange)
+  wake_time: string | null        // "HH:MM" 24h, Oura-owned (syncOuraRange)
+  duration_min: number | null     // total sleep in minutes, Oura-owned
+  hrv: number | null              // ms, Oura overnight average HRV (Oura-owned)
   apple_hrv_avg: number | null    // ms, Apple all-day average HRV (HAE)
-  rhr: number | null              // bpm
-  rested: number | null           // 1–5 tap scale
-  nap_minutes: number | null      // daytime nap in minutes
+  rhr: number | null              // bpm, Oura lowest overnight HR (Oura-owned)
+  rested: number | null           // 1–5 tap scale (manual)
+  nap_minutes: number | null      // daytime nap in minutes, Oura-owned
+  oura_readiness: number | null   // Oura daily readiness score (read-only, Oura-owned)
   fasting_glucose_mmol: number | null  // mmol/L, optional
 }
 
@@ -116,7 +117,7 @@ export interface DailyEntry {
 
 // ─── Defaults ────────────────────────────────────────────────────
 export function emptySleep(): SleepData {
-  return { bedtime: null, wake_time: null, duration_min: null, hrv: null, apple_hrv_avg: null, rhr: null, rested: null, nap_minutes: null, fasting_glucose_mmol: null }
+  return { bedtime: null, wake_time: null, duration_min: null, hrv: null, apple_hrv_avg: null, rhr: null, rested: null, nap_minutes: null, oura_readiness: null, fasting_glucose_mmol: null }
 }
 
 export function emptyTraining(): TrainingData {
