@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData, Glp1Injection, BodyCompositionData, CgmReading } from './types'
-import { emptyEntry } from './types'
+import { emptyEntry, OURA_START_DATE } from './types'
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -756,13 +756,17 @@ export async function getVo2Rolling60DayAvg(): Promise<number | null> {
 // waking HRV before), window ending at asOfDate inclusive (default = today
 // in Europe/Berlin). Nulls skipped. Returns 45 (fallback, was 88 for waking
 // HRV until Oct 3, 2026) when fewer than 14 non-null readings exist.
+// For asOfDate on/after OURA_START_DATE the window is clipped to start no
+// earlier than OURA_START_DATE, so pre-Oura waking values never mix into an
+// overnight-HRV baseline. (Windows ending before it contain no Oura data.)
 // Compute-not-store — no DB column. NOT computed from apple_hrv_avg.
 export async function getHrvRolling28DayMedian(asOfDate?: string, client: SupabaseClient = supabase): Promise<number> {
   const endStr = asOfDate
     ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
   const start = new Date(endStr + 'T00:00:00Z')
   start.setUTCDate(start.getUTCDate() - 27) // 28 calendar days inclusive
-  const startStr = start.toISOString().split('T')[0]
+  const rawStartStr = start.toISOString().split('T')[0]
+  const startStr = endStr >= OURA_START_DATE && rawStartStr < OURA_START_DATE ? OURA_START_DATE : rawStartStr
 
   const { data, error } = await client
     .from('daily_entries')

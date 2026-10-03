@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getVo2SparklineData, saveVo2Reading, saveCardioReading, saveHba1cReading, getVo2Rolling60DayAvg, saveBodyScanReading, getBodyCompositionData } from '@/lib/db'
-import { emptyEntry, scoreColor, scoreLabel } from '@/lib/types'
+import { emptyEntry, scoreColor, scoreLabel, OURA_START_DATE } from '@/lib/types'
 import type { DailyEntry, GoalsData, BiomarkerReading, HealthAppointment, Glp1Injection, BodyCompositionData, CgmReading } from '@/lib/types'
 import { computeTrainingLoad, computeTrainingLoadHistory } from '@/lib/trainingLoad'
 import { behaviorScore, outcomeScore } from '@/lib/scores'
@@ -862,8 +862,10 @@ function getBehaviorBullets(
 // Client-side HRV baseline: median of non-null hrv across the recent
 // (30-day) window in dashEntries. Mirrors getHrvRolling28DayMedian in
 // lib/db.ts — falls back to 45 when fewer than 14 readings are present.
+// Only dates on/after OURA_START_DATE count (pre-Oura waking HRV runs higher).
 function hrvBaselineFromEntries(entries: DailyEntry[]): number {
   const values = entries
+    .filter(e => e.date >= OURA_START_DATE)
     .map(e => e.sleep.hrv)
     .filter((v): v is number => v != null)
     .sort((a, b) => a - b)

@@ -1,4 +1,9 @@
 // ─── Sleep ───────────────────────────────────────────────────────
+// First date Oura is the source of hrv/rhr/sleep fields (backfilled from here).
+// Before it, hrv/rhr were manual waking values, which run much higher — the
+// HRV baseline median only counts dates on or after this.
+export const OURA_START_DATE = '2026-09-17'
+
 export interface SleepData {
   bedtime: string | null          // "HH:MM" 24h, Oura-owned (syncOuraRange)
   wake_time: string | null        // "HH:MM" 24h, Oura-owned (syncOuraRange)
