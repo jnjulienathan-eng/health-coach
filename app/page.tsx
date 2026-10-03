@@ -1130,7 +1130,7 @@ function HrvChart({ data, baseline = 45, apple = [] }: { data: { date: string; v
   if (cur.length) segments.push(cur)
 
   // ── Right axis: Apple all-day avg HRV on its OWN auto-fit scale ──────────
-  // (apple_hrv_avg ~29–63ms would crush flat on the waking-HRV scale).
+  // (apple_hrv_avg ~29–63ms would crush flat on the main HRV scale).
   const appleNonNull = apple.map(d => d.value).filter(v => v != null) as number[]
   const hasApple = appleNonNull.length > 0
   const aMin = hasApple ? Math.max(0, Math.min(...appleNonNull) - 5) : 0
@@ -1160,7 +1160,7 @@ function HrvChart({ data, baseline = 45, apple = [] }: { data: { date: string; v
         stroke="var(--color-amber)" strokeOpacity="0.6" strokeWidth="1" strokeDasharray="4 4" />
       <text x={SVG_PAD_L + plotW} y={SVG_PAD_T + 12} textAnchor="end"
         fontSize="12" fill="var(--color-text-muted)">baseline {Math.round(BASELINE)}ms</text>
-      {/* Apple all-day avg — teal line on the right-hand scale, drawn under the waking line */}
+      {/* Apple all-day avg — teal line on the right-hand scale, drawn under the overnight HRV line */}
       {appleSegments.map((pts, si) => (
         <polyline key={`a${si}`} points={pts.join(' ')} fill="none" stroke="var(--color-teal)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       ))}
@@ -1176,7 +1176,7 @@ function HrvChart({ data, baseline = 45, apple = [] }: { data: { date: string; v
       {/* X-axis: first and last labels only */}
       <text x={SVG_PAD_L} y={VH - 3} textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">1</text>
       <text x={SVG_PAD_L + plotW} y={VH - 3} textAnchor="middle" fontSize="12" fill="var(--color-text-muted)">30</text>
-      {/* Left y-axis labels (waking HRV) */}
+      {/* Left y-axis labels (overnight HRV — Oura since OURA_START_DATE) */}
       {gridVals.map(v => (
         <text key={v} x={SVG_PAD_L - 4} y={yOf(v) + 4} textAnchor="end" fontSize="12" fill="var(--color-text-muted)">{Math.round(v)}</text>
       ))}
@@ -1188,7 +1188,7 @@ function HrvChart({ data, baseline = 45, apple = [] }: { data: { date: string; v
     {/* Legend (HTML, below the SVG) — colours via CSS custom properties */}
     <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap', marginTop: 6, fontSize: 11, color: 'var(--color-text-muted)' }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ width: 14, borderTop: '2px solid var(--color-navy)' }} /> Waking HRV
+        <span style={{ width: 14, borderTop: '2px solid var(--color-navy)' }} /> Overnight HRV
       </span>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <span style={{ width: 14, borderTop: '2px dashed var(--color-amber)' }} /> Baseline
