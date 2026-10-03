@@ -26,6 +26,8 @@ export const OURA_API_BASE = 'https://api.ouraring.com/v2/usercollection'
 export const OURA_REDIRECT_URI = 'https://health-coach-rho.vercel.app/api/oura/callback'
 // `daily` covers /sleep and /daily_readiness; `personal` covers /personal_info (user id).
 export const OURA_SCOPES = 'personal daily'
+// httpOnly cookie carrying the OAuth state between /api/oura/connect and /callback.
+export const OURA_STATE_COOKIE = 'oura_oauth_state'
 
 const TOKEN_USER_ID = 'julie'
 const REFRESH_MARGIN_MS = 5 * 60 * 1000
