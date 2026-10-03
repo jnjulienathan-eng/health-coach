@@ -481,7 +481,8 @@ Replaces the card described above wholesale. The v2 card told several small stor
     - Recovery fields in wakeup, afternoon and endofday mention the readiness score.
     - The sick-day rule says "regardless of readiness or HRV".
   - The baseline comment at the route handler is updated (fallback 45, Oura-era dates only).
-  - **Not changed (flag for Julie):** `JULIE_PROFILE` still says "Hormones: … Estradiol 1 spray Lenzetto" and lists the evening stack without Phosphatidylserine 150mg. Both are stale versus the Supplements section (2 sprays AM since Aug 30; PS re-added July 2026), but they're outside the HRV/RHR scope approved for this session. Also "RHR … flag if above 58 for 2+ days" was kept as is; check whether 58 still suits lowest-overnight RHR.
+  - **Two stale profile lines fixed (approved by Julie, same session):** "Hormones: Progesterone 200mg evening, Estradiol 2 sprays Lenzetto AM (single dose)" (was "Estradiol 1 spray Lenzetto") and "Evening stack: Magnesium glycinate 200mg, L-Theanine, Phosphatidylserine 150mg" (PS was missing). These now match the Supplements section. "RHR … flag if above 58 for 2+ days" is deliberately kept as is (Julie's decision).
+  - The missing-readiness wakeup instruction above was approved by Julie.
 
 ---
 

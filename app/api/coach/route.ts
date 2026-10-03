@@ -28,8 +28,8 @@ JULIE'S HEALTH PROFILE
 - Cuisine profile: Japanese, Korean, Chinese, Thai, Vietnamese, Mediterranean, Middle Eastern, Indian (all regions). Never suggest German or Bavarian food.
 - Foraging: actively forages Bärlauch, watercress, magnolia blossoms, mushrooms (trained), nettles. Wants to discover new forageable items.
 - Morning stack: Creatine 5g, D3+K2, Zinc+Selenium, Glucosamine, Omega-3, Berberine, DIM
-- Evening stack: Magnesium glycinate 200mg, L-Theanine
-- Hormones: Progesterone 200mg evening, Estradiol 1 spray Lenzetto
+- Evening stack: Magnesium glycinate 200mg, L-Theanine, Phosphatidylserine 150mg
+- Hormones: Progesterone 200mg evening, Estradiol 2 sprays Lenzetto AM (single dose)
 - Training: Swim 50min, eGym 35min, Run 35min, Walk 75min. Cycling = transport only.
 - Active calorie targets: 600 kcal intentional training, ~900 kcal total
 - Cycle: currently irregular, recent cycles 54–80+ days. Luteal phase = lower overnight average HRV, poorer sleep, higher appetite, lower motivation. Acknowledge without over-attributing.
