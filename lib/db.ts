@@ -751,10 +751,11 @@ export async function getVo2Rolling60DayAvg(): Promise<number | null> {
 }
 
 // ─── getHrvRolling28DayMedian ─────────────────────────────────────
-// Personal HRV baseline: 28-day trailing MEDIAN of the manual `hrv`
-// column (daily_entries.hrv), window ending at asOfDate inclusive
-// (default = today in Europe/Berlin). Nulls skipped. Returns 88 (the
-// historical default) when fewer than 14 non-null readings exist.
+// Personal HRV baseline: 28-day trailing MEDIAN of the `hrv` column
+// (daily_entries.hrv — Oura overnight average since 2026-09-17, manual
+// waking HRV before), window ending at asOfDate inclusive (default = today
+// in Europe/Berlin). Nulls skipped. Returns 45 (fallback, was 88 for waking
+// HRV until Oct 3, 2026) when fewer than 14 non-null readings exist.
 // Compute-not-store — no DB column. NOT computed from apple_hrv_avg.
 export async function getHrvRolling28DayMedian(asOfDate?: string, client: SupabaseClient = supabase): Promise<number> {
   const endStr = asOfDate
@@ -776,7 +777,7 @@ export async function getHrvRolling28DayMedian(asOfDate?: string, client: Supaba
     .filter((v): v is number => v != null)
     .sort((a, b) => a - b)
 
-  if (values.length < 14) return 88
+  if (values.length < 14) return 45
 
   const mid = Math.floor(values.length / 2)
   return values.length % 2 !== 0

@@ -36,7 +36,8 @@ _Last updated: October 3, 2026 (Session: Oura sleep sync, Session 2 of 3, branch
 
 - Early 50s, perimenopause, Munich, Bavaria
 - Athletic, data-driven, health-optimised. Metric units only.
-- HRV baseline ~88ms default, computed as 28-day rolling median of waking `hrv` when ≥14 readings available | RHR baseline ~52 bpm
+- HRV is Oura overnight average (since 2026-09-17); baseline = 28-day rolling median, fallback 45 ms
+- RHR is Oura lowest overnight HR; baseline 52 bpm
 - Sleep target: 7h30–8h30 | Bedtime target: 21:45
 - Protein target: 130–140g/day | Fiber: 30–35g
 - Active calorie target: 600 kcal intentional training, ~900 kcal total
@@ -777,10 +778,21 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 
 | Input | Weight |
 |---|---|
-| HRV vs personal baseline (rolling 28-day median, fallback 88ms) | 30% |
+| HRV vs personal baseline (rolling 28-day median, fallback 45ms; was 88 until Oct 3, 2026) | 30% |
 | Sleep duration (effective, incl. naps) + Rested score | 30% |
 | RHR vs 52 bpm baseline | 20% |
 | CGM glucose score (built Sept 12, 2026 — see "CGM scoring" below) | 20% (redistributes to 0% if no CGM) |
+
+**HRV component curve — proportional to baseline (changed Oct 3, 2026, Oura Session 3, approved by Julie).** The old curve used fixed-ms rungs tuned for waking HRV at a ~88 baseline (100 at ≥100 ms, then rungs at 70 and 50 ms, tail `hrv × 0.4`). With Oura overnight HRV (~40–45 ms) that created a cliff: at baseline 45, hrv 45 scored 80 but hrv 44 skipped the 70/50 rungs and scored ~18. It could also exceed 100 (hrv 60 → 105). The rungs are now fractions of the baseline `b` (`lib/scores.ts → outcomeScore()`):
+- hrv ≥ b × 1.14 → 100
+- b ≤ hrv < b × 1.14 → 80 → 100, linear
+- b × 0.80 ≤ hrv < b → 50 → 80, linear
+- b × 0.57 ≤ hrv < b × 0.80 → 20 → 50, linear
+- hrv < b × 0.57 → `20 × hrv / (b × 0.57)`, floored at 0 (continuous at the 20 rung)
+
+The curve is continuous at every rung and capped at 100. **Checked at b = 88:** it matches the old curve within 0.67 points everywhere from 0 to 130 ms (largest gap at hrv 70.4, where the old 70 ms rung sat). **Sample values at b = 45 (old → new):** 25 → 10.0 → 19.5 · 30 → 12.0 → 32.6 · 36 → 14.4 → 50.0 · 40 → 16.0 → 63.3 · 42 → 16.8 → 70.0 · 44 → 17.6 → 76.7 · 45 → 80.0 → 80.0 · 48 → 85.0 → 89.5 · 51.3 → 90.5 → 100 · 60 → 105 → 100.
+
+**Fallback changed 88 → 45 (Oct 3, 2026)** in `getHrvRolling28DayMedian()` (`lib/db.ts`), `outcomeScore()`'s default param (`lib/scores.ts`), and in `app/page.tsx`: `hrvBaselineFromEntries()`, `getOutcomeBullets()`'s default param, and `HrvChart`'s `baseline` default prop. The Coach's copies are covered in the Coach Tab section. `components/DashboardTab.tsx` still hardcodes 88 (bullet threshold and chart reference line); that file isn't imported anywhere, so it was left alone.
 
 **HRV baseline (added June 26, 2026):** The HRV-vs-baseline comparison no longer uses a hardcoded 88. It uses a **28-day trailing median of the manual `hrv` column** (`daily_entries.hrv`), computed at runtime (compute-not-store — no DB column, no migration). Falls back to **88** when fewer than 14 non-null readings exist in the window. Computed via `getHrvRolling28DayMedian(asOfDate?)` in `lib/db.ts`; `outcomeScore(entry, hrvBaseline = 88)` in `lib/scores.ts` takes the baseline as a second argument. **NOT computed from `apple_hrv_avg`.** Only the recovery comparison (the `>= baseline` band) is personalised — the absolute framework bands (>100 / 80–100 / 60–80 / <60) used for the train-hard/moderate/easy/rest recommendation are physiological thresholds and remain hardcoded everywhere. **Score recompute is forward-only:** `lib/scores-server.ts → recomputeScores(date)` computes the baseline as of that date; historical stored scores are not bulk-backfilled. The Today-tab Outcome bullet and the Dashboard HRV chart compute the same median client-side from `dashEntries` (same fallback rule) via `hrvBaselineFromEntries()` in `app/page.tsx`; the chart draws a flat dashed line at the current median value (per-point rolling curve deferred). The Coach interpolates the rounded median into its "vs baseline" prompt commentary.
 

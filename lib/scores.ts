@@ -195,18 +195,24 @@ export function behaviorScore(
 
 // ─── Outcome Score (0–100) ────────────────────────────────────────
 // What your body did: HRV vs baseline, sleep duration+rested, RHR vs baseline
-export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 88, sleepDebtMinutes: number = 0, cgm?: CgmScoreInput | null): number {
+export function outcomeScore(entry: DailyEntry, hrvBaseline: number = 45, sleepDebtMinutes: number = 0, cgm?: CgmScoreInput | null): number {
   const components: { score: number; weight: number }[] = []
 
-  // 1. HRV vs personal baseline (rolling 28-day median, default 88ms) — 30%
+  // 1. HRV vs personal baseline (rolling 28-day median, default 45ms) — 30%
+  // Curve is proportional to the baseline (Oct 3, 2026, approved by Julie):
+  // the old fixed-ms rungs (100/70/50) were tuned for waking HRV at a ~88
+  // baseline and created a cliff just below baseline once hrv became Oura's
+  // overnight average (~40–45 ms). Rungs at baseline × 1.14 / 0.80 / 0.57
+  // reproduce the old curve at baseline 88.
   const hrv = entry.sleep.hrv
   if (hrv != null) {
+    const b = hrvBaseline
     const s =
-      hrv >= 100 ? 100 :
-      hrv >= hrvBaseline  ? 80 + ((hrv - hrvBaseline)  / 12) * 20 :
-      hrv >= 70  ? 50 + ((hrv - 70)  / 18) * 30 :
-      hrv >= 50  ? 20 + ((hrv - 50)  / 20) * 30 :
-      Math.max(0, hrv * 0.4)
+      hrv >= b * 1.14 ? 100 :
+      hrv >= b        ? 80 + ((hrv - b) / (b * 0.14)) * 20 :
+      hrv >= b * 0.80 ? 50 + ((hrv - b * 0.80) / (b * 0.20)) * 30 :
+      hrv >= b * 0.57 ? 20 + ((hrv - b * 0.57) / (b * 0.23)) * 30 :
+      Math.max(0, (20 * hrv) / (b * 0.57))
     components.push({ score: s, weight: 30 })
   }
 

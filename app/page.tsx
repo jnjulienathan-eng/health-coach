@@ -861,13 +861,13 @@ function getBehaviorBullets(
 
 // Client-side HRV baseline: median of non-null hrv across the recent
 // (30-day) window in dashEntries. Mirrors getHrvRolling28DayMedian in
-// lib/db.ts — falls back to 88 when fewer than 14 readings are present.
+// lib/db.ts — falls back to 45 when fewer than 14 readings are present.
 function hrvBaselineFromEntries(entries: DailyEntry[]): number {
   const values = entries
     .map(e => e.sleep.hrv)
     .filter((v): v is number => v != null)
     .sort((a, b) => a - b)
-  if (values.length < 14) return 88
+  if (values.length < 14) return 45
   const mid = Math.floor(values.length / 2)
   return values.length % 2 !== 0 ? values[mid] : (values[mid - 1] + values[mid]) / 2
 }
@@ -917,7 +917,7 @@ function sleepDebtFromEntries(entries: DailyEntry[], asOfDate: string): number {
   }, 0)
 }
 
-function getOutcomeBullets(entry: DailyEntry, hrvBaseline: number = 88, sleepDebtMinutes: number = 0): { text: string; ok: boolean }[] {
+function getOutcomeBullets(entry: DailyEntry, hrvBaseline: number = 45, sleepDebtMinutes: number = 0): { text: string; ok: boolean }[] {
   const bullets: { text: string; ok: boolean }[] = []
 
   if (entry.sleep.hrv != null) {
@@ -1091,7 +1091,7 @@ const SVG_PAD_T = 8
 const SVG_PAD_B = 18
 const svgCW = SVG_VW - SVG_PAD_L - SVG_PAD_R
 
-function HrvChart({ data, baseline = 88, apple = [] }: { data: { date: string; value: number | null }[]; baseline?: number; apple?: { date: string; value: number | null }[] }) {
+function HrvChart({ data, baseline = 45, apple = [] }: { data: { date: string; value: number | null }[]; baseline?: number; apple?: { date: string; value: number | null }[] }) {
   const VH = 160
   const ch = VH - SVG_PAD_T - SVG_PAD_B
   const BASELINE = baseline
@@ -1941,7 +1941,7 @@ export default function App() {
   })()
   const todayBehavior = todayScored?.behavior_score ?? 0
   const todayOutcome  = todayScored?.outcome_score  ?? 0
-  // Personal HRV baseline (rolling 28-day median, fallback 88) — computed once,
+  // Personal HRV baseline (rolling 28-day median, fallback 45) — computed once,
   // reused by the Outcome Score bullet and the HRV chart's dashed baseline line.
   const hrvBaseline   = hrvBaselineFromEntries(dashEntries)
   // Personal bedtime target (rolling 30-day circular average, fallback 21:45) —
