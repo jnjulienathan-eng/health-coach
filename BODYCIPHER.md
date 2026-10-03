@@ -746,7 +746,7 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 |---|---|
 | Nutrition targets hit (protein + fiber priority) | 30% |
 | Supplements confirmed (morning + evening + hormones) | 20% |
-| Training appropriate to HRV framework | 20% |
+| Training appropriate to readiness | 20% |
 | Bedtime consistency (within 30 min of rolling 30-day bedtime average, fallback 21:45; −1.1 pts per minute beyond 30) | 15% |
 | Active calorie target reached (600 kcal from training sessions + cycling) | 15% |
 
@@ -756,15 +756,18 @@ For multiple sessions in a day: sum all TSUs. Rest days = 0.
 
 **Nutrition component source (updated April 28, 2026):** Behavior Score now reads nutrition from `daily_nutrition_summary` (not the legacy `daily_entries.nutrition` JSONB). A day counts as nutrition-logged if `meal_count > 0`. Score is recomputed server-side via `lib/scores-server.ts → recomputeScores(date)` which is called after every meal operation (POST/PUT/DELETE to `/api/nutrition/meal`) and after every `saveEntry()` save (fires `/api/scores` in the background). Key files: `lib/scores.ts` (`behaviorScore()` accepts optional `NutritionSummaryForScore`), `lib/scores-server.ts` (server-only recompute helper), `app/api/scores/route.ts` (POST endpoint).
 
-**HRV training logic:**
-- HRV >100 → hard (zone3+ ≥16 min or 2 sessions) = full | moderate = partial | easy/rest = low
-- HRV 80–100 → moderate = full | easy/rest = partial (not penalised) | hard = partial penalty
-- HRV 60–80 → easy = full | moderate/hard = penalty
-- HRV <60 → rest = full | any training = penalty
-- HRV missing → redistributes, no penalty
-- Going easier than HRV recommends is **NEVER penalised.**
+**Readiness training logic** (changed Oct 3, 2026, Oura Session 3, approved by Julie; this replaced the HRV bands). Reads `entry.sleep.oura_readiness` (Oura daily readiness score), not `hrv`. Since Oct 3, `hrv` is Oura's overnight average (~40–45 ms), which the old absolute bands (>100 / 80–100 / 60–80 / <60) no longer fit. Same structure and same full/partial/penalty outcomes as before, in `lib/scores.ts → behaviorScore()` component 4:
+- Readiness ≥85 → hard (zone3+ ≥16 min or 2 sessions) = full | moderate = partial | easy/rest = low
+- Readiness 70–84 → moderate = full | easy/rest = partial (not penalised) | hard = partial penalty
+- Readiness 60–69 → easy = full | moderate/hard = penalty
+- Readiness <60 → rest = full | any training = penalty
+- Readiness missing → redistributes, no penalty
+- Going easier than readiness recommends is **NEVER penalised.**
+- `recomputeScores()` needed no change: it builds the entry via `rowToEntry()`, which reads `oura_readiness`.
+- Days before 2026-09-17 have no `oura_readiness`, so this component is excluded for them if they are ever recomputed. Their stored scores are kept (forward-only).
+- ~~HRV training logic: HRV >100 / 80–100 / 60–80 / <60, same outcomes as above.~~ Superseded, kept for history.
 
-**Sick day exclusions (added July 26, 2026):** When `entry.context.is_sick` is true, the nutrition (1), bedtime-consistency (3), and active-calories (5) components are excluded entirely — same "component not pushed, weight redistributes" mechanism used everywhere else for missing data (not a new mechanism). Supplements (2) and training-vs-HRV (4) are **not** gated by `is_sick` — they score normally. A sick rest day scores fine on the training-vs-HRV component because rest is never penalised against the HRV framework (existing behaviour, unchanged). `behaviorScore()` reads `entry.context.is_sick` directly — no new parameter.
+**Sick day exclusions (added July 26, 2026):** When `entry.context.is_sick` is true, the nutrition (1), bedtime-consistency (3), and active-calories (5) components are excluded entirely — same "component not pushed, weight redistributes" mechanism used everywhere else for missing data (not a new mechanism). Supplements (2) and training-vs-readiness (4, training-vs-HRV before Oct 3, 2026) are **not** gated by `is_sick` — they score normally. A sick rest day scores fine on the training-vs-HRV component because rest is never penalised against the HRV framework (existing behaviour, unchanged). `behaviorScore()` reads `entry.context.is_sick` directly — no new parameter.
 
 **Bullet display fix (added July 26, 2026):** `getBehaviorBullets()` in `app/page.tsx` only ever surfaced 3 of the 5 scoring components as bullets — supplements, bedtime, and nutrition. (There is no active-calories or training-vs-HRV bullet in the UI; those two components are not displayed here at all, sick day or not — this was already true before this change and is unrelated to it.) Of the 3 bullets that do exist, bedtime and nutrition correspond to components excluded on a sick day (see above) but were still showing stale on/off-target verdicts. Fixed: when `entry.context.is_sick` is true, the bedtime and nutrition bullets are replaced with a single `"Nutrition and bedtime — not scored (sick day)"` line (✓, not penalised) instead of computing their normal verdicts — same collapse-to-one-line pattern already used for the sick-day Outcome Score sleep bullet. The supplements bullet is unaffected and always renders normally, sick or not.
 
