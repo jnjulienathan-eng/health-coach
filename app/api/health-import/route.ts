@@ -168,21 +168,11 @@ export async function POST(req: NextRequest) {
           const km = metric.units === 'mi' ? point.qty * 1.60934 : point.qty
           byDate[date].walking_running_km = Math.round(km * 100) / 100
         } else if (metric.name === 'sleep_analysis') {
-          // HAE sends aggregated sleep_analysis — totalSleep is decimal hours, inBedStart is the sleep onset datetime.
-          if (point.totalSleep !== undefined) {
-            byDate[date].sleep_duration_min = Math.round(point.totalSleep * 60)
-          }
-          if (point.inBedStart) {
-            // "2026-05-03 22:12:05 +0200" → "22:12"
-            byDate[date].bedtime = point.inBedStart.substring(11, 16)
-          }
-          if (point.inBedEnd) {
-            // Same HH:MM extraction as inBedStart → bedtime above. Apple
-            // Watch's auto-detected sleep doesn't distinguish "stopped
-            // sleeping" from "got out of bed" — inBedEnd and sleepEnd have
-            // been identical in every real sync so far (see BODYCIPHER.md).
-            byDate[date].wake_time = point.inBedEnd.substring(11, 16)
-          }
+          // Ignored as of Oct 3, 2026 (Oura Session 2): bedtime,
+          // sleep_duration_min and wake_time are Oura-owned now, written only
+          // by syncOuraRange() in lib/oura.ts. Kept in RECOGNIZED_METRIC_NAMES
+          // so it doesn't log as unrecognized. The sleep_duration_min /
+          // bedtime / wake_time branches below are now never reached.
         } else if (metric.name === 'active_energy' && point.qty !== undefined) {
           const kcal = metric.units === 'kJ' ? kjToKcal(point.qty) : Math.round(point.qty)
           byDate[date].active_calories = kcal
