@@ -19,6 +19,14 @@
     {
       "path": "/api/cgm-import",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/oura/sync",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/oura/backfill",
+      "schedule": "0 3 1 1 *"
     }
   ]
 }

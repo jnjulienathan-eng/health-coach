@@ -17,6 +17,7 @@
 // Never import this from a client component — it reads OURA_CLIENT_SECRET and
 // SUPABASE_SERVICE_ROLE_KEY.
 
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { supaAdmin } from '@/lib/nutrition'
 import { recomputeScores } from '@/lib/scores-server'
 
@@ -401,4 +402,135 @@ export async function syncOuraRange(startDate: string, endDate: string): Promise
   }
 
   return results
+}
+
+// ── Webhooks + cron helpers (Session 2) ───────────────────────────────────
+// Checked against Oura's v2 docs (Webhook Subscription Routes), Oct 3, 2026:
+// - verification: GET callback?verification_token=…&challenge=… → { challenge }
+// - events: POST with headers x-oura-signature / x-oura-timestamp; signature
+//   is HMAC-SHA256(client_secret, timestamp + JSON body), uppercase hex
+// - subscriptions: /v2/webhook/subscription with x-client-id/x-client-secret;
+//   one per (data_type, event_type); renew via PUT …/renew/{id}
+
+export const OURA_WEBHOOK_CALLBACK_URL = 'https://health-coach-rho.vercel.app/api/oura/webhook'
+const OURA_WEBHOOK_API = 'https://api.ouraring.com/v2/webhook/subscription'
+export const OURA_WEBHOOK_DATA_TYPES = ['sleep', 'daily_readiness'] as const
+const OURA_WEBHOOK_EVENT_TYPES = ['create', 'update', 'delete'] as const
+const RENEW_WITHIN_MS = 7 * 24 * 60 * 60 * 1000
+export const OURA_RECENT_SYNC_DAYS = 3
+
+export function berlinToday(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
+}
+
+// Last N Berlin days ending today (today counts as one).
+export async function syncOuraRecentDays(days = OURA_RECENT_SYNC_DAYS): Promise<OuraSyncDateResult[]> {
+  const today = berlinToday()
+  return syncOuraRange(shiftIsoDate(today, -(days - 1)), today)
+}
+
+function hmacHexUpper(secret: string, message: string): string {
+  return createHmac('sha256', secret).update(message).digest('hex').toUpperCase()
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  return ab.length === bb.length && timingSafeEqual(ab, bb)
+}
+
+// Oura's reference code signs timestamp + JSON.stringify(parsedBody). We check
+// the raw body first and the re-serialised form as a fallback, so a whitespace
+// difference between Oura's serialiser and Node's can't cause false rejections.
+export function verifyOuraWebhookSignature(rawBody: string, signature: string | null, timestamp: string | null): boolean {
+  if (!signature || !timestamp) return false
+  const { clientSecret } = clientCredentials()
+  const received = signature.trim().toUpperCase()
+  if (safeEqual(hmacHexUpper(clientSecret, timestamp + rawBody), received)) return true
+  try {
+    const reserialised = JSON.stringify(JSON.parse(rawBody))
+    return safeEqual(hmacHexUpper(clientSecret, timestamp + reserialised), received)
+  } catch {
+    return false
+  }
+}
+
+interface OuraWebhookSubscription {
+  id: string
+  callback_url: string
+  event_type: string
+  data_type: string
+  expiration_time: string
+}
+
+export interface OuraSubscriptionResult {
+  data_type: string
+  event_type: string
+  action: 'ok' | 'created' | 'renewed' | 'failed'
+  id?: string
+  expiration_time?: string
+  error?: string
+}
+
+async function webhookApi<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const { clientId, clientSecret } = clientCredentials()
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'x-client-id': clientId,
+      'x-client-secret': clientSecret,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(`Oura webhook API ${method} ${res.status}: ${text.slice(0, 300)}`)
+  return (text ? JSON.parse(text) : null) as T
+}
+
+// Ensures one live subscription per (data_type, event_type) pointing at our
+// callback. Creates missing ones; renews any expiring within 7 days.
+export async function ensureWebhookSubscriptions(): Promise<OuraSubscriptionResult[]> {
+  const verificationToken = process.env.OURA_WEBHOOK_VERIFICATION_TOKEN
+  if (!verificationToken) throw new Error('OURA_WEBHOOK_VERIFICATION_TOKEN not set')
+
+  const existing = await webhookApi<OuraWebhookSubscription[]>('GET', OURA_WEBHOOK_API)
+  const ours = (existing ?? []).filter(s => s.callback_url === OURA_WEBHOOK_CALLBACK_URL)
+
+  const results: OuraSubscriptionResult[] = []
+  for (const data_type of OURA_WEBHOOK_DATA_TYPES) {
+    for (const event_type of OURA_WEBHOOK_EVENT_TYPES) {
+      const sub = ours
+        .filter(s => s.data_type === data_type && s.event_type === event_type)
+        .sort((a, b) => b.expiration_time.localeCompare(a.expiration_time))[0]
+      try {
+        if (!sub) {
+          // Oura calls GET /api/oura/webhook to verify before this returns.
+          const created = await webhookApi<OuraWebhookSubscription>('POST', OURA_WEBHOOK_API, {
+            callback_url: OURA_WEBHOOK_CALLBACK_URL,
+            verification_token: verificationToken,
+            event_type,
+            data_type,
+          })
+          results.push({ data_type, event_type, action: 'created', id: created.id, expiration_time: created.expiration_time })
+        } else if (new Date(sub.expiration_time).getTime() - Date.now() < RENEW_WITHIN_MS) {
+          const renewed = await webhookApi<OuraWebhookSubscription>('PUT', `${OURA_WEBHOOK_API}/renew/${encodeURIComponent(sub.id)}`)
+          results.push({ data_type, event_type, action: 'renewed', id: renewed.id, expiration_time: renewed.expiration_time })
+        } else {
+          results.push({ data_type, event_type, action: 'ok', id: sub.id, expiration_time: sub.expiration_time })
+        }
+      } catch (e) {
+        console.error(`[oura] subscription ${data_type}/${event_type} failed:`, describe(e))
+        results.push({ data_type, event_type, action: 'failed', id: sub?.id, error: describe(e) })
+      }
+    }
+  }
+  return results
+}
+
+// CRON_SECRET bearer check, same as the notification / cgm-import crons.
+export function isAuthorizedCron(authHeader: string | null): boolean {
+  const cronSecret = process.env.CRON_SECRET
+  return !!cronSecret && !!authHeader && safeEqual(authHeader, `Bearer ${cronSecret}`)
 }

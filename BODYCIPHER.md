@@ -149,6 +149,43 @@ BodyCipher is replacing several Apple Health sleep fields with Oura Ring data. S
 - **Env vars:** `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, `OURA_WEBHOOK_VERIFICATION_TOKEN`. These are set in Vercel **Production only** (Vercel didn't offer Preview), so the flow cannot run on branch previews or locally. `/api/oura/connect` returns a plain 500 there.
 - **Verification:** `tsc --noEmit`, `eslint`, and `next build` are clean. The live OAuth flow has not been run. Real verification happens on production after merge: Julie opens `/api/oura/connect`, authorizes, and sends back the test page output for Session 2's field mapping.
 
+### Oura Ring sleep sync — Session 2 of 3 (October 3, 2026, branch `feat/oura-sleep-sync`)
+
+Session 2 makes Oura the source of the sleep fields. Scoring logic and the Coach are not changed (that's Session 3).
+
+**`syncOuraRange(startDate, endDate)` (`lib/oura.ts`)** is the single entry point. The webhook, the daily cron and the backfill all call it.
+- **Fetch:** `/sleep` and `/daily_readiness` from start − 1 day to end + 2 days. That's one day of padding each side, plus one more because Oura can treat `end_date` as exclusive. It follows `next_token` paging.
+- **Mapping per app date D** (`mapOuraForDate()`, exported for testing). Periods of type `deleted` or `rest` are ignored.
+  - **Main sleep** = the `long_sleep` period with `day = D`; if there are several, the longest by `total_sleep_duration`.
+    - `bedtime` = HH:MM of `bedtime_start` and `wake_time` = HH:MM of `bedtime_end`, local time as written in Oura's string.
+    - `sleep_duration_min` = round(seconds ÷ 60), `hrv` = round(`average_hrv`), `rhr` = `lowest_heart_rate`.
+    - No main sleep for D → all five fields untouched.
+  - **`nap_minutes`** = sum of round(seconds ÷ 60) over non-`long_sleep` periods of 15 minutes or more whose `bedtime_start` falls on **Berlin calendar date D**. Oura's `day` is not used for naps, because Oura assigns evening naps to the next day.
+    - If none qualify and a main sleep exists, it writes null, so a deleted or corrected nap is cleared.
+    - If there's no main sleep either (ring probably not worn), it's left untouched. Judgment call, approved by Julie Oct 3, 2026.
+  - **`oura_readiness`** = `daily_readiness.score` for D. If Oura has no score for D, it's left untouched (also approved).
+- **Write rule:** overwrite-on-change. It reads the stored Oura-owned columns for the whole range once and normalises them (`bedtime` from a time column comes back as `21:18:00`; it's compared as `21:18`). It upserts on `(user_id, date)` sending **only the changed Oura-owned columns**, so no other column is touched and a missing row is created.
+- **Scores:** `recomputeScores(D)` runs for each changed date, oldest first, so rolling baselines read earlier days that are already updated.
+- **Return value:** per date, `{ date, changed: {col: {from, to}}, scoresRecomputed, error? }`. Idempotent.
+
+**Webhook — `GET`/`POST /api/oura/webhook`.** Checked against Oura's v2 webhook docs, Oct 3, 2026.
+- **GET** is the subscription handshake: if `verification_token` equals `OURA_WEBHOOK_VERIFICATION_TOKEN`, it returns `{ challenge }`; otherwise 401.
+- **POST** verifies `x-oura-signature`: HMAC-SHA256 keyed with `OURA_CLIENT_SECRET` over `x-oura-timestamp` + body, uppercase hex, constant-time compare. It checks the raw body first, then the re-serialised JSON, because Oura's reference code signs `JSON.stringify(parsed body)`.
+- Invalid signature → 401. For `sleep` or `daily_readiness` events it returns 200 at once and runs `syncOuraRecentDays()` (the last 3 Berlin days) inside `after()`, instead of fetching the single object. Other data types are logged and ignored.
+- No timestamp-freshness (replay) check: Oura doesn't document the timestamp units, and a replayed event only triggers the idempotent re-sync.
+
+**Daily cron — `GET /api/oura/sync`** (CRON_SECRET bearer, `vercel.json` `0 11 * * *`).
+- Runs `syncOuraRecentDays()` as a safety net.
+- Then `ensureWebhookSubscriptions()`: lists subscriptions via `GET https://api.ouraring.com/v2/webhook/subscription` with `x-client-id`/`x-client-secret` headers, keeps the ones whose `callback_url` is `https://health-coach-rho.vercel.app/api/oura/webhook`, and makes sure all 6 combinations exist: `sleep` and `daily_readiness` × `create`, `update`, `delete`.
+- Missing combinations are created with a POST (Oura calls the webhook GET handshake before that call returns). Any expiring within 7 days are renewed via `PUT …/renew/{id}`.
+- Returns `{ sync, subscriptions }`, where each subscription is `ok`, `created`, `renewed` or `failed`.
+
+**Backfill — `GET /api/oura/backfill`** (CRON_SECRET bearer).
+- Runs `syncOuraRange('2026-09-17', today)`. Idempotent.
+- Registered in `vercel.json` once a year (`0 3 1 1 *`) only so it appears under Vercel → Settings → Cron Jobs, where the **Run** button triggers it manually. That button was confirmed to exist before relying on it. `vercel crons run /api/oura/backfill` works too.
+
+All three routes set `dynamic = 'force-dynamic'`, `revalidate = 0` and `maxDuration = 60`.
+
 ### Navigation (4 tabs — restructured April 30, 2026)
 
 | Index | Label | Component | Status |
