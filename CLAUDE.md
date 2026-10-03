@@ -31,6 +31,13 @@ _Companion to BODYCIPHER.md — that file covers what the app does. This file co
 5. DB migrations always run in Supabase SQL editor BEFORE any code
    changes deploy. Never do them yourself. Flag if a migration is needed
    and wait.
+   **New public tables:** any migration that creates a table in the public
+   schema must, in the same script: enable RLS (no policies needed),
+   `REVOKE ALL` from `anon` and `authenticated`, and
+   `GRANT SELECT, INSERT, UPDATE, DELETE` to `service_role`. Reason: from
+   October 30, 2026 Supabase no longer auto-grants Data API access to new
+   public tables, and BodyCipher accesses everything via supaAdmin(), so new
+   tables need service_role only.
 6. Update BODYCIPHER.md to reflect any changes made — new fields, removed
    features, backlog updates, decisions taken. Do this before the
    plain-English summary.
