@@ -534,3 +534,29 @@ export function isAuthorizedCron(authHeader: string | null): boolean {
   const cronSecret = process.env.CRON_SECRET
   return !!cronSecret && !!authHeader && safeEqual(authHeader, `Bearer ${cronSecret}`)
 }
+
+// Recomputes stored scores for every date in [startDate, endDate], ascending,
+// skipping dates in `alreadyRecomputed` (e.g. ones syncOuraRange just did).
+// Idempotent — recomputeScores() derives everything from stored inputs.
+// Dates with no daily_entries row are a no-op inside recomputeScores().
+export async function recomputeScoresForRange(
+  startDate: string,
+  endDate: string,
+  alreadyRecomputed: Set<string> = new Set(),
+): Promise<{ date: string; recomputed: boolean; error?: string }[]> {
+  const out: { date: string; recomputed: boolean; error?: string }[] = []
+  for (let date = startDate; date <= endDate; date = shiftIsoDate(date, 1)) {
+    if (alreadyRecomputed.has(date)) {
+      out.push({ date, recomputed: true })
+      continue
+    }
+    try {
+      await recomputeScores(date)
+      out.push({ date, recomputed: true })
+    } catch (e) {
+      console.error(`[oura] recomputeScores ${date} failed:`, describe(e))
+      out.push({ date, recomputed: false, error: describe(e) })
+    }
+  }
+  return out
+}

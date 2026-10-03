@@ -183,6 +183,7 @@ Session 2 makes Oura the source of the sleep fields. Scoring logic and the Coach
 
 **Backfill — `GET /api/oura/backfill`** (CRON_SECRET bearer).
 - Runs `syncOuraRange('2026-09-17', today)`. Idempotent.
+- **Changed Oct 3, 2026 (Oura Session 3): it also recomputes scores for every date in the range.** After the sync, `recomputeScoresForRange(OURA_START_DATE, today, alreadyRecomputed)` (`lib/oura.ts`) calls `recomputeScores()` for **every** date from 2026-09-17 to today, ascending, not only dates whose Oura inputs changed. Dates the sync already recomputed are skipped so nothing runs twice. That way stored scores reflect the new scoring model (readiness training component, proportional HRV curve, Oura-only baseline). Dates before 2026-09-17 keep their stored scores (forward-only). Idempotent. The response and log add `scoresRecomputed` (count) and `scoreFailures` (per-date errors). The start date now comes from the shared `OURA_START_DATE` constant (`lib/types.ts`) instead of a local literal.
 - Registered in `vercel.json` once a year (`0 3 1 1 *`) only so it appears under Vercel → Settings → Cron Jobs, where the **Run** button triggers it manually. That button was confirmed to exist before relying on it. `vercel crons run /api/oura/backfill` works too.
 
 All three routes set `dynamic = 'force-dynamic'`, `revalidate = 0` and `maxDuration = 60`.
