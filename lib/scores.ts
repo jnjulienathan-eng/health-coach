@@ -148,10 +148,12 @@ export function behaviorScore(
     let s: number
 
     if (readiness >= 85) {
-      // Recommendation: train hard
-      const meetsHard = sessions.some(sess => sessionIntensity(sess) === 'hard')
-      const walkOnly = hasSessions && sessions.every(sess => sess.activity_type.toLowerCase() === 'walk')
-      s = meetsHard ? 100 : (hasSessions && !walkOnly) ? 70 : 30
+      // Recommendation: train hard — but going easier is never penalised
+      // (Oct 3, 2026 fix): hard = full, moderate = full, easy/rest = same
+      // not-penalised treatment as the 70–84 band (100). The old HRV >100
+      // band scored easy/rest as 30, which contradicted that rule. No
+      // over-exertion penalty here, since hard is what's recommended.
+      s = 100
 
     } else if (readiness >= 70) {
       // Recommendation: moderate — no penalty for under-training, only for going very hard
