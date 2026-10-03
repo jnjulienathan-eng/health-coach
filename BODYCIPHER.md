@@ -886,6 +886,28 @@ Stores Web Push device subscriptions for server-initiated notifications.
   - No DB migrations needed this session — both new functions query existing `cgm_readings`/`daily_entries` columns.
   - Verified: `tsc --noEmit`, `eslint`, `next build` all clean (both new routes registered as dynamic `ƒ`). Exercised in local dev browser preview (mobile viewport): expanded the card, toggled CGM on/off, confirmed both new routes fire with the correct params (`/api/cgm/waking?date=` re-fires on date navigation; `/api/cgm/low-events-today` does not, confirming the navigated-date-vs-real-today distinction actually holds at runtime) and that the card degrades to the manual/em-dash fallback exactly as designed when they 500 — the local 500s are the same pre-existing missing-`SUPABASE_SERVICE_ROLE_KEY` limitation as every other service-role route, not a regression. Real reading data (does a genuine wake-time match actually resolve, does the low-events count reflect real LibreView rows) needs verification on the Vercel branch preview. Not merged — pushed to `claude/glucose-stability-waking-lows`; no PR opened.
 
+### `oura_tokens` (added Oct 3, 2026 — Oura connection, Session 1 of 3)
+
+- user_id (text PK, default 'julie'), oura_user_id (text, nullable — Oura's `personal_info.id`), access_token (text NOT NULL), refresh_token (text NOT NULL), expires_at (timestamptz NOT NULL), scope (text, nullable), updated_at (timestamptz DEFAULT now())
+- One row. Read/written only by `lib/oura.ts` via `supaAdmin()`. `updated_at` is set explicitly on every write (the default only fires on insert).
+- **Migration — run by Julie in the Supabase SQL editor, Oct 3, 2026** (first table created under the CLAUDE.md "new public tables" rule: RLS on with no policies, no anon/authenticated grants, service_role only):
+  ```sql
+  create table if not exists public.oura_tokens (
+    user_id text primary key default 'julie',
+    oura_user_id text,
+    access_token text not null,
+    refresh_token text not null,
+    expires_at timestamptz not null,
+    scope text,
+    updated_at timestamptz default now()
+  );
+  alter table public.oura_tokens enable row level security;
+  revoke all on table public.oura_tokens from anon, authenticated;
+  grant select, insert, update, delete on table public.oura_tokens to service_role;
+  ```
+- **Single-use refresh tokens:** every refresh writes the new access_token AND the new refresh_token in one update. Losing the new refresh token means reconnecting via `/api/oura/connect`.
+- **Ownership lock:** the OAuth callback refuses to overwrite this row if the authorizing Oura account's id differs from the stored `oura_user_id`. To deliberately switch accounts, delete the row in Supabase first.
+
 ### `user_profiles`
 
 **Corrected Sept 9, 2026 (CGM connector Session A, Task 1) — the "Preferences, macro targets" description below was stale/incomplete.** Confirmed by querying the live table (anon key, `select=*`, one existing row): columns are `user_id` (**text**, not uuid — value `'julie'`, matching the same convention as `daily_entries`/`training_sessions`/`health_appointments`/`glp1_injections`), `display_name` (text), `hrv_baseline` (numeric), `rhr_baseline` (numeric), `created_at` (timestamptz). No separate `id` uuid column observed — `user_id` itself is the key, one row per user.
