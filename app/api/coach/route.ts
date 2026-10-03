@@ -11,8 +11,10 @@ JULIE'S HEALTH PROFILE
 - Early 50s, perimenopause, Munich, Bavaria
 - Athletic, data-driven, health-optimised
 - Goal: gradual body recomposition via protein optimisation, fiber consistency, and sleep quality. Muscle preservation is the priority. Never recommend below 1700 kcal.
-- HRV framework: >100ms = train hard | 80–100ms = moderate | 60–80ms = easy only | <60ms = rest
-- HRV personal baseline: ~88ms | RHR baseline: ~52 bpm (flag if above 58 for 2+ days)
+- Readiness framework (Oura daily readiness score): ≥85 = train hard | 70–84 = moderate | 60–69 = easy only | <60 = rest
+- HRV is Oura overnight average HRV (since 2026-09-17); personal baseline ~45ms (28-day rolling median, fallback 45ms)
+- RHR is Oura lowest overnight RHR; baseline ~52 bpm (flag if above 58 for 2+ days)
+- From 2026-09-17, HRV and RHR are Oura overnight measures; earlier days are manual waking values, which run higher. Do not interpret the step change around that date as a change in recovery.
 - Sleep target: 7h30–8h30 | Bedtime target: 21:45
 - CALORIE AND MACRO TARGETS SCALE WITH TRAINING VOLUME:
   Rest day: 1800 kcal | protein 130g | carbs 160g | fat 65g | fiber 30–35g
@@ -30,7 +32,7 @@ JULIE'S HEALTH PROFILE
 - Hormones: Progesterone 200mg evening, Estradiol 1 spray Lenzetto
 - Training: Swim 50min, eGym 35min, Run 35min, Walk 75min. Cycling = transport only.
 - Active calorie targets: 600 kcal intentional training, ~900 kcal total
-- Cycle: currently irregular, recent cycles 54–80+ days. Luteal phase = lower HRV, poorer sleep, higher appetite, lower motivation. Acknowledge without over-attributing.
+- Cycle: currently irregular, recent cycles 54–80+ days. Luteal phase = lower overnight average HRV, poorer sleep, higher appetite, lower motivation. Acknowledge without over-attributing.
 - Munich seasonal context: allergy season April–May, UV meaningful June–Sep
 - Dietary coaching notes: low pre-workout protein → nudge cottage cheese. Berberine best timed with largest carb meal. Vitamin C within 1h of training boosts collagen synthesis. Natto days = double K2 benefit.
 `.trim()
@@ -48,9 +50,9 @@ const TRAINING_INTERPRETATION = `
 TRAINING LOAD INTERPRETATION:
 - Intensity is derived from Zone 3+ minutes (time above ~135 bpm): 0–5 min = Easy, 6–15 min = Moderate, 16+ min = Hard.
 - Always report Zone 3+ minutes alongside the intensity label and give the number meaning: "22 Zone 3+ minutes is a genuine aerobic stimulus."
-- Track weekly Zone 3+ minute totals across the 30-day window. Flag if the current week is significantly higher than the recent 4-week average — this is a load spike worth monitoring against next-day HRV.
+- Track weekly Zone 3+ minute totals across the 30-day window. Flag if the current week is significantly higher than the recent 4-week average — this is a load spike worth monitoring against next-day overnight average HRV.
 - Strength sessions (eGym): Zone 3+ minutes expected to be 0–5. Do not penalise low numbers. Note if unusually high as it may indicate circuit-style effort.
-- Correlate Zone 3+ weekly load with next-day HRV across history. If a pattern exists, name it explicitly: "Your HRV tends to drop the day after weeks above 90 Zone 3+ minutes."
+- Correlate Zone 3+ weekly load with next-day overnight average HRV across history. If a pattern exists, name it explicitly: "Your overnight HRV tends to drop the day after weeks above 90 Zone 3+ minutes."
 - CRITICAL: If training sessions are already logged in TODAY'S DATA, they are completed activities. Never recommend training that has already been done. Acknowledge what was accomplished.
 `.trim()
 
@@ -169,13 +171,13 @@ function formatEntry(entry: DailyEntry, cd?: number | null, nutritionSummary?: N
 
   const lines = [
     `Date: ${entry.date}`,
-    `Sleep: ${durationH} | HRV ${s.hrv ?? '?'}ms | RHR ${s.rhr ?? '?'}bpm | Rested ${s.rested ?? '?'}/5 | Bedtime ${s.bedtime ?? '?'}${fastingGlucose}`,
+    `Sleep: ${durationH} | Overnight average HRV ${s.hrv ?? '?'}ms | Lowest overnight RHR ${s.rhr ?? '?'}bpm | Oura readiness ${s.oura_readiness ?? '?'} | Rested ${s.rested ?? '?'}/5 | Bedtime ${s.bedtime ?? '?'}${fastingGlucose}`,
     `Training: ${sessions}${t.cycled_today ? ` | Cycled${t.cycling_minutes ? ` ${t.cycling_minutes}min` : ''}` : ''}`,
     nutritionSummary != null
       ? `Nutrition (from daily_nutrition_summary): protein ${nutritionSummary.protein ?? '?'}g | fiber ${nutritionSummary.fiber ?? '?'}g | fat ${nutritionSummary.fat ?? '?'}g | carbs ${nutritionSummary.carbs ?? '?'}g | ${nutritionSummary.calories ?? '?'}kcal | meals logged: ${nutritionSummary.meal_count ?? 0}${nutritionSummary.logged_via_summary ? ` (${Object.entries(nutritionSummary.logged_via_summary).map(([k, v]) => `${k}:${v}`).join(', ')})` : ''}`
       : `Nutrition: protein ${n.total_protein ?? '?'}g | fiber ${n.total_fiber ?? '?'}g | fat ${n.total_fat ?? '?'}g | carbs ${n.total_carbs ?? '?'}g | ${n.total_calories ?? '?'}kcal`,
     meals.length ? `Meals: ${meals.join(' / ')}` : null,
-    `Supplements: morning ${sup.morning_stack_taken ? '✓' : '✗'}${sup.morning_exceptions.length ? ` (skipped: ${sup.morning_exceptions.join(', ')})` : ''} | evening ${sup.evening_stack_taken ? '✓' : '✗'} | progesterone ${sup.progesterone_taken ? '✓' : '✗'} | estradiol AM ${sup.estradiol_am_taken ? '✓' : '✗'} | estradiol PM ${sup.estradiol_pm_taken ? '✓' : '✗'} | testosterone ${sup.testosterone_taken ? '✓' : '✗'}`,
+    `Supplements: morning ${sup.morning_stack_taken ? '✓' : '✗'}${sup.morning_exceptions.length ? ` (skipped: ${sup.morning_exceptions.join(', ')})` : ''} | evening ${sup.evening_stack_taken ? '✓' : '✗'} | progesterone ${sup.progesterone_taken ? '✓' : '✗'} | estradiol (single AM dose) ${sup.estradiol_am_taken ? '✓' : '✗'} | testosterone ${sup.testosterone_taken ? '✓' : '✗'}`,
     `Context: cycle day ${effectiveCd ?? '?'}${c.symptoms.length ? ` | symptoms: ${c.symptoms.join(', ')}` : ''}${c.travelling ? ' | travelling' : ''}${c.notes ? ` | "${c.notes}"` : ''}`,
     `Hydration: ${entry.hydration_ml != null ? `${entry.hydration_ml}ml` : 'not logged'}`,
   ].filter(Boolean)
@@ -208,12 +210,11 @@ function buildContext(
 ): string {
   const BAVARIA_FORAGING = BAVARIA_FORAGING_TEMPLATE.replace('{currentMonth}', currentMonth)
   // Inject the computed HRV baseline and bedtime target into the profile
-  // (leaves the HRV framework band line — >100 / 80–100 / 60–80 / <60 —
-  // untouched).
+  // (leaves the readiness framework band line untouched).
   const profile = JULIE_PROFILE
     .replace(
-      '- HRV personal baseline: ~88ms | RHR baseline: ~52 bpm (flag if above 58 for 2+ days)',
-      `- HRV personal baseline: ~${hrvBaseline}ms (rolling 28-day median, default 88) | RHR baseline: ~52 bpm (flag if above 58 for 2+ days)`,
+      'personal baseline ~45ms (28-day rolling median, fallback 45ms)',
+      `personal baseline ~${hrvBaseline}ms (28-day rolling median of Oura nights, fallback 45ms)`,
     )
     .replace(
       '- Sleep target: 7h30–8h30 | Bedtime target: 21:45',
@@ -322,7 +323,7 @@ function buildBriefingPrompt(
 ): string {
   const isSick = today.context.is_sick === true
   const sickTrainingRule = isSick
-    ? '\n- SICK DAY: is_sick is true today. Do not suggest, encourage, or nudge toward any training in the training field, regardless of HRV. Recommend rest and recovery only — no "get moving" language.'
+    ? '\n- SICK DAY: is_sick is true today. Do not suggest, encourage, or nudge toward any training in the training field, regardless of readiness or HRV. Recommend rest and recovery only — no "get moving" language.'
     : ''
 
   if (mode === 'wakeup') {
@@ -333,16 +334,16 @@ function buildBriefingPrompt(
 You are Julie's personal health coach. It is WAKE-UP time (before 09:00) — generate a sleep and recovery briefing with today's training recommendation.
 
 WAKEUP RULES:
-- Analyse last night's sleep: duration, HRV vs baseline (${hrvBaseline}ms), RHR vs baseline (52 bpm), rested score, bedtime vs target (${bedtimeTarget}), fasting glucose if logged.
-- Apply HRV framework strictly for training recommendation. Never recommend full rest unless HRV < 50ms or she is sick.
-- Look across 30-day history for correlations: HRV vs cycle day, HRV vs previous day's Zone 3+ minutes, sleep quality vs bedtime, fasting glucose trends. Surface one genuinely interesting pattern if it exists. Never generic.
+- Analyse last night's sleep: duration, overnight average HRV vs baseline (${hrvBaseline}ms), lowest overnight RHR vs baseline (52 bpm), Oura readiness score, rested score, bedtime vs target (${bedtimeTarget}), fasting glucose if logged.
+- Apply the readiness framework strictly for training recommendation (Oura readiness ≥85 train hard | 70–84 moderate | 60–69 easy only | <60 rest). Never recommend full rest unless readiness < 60 or she is sick. If readiness is missing, say so and base the recommendation on sleep, overnight average HRV vs baseline and how she feels — never on the old HRV bands.
+- Look across 30-day history for correlations: overnight average HRV vs cycle day, overnight average HRV vs previous day's Zone 3+ minutes, readiness vs training load, sleep quality vs bedtime, fasting glucose trends. Surface one genuinely interesting pattern if it exists. Never generic.
 - Do NOT mention nutrition, supplements, or anything other than sleep, recovery, and today's training recommendation.
 - Question: one thing you're genuinely curious about given her data.${sickTrainingRule}
 
 Return ONLY valid JSON with exactly these five fields:
 {
-  "recovery": "Sleep analysis with specific numbers — HRV vs ${hrvBaseline}ms baseline, RHR vs 52 bpm, duration vs 7h30–8h30 target, rested score, bedtime. Include fasting glucose if logged.",
-  "training": "Specific training recommendation based on HRV framework. Name the activity and intensity. Never recommend full rest unless HRV < 50ms or sick.",
+  "recovery": "Sleep analysis with specific numbers — overnight average HRV vs ${hrvBaseline}ms baseline, lowest overnight RHR vs 52 bpm, Oura readiness score, duration vs 7h30–8h30 target, rested score, bedtime. Include fasting glucose if logged.",
+  "training": "Specific training recommendation based on the readiness framework (Oura readiness score). Name the activity and intensity. Never recommend full rest unless readiness < 60 or sick.",
   "nutrition": null,
   "insight": "One genuinely interesting pattern or correlation from 30-day history. Never generic. null if nothing genuine to say.",
   "question": "One question you're genuinely curious about given her data."
@@ -394,7 +395,7 @@ Rules: Direct and warm. Use her actual numbers. No markdown inside JSON strings.
 You are Julie's personal health coach. It is AFTERNOON (12:00–16:59) — hydration, supplement reminder, movement nudge if needed, creative dinner suggestion.
 
 AFTERNOON RULES:
-- Recovery: one sentence on current recovery status using today's HRV vs ${hrvBaseline}ms baseline and sleep duration. If training is already logged, weave in how the body is handling the load.
+- Recovery: one sentence on current recovery status using today's Oura readiness score, overnight average HRV vs ${hrvBaseline}ms baseline and sleep duration. If training is already logged, weave in how the body is handling the load.
 - Hydration: check today's logged hydration. If below 1500ml, nudge to drink before dinner. Weave naturally.
 - Supplements: if morning_stack_taken is false, remind once. Keep brief.
 - Movement: if no training logged and no cycling, gentle nudge to move. If training is already logged, acknowledge and skip.
@@ -404,7 +405,7 @@ AFTERNOON RULES:
 
 Return ONLY valid JSON with exactly these five fields:
 {
-  "recovery": "One sentence on current recovery status — HRV vs ${hrvBaseline}ms baseline, sleep quality, and how the body is handling today's training load if applicable.",
+  "recovery": "One sentence on current recovery status — Oura readiness, overnight average HRV vs ${hrvBaseline}ms baseline, sleep quality, and how the body is handling today's training load if applicable.",
   "training": null,
   "nutrition": "One surprising, creative dinner suggestion. Seasonal. Not from recent meal history. Include preparation approach and why it works nutritionally. If weekend, optionally include a forageable ingredient with where to find it near Munich.",
   "insight": "Hydration note if behind. Supplement reminder if morning stack not taken. Combined into one natural sentence.",
@@ -423,18 +424,18 @@ You are Julie's personal health coach. It is EARLY EVENING (17:00–19:59).
 LANGUAGE RULE: It is evening, not afternoon. Always say "this evening", "tonight", "this evening's training", etc. Never say "this afternoon".
 
 EARLYEVENING RULES:
-- Recovery: brief 1-sentence note on today's sleep quality using actual HRV and duration numbers.
+- Recovery: brief 1-sentence note on today's sleep quality using actual overnight average HRV, readiness and duration numbers.
 - Training: acknowledge what was trained today (if anything) in one sentence. If no training logged, one sentence noting it was a rest day or training is still possible this evening.
-- Supplement and hormone check: check progesterone, estradiol AM, estradiol PM, and testosterone logged. If not, remind. Check evening stack logged. If not, remind.
+- Supplement and hormone check: check progesterone, estradiol (single AM dose), and testosterone logged. If not, remind. Check evening stack logged. If not, remind.
 - Hydration: if below 2000ml on rest day or 2500ml on training day (check today's sessions), flag.
 - Set nutrition and question to null.${sickTrainingRule}
 
 Return ONLY valid JSON with exactly these five fields:
 {
-  "recovery": "One sentence on today's sleep — HRV vs ${hrvBaseline}ms baseline, duration vs target. Keep brief.",
+  "recovery": "One sentence on today's sleep — overnight average HRV vs ${hrvBaseline}ms baseline, duration vs target. Keep brief.",
   "training": "One sentence acknowledging today's training sessions or rest. Use 'this evening' not 'this afternoon'.",
   "nutrition": null,
-  "insight": "Supplement check (progesterone, estradiol AM/PM, testosterone, evening stack) and hydration close-out. Max 3 sentences combined.",
+  "insight": "Supplement check (progesterone, estradiol, testosterone, evening stack) and hydration close-out. Max 3 sentences combined.",
   "question": null
 }
 
@@ -464,7 +465,7 @@ ENDOFDAY RULES:
 
 Return ONLY valid JSON with exactly these five fields:
 {
-  "recovery": "Sleep quality review with actual numbers. HRV and RHR vs baselines. Fasting glucose if logged.",
+  "recovery": "Sleep quality review with actual numbers. Overnight average HRV and lowest overnight RHR vs baselines, Oura readiness. Fasting glucose if logged.",
   "training": "Today's training review — Zone 3+ minutes and intensity label. Weekly Zone 3+ total and comparison to recent average. What it means for tomorrow.",
   "nutrition": "Full day nutrition review against today's tiered targets (${tier}). Call out protein and fiber gaps. Supplement adherence if incomplete. Hydration.",
   "insight": "The single most interesting pattern from 30-day history. Plus bedtime nudge (target: ${bedtimeTarget}). Never generic.",
@@ -495,7 +496,8 @@ export async function POST(req: NextRequest) {
     const currentMonth = new Date(currentDate + 'T00:00:00').toLocaleString('en-US', { month: 'long' })
 
     const { history30, nutritionSummary } = await getCoachContext(null, currentDate)
-    // Personal HRV baseline: rolling 28-day median of manual hrv (fallback 88).
+    // Personal HRV baseline: rolling 28-day median of Oura overnight-average hrv
+    // (dates on/after OURA_START_DATE only, fallback 45).
     const hrvBaseline = Math.round(await getHrvRolling28DayMedian(currentDate, supaAdmin()))
     // Personal bedtime target: rolling 30-day circular average of manual bedtime (fallback 21:45).
     const bedtimeTarget = await getBedtimeRolling30DayAvg(currentDate, supaAdmin())
