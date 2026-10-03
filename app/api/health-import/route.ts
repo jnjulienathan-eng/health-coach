@@ -57,10 +57,6 @@ const RECOGNIZED_METRIC_NAMES = new Set([
 interface MetricPoint {
   date: string
   qty?: number
-  // sleep_analysis aggregated fields
-  totalSleep?: number
-  inBedStart?: string
-  inBedEnd?: string
   source?: string
 }
 
@@ -139,9 +135,6 @@ export async function POST(req: NextRequest) {
     // Aggregate all data points by date first, then process each date once.
     type DayMetrics = {
       resting_hr_daytime?: number
-      sleep_duration_min?: number
-      bedtime?: string
-      wake_time?: string
       active_calories?: number
       basal_calories?: number
       walking_hr_avg?: number
@@ -171,8 +164,8 @@ export async function POST(req: NextRequest) {
           // Ignored as of Oct 3, 2026 (Oura Session 2): bedtime,
           // sleep_duration_min and wake_time are Oura-owned now, written only
           // by syncOuraRange() in lib/oura.ts. Kept in RECOGNIZED_METRIC_NAMES
-          // so it doesn't log as unrecognized. The sleep_duration_min /
-          // bedtime / wake_time branches below are now never reached.
+          // so it doesn't log as unrecognized. The old write code was
+          // removed in Oura Session 3.
         } else if (metric.name === 'active_energy' && point.qty !== undefined) {
           const kcal = metric.units === 'kJ' ? kjToKcal(point.qty) : Math.round(point.qty)
           byDate[date].active_calories = kcal
@@ -209,10 +202,10 @@ export async function POST(req: NextRequest) {
     for (const [date, incoming] of Object.entries(byDate)) {
       if (!Object.keys(incoming).length) continue
 
-      // Fetch existing row to apply COALESCE and overwrite-if-higher logic.
+      // Fetch existing row to apply overwrite-if-higher / overwrite-on-change logic.
       const { data: existing } = await supabase
         .from('daily_entries')
-        .select('sleep_duration_min, bedtime, wake_time, active_calories, basal_calories, resting_hr_daytime, walking_hr_avg, walking_running_km, apple_hrv_avg')
+        .select('active_calories, basal_calories, resting_hr_daytime, walking_hr_avg, walking_running_km, apple_hrv_avg')
         .eq('user_id', 'julie')
         .eq('date', date)
         .maybeSingle()
@@ -251,37 +244,6 @@ export async function POST(req: NextRequest) {
           written.push('walking_running_km')
         } else {
           skipped.push(`walking_running_km (stored ${stored} >= incoming ${incoming.walking_running_km})`)
-        }
-      }
-
-      if (incoming.sleep_duration_min !== undefined) {
-        if (row?.sleep_duration_min == null) {
-          upsert.sleep_duration_min = incoming.sleep_duration_min
-          written.push('sleep_duration_min')
-        } else {
-          skipped.push('sleep_duration_min (manual value exists)')
-        }
-      }
-
-      if (incoming.bedtime !== undefined) {
-        if (row?.bedtime == null) {
-          upsert.bedtime = incoming.bedtime
-          written.push('bedtime')
-        } else {
-          skipped.push('bedtime (manual value exists)')
-        }
-      }
-
-      // wake_time — overwrite-on-change, not COALESCE like bedtime above.
-      // There's no manual entry point for wake_time anywhere in the app, so
-      // there's nothing for a webhook write to clobber.
-      if (incoming.wake_time !== undefined) {
-        const storedWakeTime = row?.wake_time as string | null | undefined
-        if (storedWakeTime == null || incoming.wake_time !== storedWakeTime) {
-          upsert.wake_time = incoming.wake_time
-          written.push('wake_time')
-        } else {
-          skipped.push(`wake_time (unchanged ${storedWakeTime})`)
         }
       }
 
