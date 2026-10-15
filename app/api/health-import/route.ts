@@ -3,6 +3,10 @@
 // Receives POST requests from the Health Auto Export iOS app and writes
 // biometric data to Supabase.
 //
+// Workouts are NOT imported here any more (Oct 15, 2026): training_sessions
+// come from Oura (syncOuraWorkouts in lib/oura.ts). Any `workouts` in the
+// payload are counted in the log and ignored.
+//
 // ⚠️  MIGRATIONS REQUIRED before this endpoint is live:
 //   1. ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;
 //   2. ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS active_calories integer;
@@ -10,21 +14,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supaAdmin } from '@/lib/nutrition'
-
-// ── Workout name → activity_type mapping ────────────────────────────────────
-const WORKOUT_TYPE_MAP: Record<string, string> = {
-  'Outdoor Cycling': 'Cycling',
-  'Indoor Cycling': 'Cycling',
-  'Running': 'Run',
-  'Outdoor Run': 'Run',
-  'Indoor Run': 'Run',
-  'Swimming': 'Swim',
-  'Pool Swimming': 'Swim',
-  'Open Water Swimming': 'Swim',
-  'Strength Training': 'Strength',
-  'Functional Strength Training': 'Strength',
-  'HIIT': 'HIIT',
-}
 
 function extractDate(dateStr: string): string {
   // "2026-04-28 07:15:00 +0200" → "2026-04-28"
@@ -66,20 +55,10 @@ interface Metric {
   data: MetricPoint[]
 }
 
-// ── Workout ──────────────────────────────────────────────────────────────────
-interface EnergyField {
-  qty: number
-  units: string
-}
-
+// ── Workout (ignored — training_sessions come from Oura) ─────────────────────
 interface Workout {
-  id: string
-  name: string
-  start: string
-  end: string
-  duration: number
-  activeEnergyBurned?: EnergyField
-  heartRate?: { avg?: EnergyField }
+  id?: string
+  name?: string
 }
 
 // ── Payload ──────────────────────────────────────────────────────────────────
@@ -104,7 +83,6 @@ export async function POST(req: NextRequest) {
     const workouts: Workout[] = body?.data?.workouts ?? []
     const supabase = supaAdmin()
     let metricsImported = 0
-    let workoutsImported = 0
 
     // Debug: log name + units (not the full payload — sleep-type payloads can
     // truncate in the log viewer) for any metric this endpoint doesn't yet
@@ -481,55 +459,13 @@ export async function POST(req: NextRequest) {
       console.log(`[health-import] cgm_readings: ${cgmImported} written, ${cgmSkipped} skipped as duplicate`)
     }
 
-    // ── WORKOUTS → training_sessions ────────────────────────────────────────
-    for (const workout of workouts) {
-      const date = extractDate(workout.start)
-      const activityType = WORKOUT_TYPE_MAP[workout.name] ?? workout.name
-      const durationMin = Math.round(workout.duration / 60)
-
-      let calories: number | null = null
-      if (workout.activeEnergyBurned) {
-        const { qty, units } = workout.activeEnergyBurned
-        calories = units === 'kJ' ? kjToKcal(qty) : Math.round(qty)
-      }
-
-      // Duplicate check: skip if external_id already exists.
-      const { data: existing } = await supabase
-        .from('training_sessions')
-        .select('id')
-        .eq('external_id', workout.id)
-        .maybeSingle()
-
-      if (existing) {
-        console.log(`[health-import] Skipped duplicate: external_id already exists (${workout.id})`)
-        continue
-      }
-
-      const { error } = await supabase
-        .from('training_sessions')
-        .insert({
-          user_id:            'julie',
-          date,
-          activity_type:      activityType,
-          duration_min:       durationMin,
-          zone3_plus_minutes: 0,
-          active_calories:    calories,
-          source:             'health_auto_export',
-          start_time:         workout.start,
-          external_id:        workout.id,
-        })
-
-      if (error) {
-        console.error(`[health-import] workout ${date} ${activityType}: insert failed —`, JSON.stringify(error))
-        throw new Error(`training_sessions insert failed for ${date} ${activityType}: ${error.message ?? JSON.stringify(error)}`)
-      }
-
-      workoutsImported++
-      console.log(`[health-import] workout ${date} ${activityType} ${durationMin}min ${calories != null ? calories + 'kcal' : 'no calories'}: imported`)
+    // ── WORKOUTS — ignored; Oura owns training_sessions ─────────────────────
+    if (workouts.length) {
+      console.log(`[health-import] ${workouts.length} workout(s) in payload ignored — training_sessions come from Oura`)
     }
 
-    console.log(`[health-import] done — metrics: ${metricsImported} written, vo2_max: ${vo2MaxImported} written, weight: ${weightImported} written, body_fat_pct: ${bodyFatImported} written, waist_cm: ${waistImported} written, cgm_readings: ${cgmImported} written (${cgmSkipped} skipped as duplicate), workouts: ${workoutsImported} written`)
-    return NextResponse.json({ imported: { metrics: metricsImported, vo2Max: vo2MaxImported, weight: weightImported, bodyFat: bodyFatImported, waist: waistImported, cgm: cgmImported, cgmSkipped, workouts: workoutsImported } })
+    console.log(`[health-import] done — metrics: ${metricsImported} written, vo2_max: ${vo2MaxImported} written, weight: ${weightImported} written, body_fat_pct: ${bodyFatImported} written, waist_cm: ${waistImported} written, cgm_readings: ${cgmImported} written (${cgmSkipped} skipped as duplicate), workouts: ${workouts.length} ignored`)
+    return NextResponse.json({ imported: { metrics: metricsImported, vo2Max: vo2MaxImported, weight: weightImported, bodyFat: bodyFatImported, waist: waistImported, cgm: cgmImported, cgmSkipped, workoutsIgnored: workouts.length } })
 
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err)

@@ -206,6 +206,37 @@ All three routes set `dynamic = 'force-dynamic'`, `revalidate = 0` and `maxDurat
 2. Same page → `/api/oura/sync` → **Run**. This creates the 6 webhook subscriptions; the log should list 6 entries with `action: created`.
 3. Spot-check a few dates after Sept 17 in the app and in `daily_entries`.
 
+### Oura workouts → training_sessions (October 15, 2026, branch `oura-workouts`)
+
+Training sessions now come from Oura's `/v2/usercollection/workout` instead of Health Auto Export. Apple Watch workouts reach Oura through Apple Health (Oura reads it, never writes). Walks Julie confirms in the Oura app come through the same endpoint and import as normal sessions. Health Auto Export still sends everything else (basal/active calories for the Training energy strip, body measurements, VO2 max, glucose). `zone3_plus_minutes` stays manual: Oura has no zone data.
+
+- **Scope:** `OURA_SCOPES` is now `personal daily workout`. **Julie must reconnect once via `/api/oura/connect` after deploy.** Until she does, `/workout` calls fail and the sync logs the error; sleep sync keeps working.
+- **`syncOuraWorkouts(startDate, endDate)` (`lib/oura.ts`)** is the single entry point. The webhook, the daily cron and the backfill all call it. It fetches `/workout` from start − 1 to end + 2 days (same padding as the sleep sync, with `next_token` paging).
+  - **App date** = Berlin calendar date of `start_datetime` (not Oura's `day`).
+  - **Cutover:** only dates ≥ `OURA_WORKOUT_CUTOVER_DATE` (`'2026-10-15'`, `lib/types.ts`). Earlier rows (Health Auto Export or manual) are left as they are.
+  - **Skipped:** `source = 'autodetected'` (unconfirmed Oura auto-detection; it imports once confirmed, when Oura changes its source), and rows missing id/start/end (logged).
+  - **Insert** (new Oura id): `activity_type` (mapped, below), `duration_min` = round((end − start) ÷ 60 s), `active_calories` = round(`calories`), `start_time` = `start_datetime`, `source = 'oura'`, `external_id` = Oura workout id, `zone3_plus_minutes = null` (Health Auto Export used to write 0; null leaves the field empty for Julie to fill and lets scoring infer intensity from type and duration until she does).
+  - **Cutover duplicate guard:** a *new* Oura workout is skipped (`skipped_matches_existing`) if a non-Oura session exists with the same activity (both sides normalised through the same map, so HAE's `Strength` matches Oura strength training as `egym`) and a start time within ±10 minutes. It applies to every date from the cutover onwards, not only the cutover day itself, because Health Auto Export keeps writing workouts until this code deploys. Sessions without a `start_time` (manual quick-adds) never match.
+  - **Re-sync** (Oura id already stored, matched on `source = 'oura'` + `external_id`): overwrite-on-change of the Oura-owned columns only: `date`, `activity_type`, `duration_min`, `active_calories`, `start_time`. `start_time` is compared as an instant (Postgres returns UTC). If Oura has no calories, the stored value is left alone. **`zone3_plus_minutes` and `notes` are never written after insert.** If two rows share one Oura id (possible only through a race with `saveEntry`'s delete-reinsert), the extras are deleted, keeping the row that has zone3+ minutes.
+  - **Deleted in Oura:** logged ("no longer in Oura — left in place"), not deleted, since the row may carry manual zone3+ minutes.
+  - **Scores:** `recomputeScores()` runs for each date whose sessions changed, oldest first (Behavior Score reads sessions for readiness fit and active calories).
+  - Returns one result per workout: `inserted | updated | unchanged | skipped_autodetected | skipped_matches_existing | skipped_invalid | failed`, plus `changed` (`{col: {from, to}}`) for updates.
+- **Activity mapping (`mapOuraActivity()`):** the Oura value is lowercased with non-letters stripped, then mapped to the stored quick-add types from `TrainingSection.tsx`, so labels and `sessionIntensity()` treat Oura sessions like manual ones: swimming → `swim`; strength training (`strengthtraining`, `traditionalstrengthtraining`, `functionalstrengthtraining`, `weightlifting`, `weighttraining`) → `egym`; running → `run`; walking → `walk`; cycling, indoor/outdoor cycling, biking → `Cycling`. Anything else → `Other`, with a `[oura] unmapped workout activity "…"` warning in the Vercel logs. HIIT, hiking, yoga and similar currently land in `Other` until Julie decides on a mapping.
+- **Cycling:** same behaviour as before. A cycling workout is a regular `Cycling` session with its own `active_calories`. The legacy `daily_entries.cycled_today` / `cycling_minutes` / `cycling_calories` columns are not written. `behaviorScore()` still adds `cycling_calories` for historical rows.
+- **Webhook:** `OURA_WEBHOOK_DATA_TYPES` now includes `workout`, so `ensureWebhookSubscriptions()` (daily cron) creates and renews 9 subscriptions: (`sleep` | `daily_readiness` | `workout`) × (`create` | `update` | `delete`). A `workout` event runs `syncOuraWorkoutsRecentDays()` (last 3 Berlin days) inside `after()`; sleep/readiness events still run the sleep sync only.
+- **Daily cron `/api/oura/sync`** also runs `syncOuraWorkoutsRecentDays()` and returns `{ sync, workouts, subscriptions }`.
+- **Backfill `/api/oura/backfill`** also runs `syncOuraWorkouts(OURA_WORKOUT_CUTOVER_DATE, today)` before the score recompute and returns `workouts`. Run it once after reconnecting to pick up anything since the cutover.
+- **`/api/health-import`** no longer writes `training_sessions`. Workouts in its payload are counted in the log (`workouts: N ignored`) and the response (`workoutsIgnored`). `WORKOUT_TYPE_MAP` and the insert loop were removed. Every other metric is unchanged.
+- **No migration.** `source`, `start_time` and `external_id` already existed on `training_sessions`.
+- **Known limitation:** deleting an Oura session in the app doesn't stick for recent days. The next sync (webhook or cron, 3-day window) re-creates it, because nothing records the deletion. Likewise, an Oura session added while a page was open is removed by that page's next save (delete-reinsert) and comes back on the next sync, without its zone3+ minutes if they were entered elsewhere. A "dismissed" flag on `training_sessions` would fix both; that needs a migration and Julie's decision.
+- **Verification:** `tsc --noEmit`, `eslint` on the changed files, and `next build` are clean. `syncOuraWorkouts` was run locally against a stubbed Oura API and an in-memory `training_sessions` table (real supabase-js client), with 14 checks passing: pre-cutover workout ignored, HAE match skipped, confirmed walk inserted, autodetected skipped, field mapping, cycling → `Cycling`, unmapped → `Other`, HAE rows untouched, idempotent re-sync, Oura change updates duration/calories only, zone3 and notes survive re-sync, zone3/source/external_id/start_time survive a real `saveEntry()` delete-reinsert, no duplicate afterwards, duplicate rows collapse keeping zone3. The live Oura calls can't run outside Production.
+
+**Post-merge steps (Julie):**
+1. Open `/api/oura/connect` and authorize again (adds the `workout` scope).
+2. Vercel → Cron Jobs → `/api/oura/sync` → **Run**. The log should list 3 new `workout` subscriptions with `action: created`, and a `workouts` array.
+3. Same page → `/api/oura/backfill` → **Run** to import everything since 2026-10-15.
+4. Check the Vercel logs for `unmapped workout activity` lines and decide on mappings.
+
 ### Navigation (4 tabs — restructured April 30, 2026)
 
 | Index | Label | Component | Status |
@@ -328,7 +359,7 @@ All new state, effects, and handlers for the above sections live in `app/page.ts
 - Zone3+ intensity: 0–5 min = Easy, 6–15 = Moderate, 16+ = Hard
 - Quick-add buttons: Swim, eGym, Run, Walk, Cycling. Cycling is a regular session type (for no-watch days) — no longer a separate transport toggle.
 - "Cycled today (transport)" UI removed. `cycled_today`, `cycling_minutes`, `cycling_calories` columns remain in `daily_entries` and `TrainingData` for historical data compatibility — do not read or write from new code.
-- Session cards show `start_time` as local "HH:MM" when present (populated by /api/health-import).
+- Session cards show `start_time` as local "HH:MM" when present (populated by the Oura workout sync since Oct 15, 2026; by /api/health-import before that).
 - Activity icons standardised across TrainingSection and HistoryTab (see ACTIVITY ICONS below).
 - `avg_heart_rate` is permanently removed. Do not re-add.
 
@@ -865,6 +896,7 @@ HAE-only fields: **resting_hr_daytime** (integer, nullable — HAE resting_heart
 - `walking_heart_rate_average` → `walking_hr_avg` (integer, bpm). Uses "overwrite if higher".
 - `walking_running_distance` → `walking_running_km` (numeric, 2 decimal places; mi→km converted if HAE sends units = 'mi'). Uses "overwrite if higher".
 - `heart_rate_variability` → `apple_hrv_avg` (numeric, ms, raw decimal). **Overwrite-on-change** — written only when the incoming value differs from the stored value (equal-value skip guard). No COALESCE, no overwrite-if-higher. Latest different value wins. Once-daily, authoritative from Apple Health. Does NOT touch the manual `hrv` column.
+- **Workouts → `training_sessions`: REMOVED Oct 15, 2026.** Oura owns training sessions now (see "Oura workouts → training_sessions"). `/api/health-import` counts any `workouts` in the payload, logs them as ignored and returns `workoutsIgnored`. `WORKOUT_TYPE_MAP` and the insert loop are gone. Historical `health_auto_export` rows stay as they are.
 ~~`sleep_duration_min` and `bedtime` use COALESCE — only written if the DB value is currently null (manual entries always win).~~ (Historical; HAE no longer writes either, see above.) All other HAE-written fields use "overwrite if higher". `apple_hrv_avg` uses overwrite-on-change: a re-sent day with an unchanged value no longer forces a write, and a date whose only candidate field was an unchanged `apple_hrv_avg` counts as skipped (not counted in `metricsImported`). Updated June 26, 2026.
 
 **Health Auto Export → biomarker_readings mapping (as of May 4, 2026; weight/body-fat/waist confirmed against a real payload 29 Aug 2026):**
@@ -892,9 +924,9 @@ Confirmed columns (verified April 28, 2026):
 - activity_type (text), duration_min (integer), zone3_plus_minutes (integer)
 - active_calories (integer), notes (text)
 - avg_heart_rate (integer) — **column exists in DB but is unused. Do not read or write. Do not remove from DB (would require migration). Do not re-add to UI or types.**
-- **source** (text, nullable) — set to 'health_auto_export' by /api/health-import. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
-- **start_time** (timestamptz, nullable) — populated from workout `start` field by /api/health-import. Displayed on session cards as local HH:MM. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle.
-- **external_id** (text, nullable) — Apple Health workout UUID. Sole duplicate-detection key used by /api/health-import. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle. Requires column in DB: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS external_id text;`
+- **source** (text, nullable) — `'oura'` for sessions imported by `syncOuraWorkouts()` (`lib/oura.ts`) from Oct 15, 2026 (`OURA_WORKOUT_CUTOVER_DATE`). Historical rows have `'health_auto_export'` (written by /api/health-import until Oct 15, 2026; it no longer writes this table). Manual sessions have null. See "Oura workouts → training_sessions". Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle. Migration: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS source text;`
+- **start_time** (timestamptz, nullable) — Oura `start_datetime` (historically the HAE workout `start` field). Displayed on session cards as local HH:MM. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle.
+- **external_id** (text, nullable) — Oura workout id when `source = 'oura'` (the Oura sync's update key); Apple Health workout UUID on historical `health_auto_export` rows. Mapped in `loadSessionsForDates`, included in `saveEntry` reinsert — survives the delete-reinsert save cycle. Requires column in DB: `ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS external_id text;`
 - **RLS disabled — moved onto the service-role client alongside daily_entries, Sept 7, 2026 (session 2).** `loadSessionsForDates` (bundled into `saveEntry`/`loadEntry`/`loadAllEntries`/`loadRecentEntries`, which all thread their `client` param through to it) is now called only from `app/api/entries/*` — there is no remaining browser-direct call. Coupled 1:1 to daily_entries the whole time, since sessions are always loaded/saved alongside the entry for a date — see the `daily_entries` entry above for the actual route/fetch-wrapper mechanism. **RLS is still NOT enabled** on this table either — pending the same branch-preview testing pass as daily_entries. See "RLS security fix — status" under the RLS section below.
 
 ### Activity icons (canonical mapping)
@@ -1203,9 +1235,9 @@ Replaced Anthropic API greeting with static rotating list. Client-side only, ins
 
 ## HOW JULIE USES THIS APP
 
-Julie receives workouts auto-imported from Apple Health via the webhook, and then manually augments them — for example, adding Zone 3+ minutes. This means training session rows contain a mix of machine-written fields and human-written fields. Any code that touches training sessions must preserve both. It cannot assume that what the UI displays is everything the row contains.
+Julie receives workouts auto-imported from Oura (since Oct 15, 2026; Apple Watch workouts reach Oura via Apple Health; before that, Health Auto Export), and then manually augments them — for example, adding Zone 3+ minutes. This means training session rows contain a mix of machine-written fields and human-written fields. Any code that touches training sessions must preserve both. It cannot assume that what the UI displays is everything the row contains.
 
-Any save logic that deletes and rewrites session rows must carry forward every field the webhook can write — currently external_id, source, active_calories, and start_time — not just the fields the UI controls. If a new webhook field is added in future, this list must be updated and the save logic must be checked.
+Any save logic that deletes and rewrites session rows must carry forward every field the import can write — currently external_id, source, active_calories, and start_time — not just the fields the UI controls. The Oura sync finds its rows again by `source = 'oura'` + `external_id`, so losing either would duplicate sessions. If a new webhook field is added in future, this list must be updated and the save logic must be checked.
 
 The same overwrite risk exists for daily_entries fields. **As of Oct 3, 2026 (Oura Session 2), these sleep fields are Oura-owned:** bedtime, wake_time, sleep_duration_min, hrv, rhr, nap_minutes and oura_readiness. They are written only by the Oura webhook/cron sync (`syncOuraRange()` in `lib/oura.ts`) and are **excluded from saveEntry() entirely**, not just when null. So a save from a stale page can never overwrite Oura data. `wake_time` and `apple_hrv_avg` already had this treatment. In the Sleep accordion they are read-only, and **Rested on waking is the only manual sleep field**, still saved through saveEntry(). Apple Health (`/api/health-import`) no longer writes bedtime, sleep_duration_min or wake_time (Task 5 of the same session). Any other webhook-owned daily_entries field added in future needs the same treatment.
 

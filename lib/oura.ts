@@ -20,14 +20,16 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { supaAdmin } from '@/lib/nutrition'
 import { recomputeScores } from '@/lib/scores-server'
+import { OURA_WORKOUT_CUTOVER_DATE } from '@/lib/types'
 
 export const OURA_AUTHORIZE_URL = 'https://cloud.ouraring.com/oauth/authorize'
 export const OURA_TOKEN_URL = 'https://api.ouraring.com/oauth/token'
 export const OURA_API_BASE = 'https://api.ouraring.com/v2/usercollection'
 // Must match the redirect URI registered on the Oura application exactly.
 export const OURA_REDIRECT_URI = 'https://health-coach-rho.vercel.app/api/oura/callback'
-// `daily` covers /sleep and /daily_readiness; `personal` covers /personal_info (user id).
-export const OURA_SCOPES = 'personal daily'
+// `daily` covers /sleep and /daily_readiness; `personal` covers /personal_info (user id);
+// `workout` covers /workout (training_sessions import).
+export const OURA_SCOPES = 'personal daily workout'
 // httpOnly cookie carrying the OAuth state between /api/oura/connect and /callback.
 export const OURA_STATE_COOKIE = 'oura_oauth_state'
 
@@ -404,6 +406,260 @@ export async function syncOuraRange(startDate: string, endDate: string): Promise
   return results
 }
 
+// ── Workout sync → training_sessions (Oct 15, 2026) ───────────────────────
+// syncOuraWorkouts(startDate, endDate) replaces Health Auto Export's workout
+// import. Apple Watch workouts reach Oura via Apple Health; walks confirmed in
+// the Oura app come through the same endpoint. Rules:
+// - Only dates >= OURA_WORKOUT_CUTOVER_DATE (Berlin date of start_datetime).
+// - One row per Oura workout, keyed by source = 'oura' + external_id = Oura id.
+// - Re-sync updates ONLY the Oura-owned columns (OURA_WORKOUT_COLUMNS) and only
+//   when they changed. zone3_plus_minutes and notes are never written after
+//   insert. Calories missing in Oura leave the stored value alone.
+// - A new Oura workout that matches an existing non-Oura session (same
+//   activity, start within ±10 min) is skipped, so the Health Auto Export rows
+//   written before this shipped don't duplicate.
+// - Workouts that disappear from Oura are logged, not deleted (the row may
+//   carry manual zone3+ minutes).
+// See BODYCIPHER.md → "Oura workouts → training_sessions".
+
+interface OuraWorkout {
+  id?: string
+  activity?: string | null
+  calories?: number | null
+  day?: string
+  start_datetime?: string
+  end_datetime?: string
+  source?: string | null   // 'manual' | 'autodetected' | 'confirmed' | 'workout_heart_rate'
+}
+
+const OURA_WORKOUT_SOURCE = 'oura'
+const OURA_WORKOUT_COLUMNS = ['date', 'activity_type', 'duration_min', 'active_calories', 'start_time'] as const
+type OuraWorkoutColumn = typeof OURA_WORKOUT_COLUMNS[number]
+const WORKOUT_MATCH_WINDOW_MS = 10 * 60 * 1000
+
+// Activity name (lowercased, non-letters stripped) → app activity_type. Targets
+// are the stored quick-add types in TrainingSection.tsx, so scoring
+// (sessionIntensity) and labels treat Oura sessions like manual ones. Also
+// lists the names Health Auto Export stored, so the cutover match can compare
+// an Oura workout with an older HAE row. Cycling stays a regular session
+// ('Cycling'); daily_entries.cycling_* are legacy and never written.
+const ACTIVITY_TYPE_MAP: Record<string, string> = {
+  swim: 'swim', swimming: 'swim', poolswim: 'swim', poolswimming: 'swim', openwaterswimming: 'swim',
+  egym: 'egym', strength: 'egym', strengthtraining: 'egym', traditionalstrengthtraining: 'egym',
+  functionalstrengthtraining: 'egym', weightlifting: 'egym', weighttraining: 'egym',
+  run: 'run', running: 'run', outdoorrun: 'run', indoorrun: 'run', outdoorrunning: 'run', indoorrunning: 'run',
+  walk: 'walk', walking: 'walk', outdoorwalk: 'walk', indoorwalk: 'walk', outdoorwalking: 'walk', indoorwalking: 'walk',
+  cycling: 'Cycling', outdoorcycling: 'Cycling', indoorcycling: 'Cycling', biking: 'Cycling', bike: 'Cycling',
+}
+const OTHER_ACTIVITY = 'Other'
+
+function activityKey(activity: string | null | undefined): string {
+  return (activity ?? '').toLowerCase().replace(/[^a-z]/g, '')
+}
+
+// Oura activity → app activity_type. Unmapped values fall back to 'Other' and
+// are logged so a mapping decision can be made from the Vercel logs.
+export function mapOuraActivity(activity: string | null | undefined): string {
+  const mapped = ACTIVITY_TYPE_MAP[activityKey(activity)]
+  if (!mapped) console.warn(`[oura] unmapped workout activity "${activity}" → ${OTHER_ACTIVITY}`)
+  return mapped ?? OTHER_ACTIVITY
+}
+
+function sameActivity(a: string, b: string): boolean {
+  return (ACTIVITY_TYPE_MAP[activityKey(a)] ?? OTHER_ACTIVITY) === (ACTIVITY_TYPE_MAP[activityKey(b)] ?? OTHER_ACTIVITY)
+}
+
+function timeMs(v: unknown): number | null {
+  if (typeof v !== 'string' || !v) return null
+  // HAE stored "2026-04-28 07:15:00 +0200"; Oura and Postgres give ISO.
+  const t = new Date(v.includes('T') ? v : v.replace(' ', 'T').replace(' ', '')).getTime()
+  return Number.isNaN(t) ? null : t
+}
+
+interface StoredSession {
+  id: string
+  date: string
+  activity_type: string
+  duration_min: number | null
+  active_calories: number | null
+  start_time: string | null
+  external_id: string | null
+  source: string | null
+  zone3_plus_minutes: number | null
+}
+
+export interface OuraWorkoutSyncResult {
+  external_id: string | null
+  date: string | null
+  activity: string | null
+  action: 'inserted' | 'updated' | 'unchanged' | 'skipped_autodetected' | 'skipped_matches_existing' | 'skipped_invalid' | 'failed'
+  changed?: Partial<Record<OuraWorkoutColumn, { from: unknown; to: unknown }>>
+  matched_session_id?: string
+  error?: string
+}
+
+export async function syncOuraWorkouts(startDate: string, endDate: string): Promise<OuraWorkoutSyncResult[]> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) {
+    throw new Error(`syncOuraWorkouts: invalid range ${startDate}..${endDate}`)
+  }
+  const from = startDate < OURA_WORKOUT_CUTOVER_DATE ? OURA_WORKOUT_CUTOVER_DATE : startDate
+  if (from > endDate) return []
+
+  // Same padding as syncOuraRange: Oura's `day` can differ from the Berlin
+  // date of start_datetime, and end_date can be exclusive.
+  const workouts = await ouraGetAll<OuraWorkout>('workout', {
+    start_date: shiftIsoDate(from, -1),
+    end_date: shiftIsoDate(endDate, 2),
+  })
+
+  const supabase = supaAdmin()
+  const columns = 'id, date, activity_type, duration_min, active_calories, start_time, external_id, source, zone3_plus_minutes'
+  const ids = workouts.map(w => w.id).filter((id): id is string => !!id)
+  const [inRange, byExternal] = await Promise.all([
+    supabase.from('training_sessions').select(columns)
+      .eq('user_id', TOKEN_USER_ID).gte('date', shiftIsoDate(from, -1)).lte('date', shiftIsoDate(endDate, 1)),
+    ids.length
+      ? supabase.from('training_sessions').select(columns)
+        .eq('user_id', TOKEN_USER_ID).eq('source', OURA_WORKOUT_SOURCE).in('external_id', ids)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (inRange.error || byExternal.error) {
+    const err = inRange.error ?? byExternal.error
+    console.error('[oura] syncOuraWorkouts read failed:', describe(err))
+    throw new Error(`training_sessions read failed: ${describe(err)}`)
+  }
+  const rangeRows = (inRange.data ?? []) as unknown as StoredSession[]
+  const ouraRowsById = new Map<string, StoredSession[]>()
+  for (const row of (byExternal.data ?? []) as unknown as StoredSession[]) {
+    const list = ouraRowsById.get(row.external_id ?? '') ?? []
+    list.push(row)
+    ouraRowsById.set(row.external_id ?? '', list)
+  }
+
+  const results: OuraWorkoutSyncResult[] = []
+  const changedDates = new Set<string>()
+
+  for (const w of workouts) {
+    const startMs = timeMs(w.start_datetime)
+    const endMs = timeMs(w.end_datetime)
+    const date = berlinCalendarDate(w.start_datetime)
+    if (date && (date < from || date > endDate)) continue   // padding only
+    const result: OuraWorkoutSyncResult = { external_id: w.id ?? null, date, activity: w.activity ?? null, action: 'unchanged' }
+    results.push(result)
+
+    if (!w.id || !date || startMs == null || endMs == null || endMs < startMs) {
+      result.action = 'skipped_invalid'
+      console.warn('[oura] workout skipped (missing id/start/end):', JSON.stringify(w))
+      continue
+    }
+    if (w.source === 'autodetected') {
+      // Unconfirmed auto-detected activity — imports once confirmed in the Oura app.
+      result.action = 'skipped_autodetected'
+      continue
+    }
+
+    const mapped: Partial<Record<OuraWorkoutColumn, string | number | null>> = {
+      date,
+      activity_type: mapOuraActivity(w.activity),
+      duration_min: Math.round((endMs - startMs) / 60000),
+      start_time: w.start_datetime ?? null,
+    }
+    if (w.calories != null) mapped.active_calories = Math.round(w.calories)
+
+    const existing = ouraRowsById.get(w.id) ?? []
+    if (existing.length > 0) {
+      // Keep one row per Oura id (a concurrent saveEntry delete-reinsert could
+      // in theory leave two). Prefer the one carrying manual zone3+ minutes.
+      const [keep, ...extra] = [...existing].sort((a, b) =>
+        Number(b.zone3_plus_minutes != null) - Number(a.zone3_plus_minutes != null))
+      if (extra.length > 0) {
+        const { error } = await supabase.from('training_sessions').delete().in('id', extra.map(r => r.id))
+        if (error) console.error(`[oura] workout ${w.id}: duplicate cleanup failed:`, describe(error))
+        else console.warn(`[oura] workout ${w.id}: removed ${extra.length} duplicate row(s)`)
+      }
+
+      const payload: Partial<Record<OuraWorkoutColumn, string | number | null>> = {}
+      const changed: OuraWorkoutSyncResult['changed'] = {}
+      for (const col of OURA_WORKOUT_COLUMNS) {
+        if (!(col in mapped)) continue
+        const to = mapped[col] ?? null
+        const fromVal = keep[col] ?? null
+        const same = col === 'start_time'
+          ? timeMs(fromVal) === timeMs(to)
+          : col === 'date' ? String(fromVal).slice(0, 10) === to
+          : col === 'activity_type' ? fromVal === to
+          : Number(fromVal) === Number(to) && (fromVal == null) === (to == null)
+        if (!same) {
+          payload[col] = to
+          changed[col] = { from: fromVal, to }
+        }
+      }
+      if (Object.keys(payload).length === 0) continue
+
+      // Only Oura-owned columns are sent — zone3_plus_minutes/notes untouched.
+      const { error } = await supabase.from('training_sessions').update(payload).eq('id', keep.id)
+      if (error) {
+        console.error(`[oura] workout ${w.id} update failed:`, describe(error))
+        result.action = 'failed'
+        result.error = `update failed: ${describe(error)}`
+        continue
+      }
+      result.action = 'updated'
+      result.changed = changed
+      changedDates.add(date)
+      changedDates.add(String(keep.date).slice(0, 10))
+      continue
+    }
+
+    // New Oura workout: skip if it matches a session that didn't come from
+    // Oura (e.g. a Health Auto Export row from before the cutover deploy).
+    const match = rangeRows.find(r =>
+      r.source !== OURA_WORKOUT_SOURCE
+      && sameActivity(r.activity_type, String(mapped.activity_type))
+      && (() => { const t = timeMs(r.start_time); return t != null && Math.abs(t - startMs) <= WORKOUT_MATCH_WINDOW_MS })())
+    if (match) {
+      result.action = 'skipped_matches_existing'
+      result.matched_session_id = match.id
+      continue
+    }
+
+    const { error } = await supabase.from('training_sessions').insert({
+      user_id: TOKEN_USER_ID,
+      ...mapped,
+      zone3_plus_minutes: null,   // manual-only — Oura has no zone data
+      source: OURA_WORKOUT_SOURCE,
+      external_id: w.id,
+    })
+    if (error) {
+      console.error(`[oura] workout ${w.id} insert failed:`, describe(error))
+      result.action = 'failed'
+      result.error = `insert failed: ${describe(error)}`
+      continue
+    }
+    result.action = 'inserted'
+    changedDates.add(date)
+  }
+
+  const seen = new Set(ids)
+  for (const row of rangeRows) {
+    if (row.source === OURA_WORKOUT_SOURCE && row.external_id && !seen.has(row.external_id)
+        && row.date >= from && row.date <= endDate) {
+      console.warn(`[oura] session ${row.id} (${row.date} ${row.activity_type}) no longer in Oura — left in place`)
+    }
+  }
+
+  // Behavior score reads sessions (readiness fit, active calories).
+  for (const date of [...changedDates].sort()) {
+    try {
+      await recomputeScores(date)
+    } catch (e) {
+      console.error(`[oura] recomputeScores ${date} failed:`, describe(e))
+    }
+  }
+
+  return results
+}
+
 // ── Webhooks + cron helpers (Session 2) ───────────────────────────────────
 // Checked against Oura's v2 docs (Webhook Subscription Routes), Oct 3, 2026:
 // - verification: GET callback?verification_token=…&challenge=… → { challenge }
@@ -414,7 +670,7 @@ export async function syncOuraRange(startDate: string, endDate: string): Promise
 
 export const OURA_WEBHOOK_CALLBACK_URL = 'https://health-coach-rho.vercel.app/api/oura/webhook'
 const OURA_WEBHOOK_API = 'https://api.ouraring.com/v2/webhook/subscription'
-export const OURA_WEBHOOK_DATA_TYPES = ['sleep', 'daily_readiness'] as const
+export const OURA_WEBHOOK_DATA_TYPES = ['sleep', 'daily_readiness', 'workout'] as const
 const OURA_WEBHOOK_EVENT_TYPES = ['create', 'update', 'delete'] as const
 const RENEW_WITHIN_MS = 7 * 24 * 60 * 60 * 1000
 export const OURA_RECENT_SYNC_DAYS = 3
@@ -427,6 +683,12 @@ export function berlinToday(): string {
 export async function syncOuraRecentDays(days = OURA_RECENT_SYNC_DAYS): Promise<OuraSyncDateResult[]> {
   const today = berlinToday()
   return syncOuraRange(shiftIsoDate(today, -(days - 1)), today)
+}
+
+// Same window for workouts (clamped to OURA_WORKOUT_CUTOVER_DATE inside).
+export async function syncOuraWorkoutsRecentDays(days = OURA_RECENT_SYNC_DAYS): Promise<OuraWorkoutSyncResult[]> {
+  const today = berlinToday()
+  return syncOuraWorkouts(shiftIsoDate(today, -(days - 1)), today)
 }
 
 function hmacHexUpper(secret: string, message: string): string {

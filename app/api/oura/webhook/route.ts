@@ -6,11 +6,12 @@
 //   Oura event notification. Verifies x-oura-signature (HMAC-SHA256 of
 //   x-oura-timestamp + body, keyed with OURA_CLIENT_SECRET), responds 200
 //   straight away, then — via after() — re-syncs the last 3 Berlin days with
-//   syncOuraRange() rather than fetching the single object, so creates,
-//   updates and deletes are all handled the same idempotent way.
+//   syncOuraRange() (sleep / daily_readiness) or syncOuraWorkouts() (workout)
+//   rather than fetching the single object, so creates, updates and deletes
+//   are all handled the same idempotent way.
 
 import { NextRequest, NextResponse, after } from 'next/server'
-import { OURA_WEBHOOK_DATA_TYPES, describe, syncOuraRecentDays, verifyOuraWebhookSignature } from '@/lib/oura'
+import { OURA_WEBHOOK_DATA_TYPES, describe, syncOuraRecentDays, syncOuraWorkoutsRecentDays, verifyOuraWebhookSignature } from '@/lib/oura'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -48,6 +49,15 @@ export async function POST(req: NextRequest) {
 
   if (relevant) {
     after(async () => {
+      if (event.data_type === 'workout') {
+        try {
+          const results = await syncOuraWorkoutsRecentDays()
+          console.log('[oura/webhook] workout sync done:', JSON.stringify(results.filter(r => r.action !== 'unchanged')))
+        } catch (e) {
+          console.error('[oura/webhook] workout sync failed:', describe(e))
+        }
+        return
+      }
       try {
         const results = await syncOuraRecentDays()
         const changed = results.filter(r => Object.keys(r.changed).length > 0 || r.error)

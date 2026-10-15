@@ -3,6 +3,9 @@
 // Before it, hrv/rhr were manual waking values, which run much higher — the
 // HRV baseline median only counts dates on or after this.
 export const OURA_START_DATE = '2026-09-17'
+// First date Oura workouts become training_sessions (syncOuraWorkouts in
+// lib/oura.ts). Earlier rows (Health Auto Export / manual) are left as they are.
+export const OURA_WORKOUT_CUTOVER_DATE = '2026-10-15'
 
 export interface SleepData {
   bedtime: string | null          // "HH:MM" 24h, Oura-owned (syncOuraRange)
@@ -26,9 +29,9 @@ export interface TrainingSession {
   duration_min: number
   zone3_plus_minutes: number | null  // minutes above ~135 bpm
   active_calories: number | null
-  start_time?: string | null        // timestamptz, populated from Health Auto Export
-  external_id?: string | null       // Apple Health workout UUID, used for dedup by webhook
-  source?: string | null            // 'health_auto_export' when written by webhook
+  start_time?: string | null        // timestamptz, from Oura (was Health Auto Export before OURA_WORKOUT_CUTOVER_DATE)
+  external_id?: string | null       // Oura workout id ('oura') or Apple Health workout UUID (historical), used for dedup
+  source?: string | null            // 'oura' or 'health_auto_export' (historical) when machine-written
 }
 
 export interface TrainingData {

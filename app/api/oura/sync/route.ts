@@ -1,11 +1,11 @@
 // GET /api/oura/sync — daily cron (vercel.json, 11:00 UTC), CRON_SECRET auth.
-// Safety net behind the webhook: re-syncs the last 3 Berlin days, then makes
-// sure a webhook subscription exists for every (sleep | daily_readiness) ×
-// (create | update | delete) combination — creating missing ones and renewing
-// any that expire within 7 days.
+// Safety net behind the webhook: re-syncs the last 3 Berlin days (sleep and
+// workouts), then makes sure a webhook subscription exists for every
+// (sleep | daily_readiness | workout) × (create | update | delete) combination
+// — creating missing ones and renewing any that expire within 7 days.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { describe, ensureWebhookSubscriptions, isAuthorizedCron, syncOuraRecentDays } from '@/lib/oura'
+import { describe, ensureWebhookSubscriptions, isAuthorizedCron, syncOuraRecentDays, syncOuraWorkoutsRecentDays } from '@/lib/oura'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -24,6 +24,14 @@ export async function GET(req: NextRequest) {
     sync = { error: describe(e) }
   }
 
+  let workouts: unknown
+  try {
+    workouts = await syncOuraWorkoutsRecentDays()
+  } catch (e) {
+    console.error('[oura/sync] workout sync failed:', describe(e))
+    workouts = { error: describe(e) }
+  }
+
   let subscriptions: unknown
   try {
     subscriptions = await ensureWebhookSubscriptions()
@@ -32,6 +40,6 @@ export async function GET(req: NextRequest) {
     subscriptions = { error: describe(e) }
   }
 
-  console.log('[oura/sync]', JSON.stringify({ sync, subscriptions }))
-  return NextResponse.json({ sync, subscriptions })
+  console.log('[oura/sync]', JSON.stringify({ sync, workouts, subscriptions }))
+  return NextResponse.json({ sync, workouts, subscriptions })
 }
