@@ -473,7 +473,7 @@ Replaces the card described above wholesale. The v2 card told several small stor
 
 **Card body, top to bottom (`app/page.tsx`):**
 1. **Hero** — current weight, 36px mono value + "kg" (same treatment the v2 card used).
-2. **Tinted container** (`--color-navy-tint` background) holding two rows: total change ("−9.5 kg · Since 15 Feb · 86.2 kg") and the fat/lean split — a stacked horizontal bar (fat navy, lean & water amber, second segment always labelled "Lean & water", never "Other") scoped to anchor B ("Of the 3.0 kg lost since your first body scan on 18 Aug"), with the two signed kg figures below it. Bar width clamps 0–100%; a `fatShare` above 100% (lean gained while fat fell) clamps the bar at 100% and reads the second figure as a gain (e.g. "+0.4 kg lean & water") — a good outcome, not a broken bar. If `|deltaWeight| ≤ 0.1kg` (or no paired data exists at all yet), the bar is replaced by a single muted line rather than dividing by near-zero.
+2. **Tinted container** (`--color-navy-tint` background) — _fat/lean split replaced October 15, 2026 by fat mass / muscle % change, see the next section_ — holding two rows: total change ("−9.5 kg · Since 15 Feb · 86.2 kg") and the fat/lean split — a stacked horizontal bar (fat navy, lean & water amber, second segment always labelled "Lean & water", never "Other") scoped to anchor B ("Of the 3.0 kg lost since your first body scan on 18 Aug"), with the two signed kg figures below it. Bar width clamps 0–100%; a `fatShare` above 100% (lean gained while fat fell) clamps the bar at 100% and reads the second figure as a gain (e.g. "+0.4 kg lean & water") — a good outcome, not a broken bar. If `|deltaWeight| ≤ 0.1kg` (or no paired data exists at all yet), the bar is replaced by a single muted line rather than dividing by near-zero.
 3. **Three tiles** (`--color-navy-tint`, except Muscle) — Muscle (amber-tinted via new `--color-amber-tint` token, the only tappable tile, latest `smm_kg` + a band pill), Body fat (latest `body_fat_pct` + static "→ 24%" reference), Waist (latest `waist_cm` + static "→ 79 cm" reference, same constant the chart 2 target line uses). **Muscle band thresholds are estimates** — below 22kg "Below normal" (`--color-danger`), 22–26kg "Normal" (`--color-navy`), above 26kg "Above normal" (`--color-navy`) — read off the InBody unit's own on-screen band positions, which carry no numeric scale of their own; treat these as approximate until a better source turns up.
 4. **Muscle inline entry form** — opened by tapping the Muscle tile or the footer's "Log muscle" action (same handler, `openMuscleEntry`). Value + date (defaults to today), saves via `saveBodyScanReading('smm_kg', value, 'kg', recordedOn)`, refetches `getBodyCompositionData()` on success.
 5. **Chart 1** — fat mass (navy) + `smm_kg` (amber) on one shared kg axis, 60-day full density, `BodyCompFatMuscleChart` (`app/page.tsx`). Each line is segmented around its own null gaps independently — the two series don't share every date. Tap-to-reveal follows the VO2 sparkline pattern: fixed label position in reserved top headroom, active dot enlarges, `textAnchor` flips near the edges, tapping empty space clears.
@@ -485,6 +485,45 @@ Replaces the card described above wholesale. The v2 card told several small stor
 **BMI stays out of scope** — no BMI mapping, storage, or display, same as v2.
 
 **Removed as dead code once nothing referenced them:** `WEIGHT_SCALE_MAX`/`WEIGHT_TARGET_KG` constants, `BodyScanRow` component (checked first — the Glucose Stability HbA1c row has its own inline JSX, doesn't use it), the `weightSparkline`/`weightSparklineLoaded`/`weightActiveIndex` state, `getWeightSparklineData()` (`lib/db.ts`).
+
+### Body Composition card — fat / muscle % change (October 15, 2026, branch `ui-fixes-oct15`)
+
+Supersedes the fat/lean split in v3 item 2 above. The **headline row is unchanged:** "−X kg · Since Feb 15 · 86.2 kg", fed by anchor A and `totalDelta`.
+
+**Removed:**
+- The "Of the X kg lost since your first body scan" sentence.
+- The fat-share stacked bar.
+- The "Fat / Lean & water" kg line.
+- The "No meaningful weight change…" fallback.
+- From `getBodyCompositionData()` / `BodyCompositionData`: `anchorB`, `latestPairedDate`, `deltaFat`, `deltaWeight`, `deltaLeanWater` and `fatShare`. Nothing else read them; `latestPairedDate` survives only as a local inside the function.
+
+**Added to the tinted container, below the divider:**
+- A small uppercase "Since {date}" label.
+- Two figures side by side, each with a 3px left accent in the series colour:
+  - **Fat mass** (navy accent): % change in fat mass.
+  - **Muscle** (amber accent): % change in `smm_kg`.
+- Formatted by the new `fmtSignedPct()` (`app/page.tsx`), e.g. "−9.9%" or "+1.6%".
+
+**Data (`getBodyCompositionData()`, `lib/db.ts`):** three new fields replace the split.
+- **`inbodyBaseline`** = the date of the earliest `smm_kg` reading, i.e. the first InBody scan (currently 29 Aug 2026).
+  - The 18 Aug doctor's-scale reading has body fat but no muscle value, so it is deliberately not the baseline.
+- **`fatMassChangePct`** = fat mass (`weight × body_fat_pct ÷ 100`) on the latest paired date ÷ fat mass on the baseline date − 1.
+  - If the InBody date somehow lacks a paired weight + body fat reading, the first paired date on or after it is used instead.
+- **`smmChangePct`** = latest `smm_kg` ÷ earliest `smm_kg` − 1.
+- **Fallback:** with no `smm_kg` reading yet, the container shows the muted line "Log your muscle mass to start tracking fat and muscle change."
+
+**Chart legends show the latest value:**
+- Chart 1 (fat mass / muscle) and chart 2 (waist) show the most recent plotted value of each series, bold mono, after its legend label (e.g. "Fat mass 27.7 · Muscle 26.3", "Waist 81.0").
+- The values come from the same 60-day `chart1` / `chart2` arrays the charts draw: the last non-null value per series (`latestFatMass`, `latestSmm`, `latestWaistCm` in `app/page.tsx`).
+- Tap-to-reveal is unchanged.
+
+**Collapsed accordion summaries no longer overlap the title (`components/ui/Section.tsx`):**
+- The collapsed `rightSlot` summary used to sit in a `flexShrink: 0` box beside the chevron, so on narrow phones a long summary squeezed the title to nothing and overlapped it. Supplements did this once AM + PM + Prog + E2 + T were all ticked; Nutrition did too at 375px.
+- The title and the summary now share one wrapping flex row:
+  - When the summary fits, it sits right-aligned on the title's line, exactly as before.
+  - When it doesn't fit, it drops onto its own line under the title, still right-aligned.
+- The title is `nowrap`. Nothing is truncated.
+- This applies to every Today-tab section that uses `Section` (Sleep, Training, Nutrition, Hydration, Supplements, GLP-1, Context). Hydration and Context summaries fit at 375px and stay inline.
 
 ---
 

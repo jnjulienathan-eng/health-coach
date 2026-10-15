@@ -79,14 +79,18 @@ export default function Section({
               {icon}
             </div>
           )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Title + collapsed summary share one wrapping row: the summary sits
+              right-aligned beside the title when it fits, and drops onto its own
+              line below the title on narrow screens instead of overlapping it. */}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               <span
                 style={{
                   fontSize: 'var(--fs-body)',
                   fontWeight: 'var(--fw-semibold)',
                   color: 'var(--color-navy)',
                   lineHeight: 1.3,
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {title}
@@ -94,13 +98,15 @@ export default function Section({
               {isComplete && <CheckIcon />}
               {!isComplete && isPartial && <PartialIcon />}
             </div>
+            {!open && rightSlot && (
+              <div style={{ marginLeft: 'auto', minWidth: 0, maxWidth: '100%' }}>
+                {rightSlot}
+              </div>
+            )}
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          {!open && rightSlot}
-          <ChevronIcon open={open} />
-        </div>
+        <ChevronIcon open={open} />
       </button>
 
       {open && (

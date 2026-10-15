@@ -587,10 +587,8 @@ export async function getVo2SparklineData(): Promise<BiomarkerReading[]> {
 // Body Composition card (v3). Two independent anchors:
 //   - Anchor A: the earliest weight row ever recorded — feeds totalDelta
 //     (headline "since Feb" number). Not date-windowed.
-//   - Anchor B: the first date with BOTH a weight and a body_fat_pct
-//     reading — feeds the fat/lean split, since fat mass can't be computed
-//     before the first body-composition scan. Also not date-windowed — the
-//     split always runs from the actual first paired reading, however old.
+//   - InBody baseline: the earliest smm_kg reading — feeds the fat mass and
+//     muscle % changes. Also not date-windowed.
 // Fat mass (weight × body_fat_pct / 100) is computed here and never stored;
 // it only exists on dates where both a weight and a body_fat_pct row exist —
 // never carried forward onto a date missing a body-fat reading.
@@ -669,7 +667,6 @@ export async function getBodyCompositionData(): Promise<BodyCompositionData> {
 
   // Paired dates = dates with both a weight and a body_fat_pct reading, ascending.
   const pairedDates = bodyFatDates.filter(d => weightByDate[d] !== undefined).sort()
-  const anchorBDate       = pairedDates[0] ?? null
   const latestPairedDate  = pairedDates[pairedDates.length - 1] ?? null
 
   const anchorA = anchorARow ? { date: anchorARow.recorded_on, value: anchorARow.value } : null
@@ -677,17 +674,19 @@ export async function getBodyCompositionData(): Promise<BodyCompositionData> {
   const currentWeightDate = latestWeightRow ? latestWeightRow.recorded_on : null
   const totalDelta = (currentWeight != null && anchorA != null) ? currentWeight - anchorA.value : null
 
-  let deltaFat: number | null = null
-  let deltaWeight: number | null = null
-  let deltaLeanWater: number | null = null
-  let fatShare: number | null = null
-  if (anchorBDate && latestPairedDate) {
-    deltaFat = fatMassAt(latestPairedDate) - fatMassAt(anchorBDate)
-    deltaWeight = weightByDate[latestPairedDate] - weightByDate[anchorBDate]
-    deltaLeanWater = deltaWeight - deltaFat
-    fatShare = deltaWeight !== 0 ? (deltaFat / deltaWeight) * 100 : null
-  }
-  const anchorB = anchorBDate ? { date: anchorBDate } : null
+  // % changes since the first InBody reading = the earliest smm_kg row (the
+  // 18 Aug doctor's-scale reading has body fat but no muscle, so it isn't an
+  // InBody baseline). Fat baseline is the first paired weight + body_fat_pct
+  // date on or after that InBody date; current values are the latest readings.
+  const inbodyDate = smmRows[0]?.recorded_on ?? null
+  const fatBaselineDate = inbodyDate ? pairedDates.find(d => d >= inbodyDate) ?? null : null
+  const inbodyBaseline = inbodyDate ? { date: inbodyDate } : null
+  const fatMassChangePct = fatBaselineDate && latestPairedDate
+    ? (fatMassAt(latestPairedDate) / fatMassAt(fatBaselineDate) - 1) * 100
+    : null
+  const smmChangePct = smmRows.length > 0
+    ? (smmRows[smmRows.length - 1].value / smmRows[0].value - 1) * 100
+    : null
 
   const latestMuscle     = smmRows.length     > 0 ? { value: smmRows[smmRows.length - 1].value,         date: smmRows[smmRows.length - 1].recorded_on }     : null
   const latestBodyFatPct = bodyFatRows.length > 0 ? { value: bodyFatRows[bodyFatRows.length - 1].value, date: bodyFatRows[bodyFatRows.length - 1].recorded_on } : null
@@ -718,12 +717,9 @@ export async function getBodyCompositionData(): Promise<BodyCompositionData> {
     currentWeightDate,
     anchorA,
     totalDelta,
-    anchorB,
-    latestPairedDate,
-    deltaFat,
-    deltaWeight,
-    deltaLeanWater,
-    fatShare,
+    inbodyBaseline,
+    fatMassChangePct,
+    smmChangePct,
     latestMuscle,
     latestBodyFatPct,
     latestWaist,

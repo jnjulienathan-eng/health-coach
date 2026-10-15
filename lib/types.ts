@@ -254,19 +254,17 @@ export interface GoalsData {
 }
 
 // ─── Body Composition card (v3) ────────────────────────────────────
-// All derived values (totalDelta, fat mass, the anchorB split) are computed
-// at read time in getBodyCompositionData() — none of them are stored markers.
+// All derived values (totalDelta, fat mass, the % changes since the first
+// InBody reading) are computed at read time in getBodyCompositionData() —
+// none of them are stored markers.
 export interface BodyCompositionData {
   currentWeight: number | null
   currentWeightDate: string | null
   anchorA: { date: string; value: number } | null
   totalDelta: number | null
-  anchorB: { date: string } | null
-  latestPairedDate: string | null
-  deltaFat: number | null
-  deltaWeight: number | null
-  deltaLeanWater: number | null
-  fatShare: number | null
+  inbodyBaseline: { date: string } | null
+  fatMassChangePct: number | null
+  smmChangePct: number | null
   latestMuscle: { value: number; date: string } | null
   latestBodyFatPct: { value: number; date: string } | null
   latestWaist: { value: number; date: string } | null

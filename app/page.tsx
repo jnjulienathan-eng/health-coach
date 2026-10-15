@@ -307,6 +307,12 @@ function fmtSignedKg(v: number): string {
   return '0.0 kg'
 }
 
+function fmtSignedPct(v: number): string {
+  if (v >= 0.05) return `+${v.toFixed(1)}%`
+  if (v <= -0.05) return `−${Math.abs(v).toFixed(1)}%`
+  return '0.0%'
+}
+
 // Shared chart shell params — both v3 charts are 60-day, full-density
 // (one x-slot per calendar day, gaps left as null) sparkline-style SVGs,
 // index-positioned rather than date-scaled like buildVo2Sparkline above.
@@ -1667,6 +1673,12 @@ export default function App() {
   const [muscleEditDate,       setMuscleEditDate]       = useState('')
   const [muscleSaving,         setMuscleSaving]         = useState(false)
   const [muscleError,          setMuscleError]          = useState<string | null>(null)
+  // Most recent plotted value per chart series, shown beside each legend entry
+  // so the current figure is visible without tapping the chart.
+  const lastOf = (vals: (number | null)[]) => vals.filter((v): v is number => v != null).pop() ?? null
+  const latestFatMass = lastOf((bodyComp?.chart1 ?? []).map(d => d.fatMass))
+  const latestSmm     = lastOf((bodyComp?.chart1 ?? []).map(d => d.smmKg))
+  const latestWaistCm = lastOf((bodyComp?.chart2 ?? []).map(d => d.waistCm))
 
   // ── Cardio state (from GoalsTab) ─────────────────────────────────
   const [cardioExpanded,  setCardioExpanded]  = useState(false)
@@ -2833,7 +2845,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Tinted container — total change + fat/lean split */}
+                  {/* Tinted container — total change + fat mass / muscle % change */}
                   <div style={{ background: 'var(--color-navy-tint)', borderRadius: 'var(--radius-md)', padding: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 700, lineHeight: 1, color: 'var(--color-text-primary)' }}>
@@ -2848,57 +2860,31 @@ export default function App() {
 
                     <div style={{ borderTop: '1px solid var(--color-border)', margin: '12px 0 11px' }} />
 
-                    {(() => {
-                      if (bodyComp?.anchorB == null || bodyComp?.deltaWeight == null || Math.abs(bodyComp.deltaWeight) <= 0.1) {
-                        return (
-                          <p style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', margin: 0 }}>
-                            {bodyComp?.anchorB != null
-                              ? `No meaningful weight change since your first body scan on ${fmtSparkDate(bodyComp.anchorB.date)} — fat/lean split not shown.`
-                              : 'Log your muscle mass to start splitting weight change into fat vs. lean & water.'}
-                          </p>
-                        )
-                      }
-                      const fatSharePct = bodyComp.fatShare ?? 0
-                      const barFat = Math.max(0, Math.min(100, fatSharePct))
-                      const barLean = 100 - barFat
-                      return (
-                        <>
-                          <p style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', margin: '0 0 8px' }}>
-                            Of the <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', fontWeight: 700 }}>
-                              {Math.abs(bodyComp.deltaWeight).toFixed(1)} kg
-                            </b> lost since your first body scan on {fmtSparkDate(bodyComp.anchorB.date)}
-                          </p>
-                          <div style={{ display: 'flex', height: 24, borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                            <div style={{
-                              width: `${barFat}%`, background: 'var(--color-navy)', display: 'flex',
-                              alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)',
-                              fontSize: 11, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden',
-                            }}>
-                              {barFat >= 20 ? `${Math.round(barFat)}% fat` : ''}
-                            </div>
-                            {barLean > 0 && (
-                              <div style={{
-                                width: `${barLean}%`, background: 'var(--color-amber)', display: 'flex',
-                                alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)',
-                                fontSize: 11, fontWeight: 700, color: 'var(--color-navy)', whiteSpace: 'nowrap', overflow: 'hidden',
-                              }}>
-                                {barLean >= 20 ? `${Math.round(barLean)}%` : ''}
+                    {/* Fat mass + muscle % change since the first InBody reading */}
+                    {bodyComp?.inbodyBaseline == null ? (
+                      <p style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', margin: 0 }}>
+                        Log your muscle mass to start tracking fat and muscle change.
+                      </p>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-dim)', marginBottom: 8 }}>
+                          Since {fmtSparkDate(bodyComp.inbodyBaseline.date)}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          {[
+                            { label: 'Fat mass', color: 'var(--color-navy)', pct: bodyComp.fatMassChangePct },
+                            { label: 'Muscle', color: 'var(--color-amber)', pct: bodyComp.smmChangePct },
+                          ].map(f => (
+                            <div key={f.label} style={{ borderLeft: `3px solid ${f.color}`, paddingLeft: 10 }}>
+                              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 3 }}>{f.label}</div>
+                              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, lineHeight: 1, color: 'var(--color-text-primary)' }}>
+                                {f.pct != null ? fmtSignedPct(f.pct) : '—'}
                               </div>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-navy)', display: 'inline-block' }} />
-                              Fat <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', fontWeight: 700 }}>{fmtSignedKg(bodyComp.deltaFat!)}</b>
-                            </span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-amber)', display: 'inline-block' }} />
-                              Lean &amp; water <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', fontWeight: 700 }}>{fmtSignedKg(bodyComp.deltaLeanWater!)}</b>
-                            </span>
-                          </div>
-                        </>
-                      )
-                    })()}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Tiles — Muscle (tappable) · Body fat · Waist */}
@@ -2990,9 +2976,11 @@ export default function App() {
                     <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 6, fontSize: 11, color: 'var(--color-text-secondary)' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 13, height: 3, borderRadius: 2, background: 'var(--color-navy)', display: 'inline-block' }} /> Fat mass
+                        {latestFatMass != null && <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', fontWeight: 700 }}>{latestFatMass.toFixed(1)}</b>}
                       </span>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 13, height: 3, borderRadius: 2, background: 'var(--color-amber)', display: 'inline-block' }} /> Muscle
+                        {latestSmm != null && <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', fontWeight: 700 }}>{latestSmm.toFixed(1)}</b>}
                       </span>
                       <span style={{ marginLeft: 'auto', color: 'var(--color-text-dim)' }}>2 months, kg</span>
                     </div>
@@ -3004,6 +2992,7 @@ export default function App() {
                     <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 6, fontSize: 11, color: 'var(--color-text-secondary)' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 13, height: 3, borderRadius: 2, background: 'var(--color-navy)', display: 'inline-block' }} /> Waist
+                        {latestWaistCm != null && <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', fontWeight: 700 }}>{latestWaistCm.toFixed(1)}</b>}
                       </span>
                       <span style={{ marginLeft: 'auto', color: 'var(--color-text-dim)' }}>2 months, cm</span>
                     </div>
