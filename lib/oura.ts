@@ -12,7 +12,8 @@
 // - refresh tokens are SINGLE-USE — every refresh returns a new one, which must
 //   be persisted in the same write as the new access token or the connection
 //   is lost.
-// - the token response has no scope field, so we store the scopes we requested.
+// - when the token response has no scope field we store the scopes we requested;
+//   in practice Oura returns one (e.g. "extapi:workout", seen Oct 16, 2026).
 //
 // Never import this from a client component — it reads OURA_CLIENT_SECRET and
 // SUPABASE_SERVICE_ROLE_KEY.
@@ -416,8 +417,10 @@ export async function syncOuraRange(startDate: string, endDate: string): Promise
 //   when they changed. zone3_plus_minutes and notes are never written after
 //   insert. Calories missing in Oura leave the stored value alone.
 // - A new Oura workout that matches an existing non-Oura session (same
-//   activity, start within ±10 min) is skipped, so the Health Auto Export rows
-//   written before this shipped don't duplicate.
+//   activity, start within ±10 min) is skipped. /api/health-import runs the
+//   same check the other way (Oct 16, 2026), since Apple Watch workouts come
+//   from Health Auto Export again — Oura's API doesn't return workouts Oura
+//   imported from Apple Health.
 // - Workouts that disappear from Oura are logged, not deleted (the row may
 //   carry manual zone3+ minutes).
 // See BODYCIPHER.md → "Oura workouts → training_sessions".
@@ -435,7 +438,7 @@ interface OuraWorkout {
 const OURA_WORKOUT_SOURCE = 'oura'
 const OURA_WORKOUT_COLUMNS = ['date', 'activity_type', 'duration_min', 'active_calories', 'start_time'] as const
 type OuraWorkoutColumn = typeof OURA_WORKOUT_COLUMNS[number]
-const WORKOUT_MATCH_WINDOW_MS = 10 * 60 * 1000
+export const WORKOUT_MATCH_WINDOW_MS = 10 * 60 * 1000
 
 // Activity name (lowercased, non-letters stripped) → app activity_type. Targets
 // are the stored quick-add types in TrainingSection.tsx, so scoring
@@ -465,11 +468,11 @@ export function mapOuraActivity(activity: string | null | undefined): string {
   return mapped ?? OTHER_ACTIVITY
 }
 
-function sameActivity(a: string, b: string): boolean {
+export function sameActivity(a: string, b: string): boolean {
   return (ACTIVITY_TYPE_MAP[activityKey(a)] ?? OTHER_ACTIVITY) === (ACTIVITY_TYPE_MAP[activityKey(b)] ?? OTHER_ACTIVITY)
 }
 
-function timeMs(v: unknown): number | null {
+export function timeMs(v: unknown): number | null {
   if (typeof v !== 'string' || !v) return null
   // HAE stored "2026-04-28 07:15:00 +0200"; Oura and Postgres give ISO.
   const t = new Date(v.includes('T') ? v : v.replace(' ', 'T').replace(' ', '')).getTime()
@@ -526,9 +529,8 @@ async function ouraGetAllWorkoutsLogged(params: Record<string, string>): Promise
   return out
 }
 
-// Diagnostic: Oura's token response has no scope field, so oura_tokens.scope
-// holds the scopes we REQUESTED at the last connect (refreshes keep it). Whether
-// Julie left `workout` ticked on Oura's consent screen isn't knowable from it.
+// Diagnostic: oura_tokens.scope holds the scope string Oura's token endpoint
+// returned (e.g. "extapi:workout"), or OURA_SCOPES if it returned none.
 async function logStoredOuraScope(): Promise<void> {
   try {
     const row = await loadTokenRow()
@@ -536,8 +538,9 @@ async function logStoredOuraScope(): Promise<void> {
       console.warn('[oura] workout sync: no oura_tokens row')
       return
     }
-    const scopes = (row.scope ?? '').split(/\s+/).filter(Boolean)
-    console.log(`[oura] workout sync: stored token scope="${row.scope ?? ''}" → includes workout: ${scopes.includes('workout') ? 'yes' : 'NO'} (requested scopes at last connect, not confirmed grants); token updated_at=${row.updated_at ?? 'null'}, expires_at=${row.expires_at}`)
+    // Oura prefixes scopes with "extapi:"; OURA_SCOPES (our fallback) doesn't.
+    const scopes = (row.scope ?? '').split(/\s+/).filter(Boolean).map(sc => sc.replace(/^extapi:/, ''))
+    console.log(`[oura] workout sync: stored token scope="${row.scope ?? ''}" → includes workout: ${scopes.includes('workout') ? 'yes' : 'NO'}; token updated_at=${row.updated_at ?? 'null'}, expires_at=${row.expires_at}`)
   } catch (e) {
     console.error('[oura] workout sync: could not read stored scope:', describe(e))
   }
