@@ -498,19 +498,73 @@ export interface OuraWorkoutSyncResult {
   error?: string
 }
 
+// Diagnostic (Oct 16, 2026): ouraGetAll for /workout, but logs the HTTP status
+// of every page and, on failure, the response body. The access token is never
+// logged (it's only in the Authorization header; redacted from bodies anyway).
+async function ouraGetAllWorkoutsLogged(params: Record<string, string>): Promise<OuraWorkout[]> {
+  const token = await getValidAccessToken()
+  const redact = (s: string) => s.split(token).join('[redacted]')
+  const out: OuraWorkout[] = []
+  let nextToken: string | null | undefined
+  let page = 0
+  do {
+    page++
+    const url = new URL(`${OURA_API_BASE}/workout`)
+    for (const [k, v] of Object.entries(nextToken ? { ...params, next_token: nextToken } : params)) url.searchParams.set(k, v)
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+    const text = await res.text()
+    const label = `[oura] GET /workout start_date=${params.start_date} end_date=${params.end_date} page ${page}`
+    if (!res.ok) {
+      console.error(`${label} → HTTP ${res.status} ${res.statusText}; body: ${redact(text).slice(0, 2000)}`)
+      throw new Error(`Oura GET workout ${res.status}: ${redact(text).slice(0, 300)}`)
+    }
+    const json = JSON.parse(text) as OuraPage<OuraWorkout>
+    console.log(`${label} → HTTP ${res.status}, ${json.data?.length ?? 0} item(s)${json.next_token ? ', next_token present' : ''}`)
+    out.push(...(json.data ?? []))
+    nextToken = json.next_token
+  } while (nextToken)
+  return out
+}
+
+// Diagnostic: Oura's token response has no scope field, so oura_tokens.scope
+// holds the scopes we REQUESTED at the last connect (refreshes keep it). Whether
+// Julie left `workout` ticked on Oura's consent screen isn't knowable from it.
+async function logStoredOuraScope(): Promise<void> {
+  try {
+    const row = await loadTokenRow()
+    if (!row) {
+      console.warn('[oura] workout sync: no oura_tokens row')
+      return
+    }
+    const scopes = (row.scope ?? '').split(/\s+/).filter(Boolean)
+    console.log(`[oura] workout sync: stored token scope="${row.scope ?? ''}" → includes workout: ${scopes.includes('workout') ? 'yes' : 'NO'} (requested scopes at last connect, not confirmed grants); token updated_at=${row.updated_at ?? 'null'}, expires_at=${row.expires_at}`)
+  } catch (e) {
+    console.error('[oura] workout sync: could not read stored scope:', describe(e))
+  }
+}
+
 export async function syncOuraWorkouts(startDate: string, endDate: string): Promise<OuraWorkoutSyncResult[]> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) {
     throw new Error(`syncOuraWorkouts: invalid range ${startDate}..${endDate}`)
   }
   const from = startDate < OURA_WORKOUT_CUTOVER_DATE ? OURA_WORKOUT_CUTOVER_DATE : startDate
-  if (from > endDate) return []
+  if (from > endDate) {
+    console.log(`[oura] workout sync ${startDate}..${endDate}: whole range is before cutover ${OURA_WORKOUT_CUTOVER_DATE} — no /workout call`)
+    return []
+  }
+
+  await logStoredOuraScope()
 
   // Same padding as syncOuraRange: Oura's `day` can differ from the Berlin
   // date of start_datetime, and end_date can be exclusive.
-  const workouts = await ouraGetAll<OuraWorkout>('workout', {
-    start_date: shiftIsoDate(from, -1),
-    end_date: shiftIsoDate(endDate, 2),
-  })
+  const fetchStart = shiftIsoDate(from, -1)
+  const fetchEnd = shiftIsoDate(endDate, 2)
+  const workouts = await ouraGetAllWorkoutsLogged({ start_date: fetchStart, end_date: fetchEnd })
+  // Diagnostic: one line per workout, emitted with the run summary at the end
+  // (a pair is formatted then, once its result's action is final).
+  const workoutLog: Array<string | { w: OuraWorkout; result: OuraWorkoutSyncResult }> = []
+  const describeWorkout = (w: OuraWorkout) =>
+    `id=${w.id ?? 'null'} activity=${w.activity ?? 'null'} start=${w.start_datetime ?? 'null'} day=${w.day ?? 'null'} source=${w.source ?? 'null'}`
 
   const supabase = supaAdmin()
   const columns = 'id, date, activity_type, duration_min, active_calories, start_time, external_id, source, zone3_plus_minutes'
@@ -543,9 +597,15 @@ export async function syncOuraWorkouts(startDate: string, endDate: string): Prom
     const startMs = timeMs(w.start_datetime)
     const endMs = timeMs(w.end_datetime)
     const date = berlinCalendarDate(w.start_datetime)
-    if (date && (date < from || date > endDate)) continue   // padding only
+    if (date && (date < from || date > endDate)) {   // padding only
+      workoutLog.push(`${describeWorkout(w)} → skipped: ${date < OURA_WORKOUT_CUTOVER_DATE
+        ? `before cutover ${OURA_WORKOUT_CUTOVER_DATE} (Berlin date ${date})`
+        : `outside requested range ${from}..${endDate} (Berlin date ${date}, fetch padding)`}`)
+      continue
+    }
     const result: OuraWorkoutSyncResult = { external_id: w.id ?? null, date, activity: w.activity ?? null, action: 'unchanged' }
     results.push(result)
+    workoutLog.push({ w, result })
 
     if (!w.id || !date || startMs == null || endMs == null || endMs < startMs) {
       result.action = 'skipped_invalid'
@@ -647,6 +707,33 @@ export async function syncOuraWorkouts(startDate: string, endDate: string): Prom
       console.warn(`[oura] session ${row.id} (${row.date} ${row.activity_type}) no longer in Oura — left in place`)
     }
   }
+
+  // Diagnostic run summary: requested range, API count, one line per workout.
+  const outcome = ({ w, result }: { w: OuraWorkout; result: OuraWorkoutSyncResult }): string => {
+    switch (result.action) {
+      case 'inserted': return 'inserted'
+      case 'updated': return `updated (${Object.keys(result.changed ?? {}).join(', ')})`
+      case 'unchanged': return 'unchanged'
+      case 'skipped_autodetected': return 'skipped: auto-detected (not confirmed in the Oura app)'
+      case 'skipped_matches_existing': return `skipped: matched existing session ${result.matched_session_id} (same activity, start within ±10 min)`
+      case 'failed': return `failed: ${result.error}`
+      case 'skipped_invalid': {
+        const s = timeMs(w.start_datetime)
+        const e = timeMs(w.end_datetime)
+        const missing = [
+          !w.id && 'id',
+          s == null && 'start_datetime',
+          e == null && 'end_datetime',
+          s != null && e != null && e < s && 'end before start',
+        ].filter(Boolean)
+        return `skipped: missing fields (${missing.join(', ')})`
+      }
+    }
+  }
+  console.log([
+    `[oura] workout sync summary: requested ${startDate}..${endDate} (effective ${from}..${endDate}, cutover ${OURA_WORKOUT_CUTOVER_DATE}; fetched ${fetchStart}..${fetchEnd}) — API returned ${workouts.length} workout(s)`,
+    ...workoutLog.map(entry => `  ${typeof entry === 'string' ? entry : `${describeWorkout(entry.w)} → ${outcome(entry)}`}`),
+  ].join('\n'))
 
   // Behavior score reads sessions (readiness fit, active calories).
   for (const date of [...changedDates].sort()) {
