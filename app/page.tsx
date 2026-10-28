@@ -13,7 +13,7 @@ import HydrationSection from '@/components/sections/HydrationSection'
 import SupplementsSection from '@/components/sections/SupplementsSection'
 import ContextSection from '@/components/sections/ContextSection'
 import Glp1Section from '@/components/sections/Glp1Section'
-import CoachTab from '@/components/CoachTab'
+import ExploreTab from '@/components/ExploreTab'
 import SplashScreen from '@/components/SplashScreen'
 import { enableNotifications } from '@/components/SwRegister'
 import { Syringe } from 'lucide-react'
@@ -81,7 +81,7 @@ function formatDate(dateStr: string) {
 }
 
 // ─── Types ────────────────────────────────────────────────────────
-type Tab = 'today' | 'calendar' | 'coach' | 'dashboard'
+type Tab = 'today' | 'calendar' | 'explore' | 'dashboard'
 
 // ─── Icons (all use currentColor — container controls colour) ────
 function IconBodyCipher() {
@@ -113,15 +113,11 @@ function IconCalendar() {
   )
 }
 
-function IconCoach() {
+function IconExplore() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <path
-        d="M4 4h14a1 1 0 011 1v9a1 1 0 01-1 1H7l-4 3V5a1 1 0 011-1z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
+      <path d="M3 15l4-5 4 3 4-6 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 19h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   )
 }
@@ -147,7 +143,7 @@ function IconHistory() {
 
 const TABS: { id: Tab; label: string; Icon: React.FC }[] = [
   { id: 'today',    label: 'Today',           Icon: IconToday },
-  { id: 'coach',    label: 'Coach',           Icon: IconCoach },
+  { id: 'explore',  label: 'Explore',         Icon: IconExplore },
   { id: 'dashboard',label: 'Dashboard',       Icon: IconDashboard },
   { id: 'calendar', label: 'Health Log', Icon: IconCalendar },
 ]
@@ -4277,10 +4273,8 @@ export default function App() {
           </div>
         )}
 
-        {/* ── COACH TAB ────────────────────────────────────────── */}
-        {activeTab === 'coach' && (
-          <CoachTab today={entry} cycleDay={cycleDay} currentDate={currentDate} />
-        )}
+        {/* ── EXPLORE TAB ──────────────────────────────────────── */}
+        {activeTab === 'explore' && <ExploreTab />}
 
         {/* ── DASHBOARD TAB ────────────────────────────────────── */}
         {activeTab === 'dashboard' && (() => {
