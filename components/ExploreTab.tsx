@@ -1,15 +1,18 @@
 'use client'
 
 // Explore tab — normalised chart of up to three daily variables over the
-// last 60 days. Data: GET /api/explore (see BODYCIPHER.md → EXPLORE).
-// Highlights are computed here for the current selection. Selection resets
-// to the default every time the tab mounts — no persistence.
+// last 60 days: 7-day average trend lines over faint daily z-score dots,
+// with dashed boxes around stretches where 2+ variables stay unusual
+// together. Data: GET /api/explore (see BODYCIPHER.md → EXPLORE). Trends
+// and stretches are computed here for the current selection. Selection
+// resets to the default every time the tab mounts — no persistence.
 // Phase 3 (coach questions) will sit below the count line.
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import type { ExploreData, ExploreDate } from '@/lib/explore/fetch'
 import type { ExploreVariable } from '@/lib/explore/series'
-import { computeHighlights, OUTLIER_Z, MAX_SELECTED_VARIABLES } from '@/lib/explore/highlights'
+import { MAX_SELECTED_VARIABLES } from '@/lib/explore/highlights'
+import { rollingAverage, findStretches, STRETCH_Z, type ExploreStretch } from '@/lib/explore/trends'
 
 const CHIPS: { key: ExploreVariable; label: string; note?: string }[] = [
   { key: 'hrv',             label: 'HRV' },
@@ -68,7 +71,15 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`
 }
 
-// Straight segments through one gap-free run of daily points — no smoothing,
+// Readout note from the variable's 7-day average on the selected date.
+function weekNote(avg: number | null): string | null {
+  if (avg == null) return null
+  if (avg > STRETCH_Z) return ' · week above usual'
+  if (avg < -STRETCH_Z) return ' · week below usual'
+  return ' · week typical'
+}
+
+// Straight segments through one gap-free run of points — no smoothing,
 // so the line never overshoots between days.
 function linePath(pts: [number, number][]): string {
   return pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
@@ -90,13 +101,13 @@ function ColourSquare({ colour }: { colour: string | null }) {
 
 // ─── Chart ────────────────────────────────────────────────────────
 function ExploreChart({
-  dates, selected, injectionDates, outlierKeys, coincidenceDates, selectedIdx, onSelect,
+  dates, selected, averages, stretches, injectionDates, selectedIdx, onSelect,
 }: {
   dates: ExploreDate[]
   selected: ExploreVariable[]
+  averages: Partial<Record<ExploreVariable, (number | null)[]>>   // aligned to dates
+  stretches: ExploreStretch[]
   injectionDates: Set<string>
-  outlierKeys: Set<string>          // `${date}|${variable}`
-  coincidenceDates: Set<string>
   selectedIdx: number
   onSelect: (i: number) => void
 }) {
@@ -144,11 +155,6 @@ function ExploreChart({
             </clipPath>
           </defs>
 
-          {/* Coincidence days — amber column, behind everything */}
-          {dates.map((d, i) => coincidenceDates.has(d.date) && (
-            <rect key={`c${d.date}`} x={PAD_L + i * colW} y={PAD_T} width={colW} height={plotH} fill="var(--color-amber)" fillOpacity="0.22" />
-          ))}
-
           {/* Typical band −1 … +1 */}
           <rect x={PAD_L} y={yOf(1)} width={plotW} height={yOf(-1) - yOf(1)} fill="var(--color-navy-tint)" fillOpacity="0.7" />
 
@@ -165,16 +171,43 @@ function ExploreChart({
             <line x1={xOf(selectedIdx)} x2={xOf(selectedIdx)} y1={PAD_T} y2={PAD_T + plotH} stroke="var(--color-text-primary)" strokeOpacity="0.45" strokeWidth="1" />
           )}
 
-          {/* Series — gaps where z is null, never interpolated across */}
+          {/* Off-together stretches — dashed rounded boxes, full plot height,
+              behind the dots and lines */}
+          {stretches.map(s => {
+            const a = dates.findIndex(d => d.date === s.start)
+            const b = dates.findIndex(d => d.date === s.end)
+            if (a < 0 || b < 0) return null
+            return (
+              <rect
+                key={`s${s.start}`}
+                x={PAD_L + a * colW + 1} y={PAD_T + 1}
+                width={(b - a + 1) * colW - 2} height={plotH - 2}
+                rx="6"
+                fill="var(--color-text-secondary)" fillOpacity="0.06"
+                stroke="var(--color-text-secondary)" strokeOpacity="0.8" strokeWidth="1" strokeDasharray="4 3"
+              />
+            )
+          })}
+
+          {/* Daily z-scores — faint dots */}
+          {selected.map((v, si) => dates.map((d, i) => {
+            const z = d.variables[v].z
+            return z != null && (
+              <circle key={`d${v}${d.date}`} cx={xOf(i)} cy={yOf(z)} r="2" fill={SERIES_COLOURS[si]} fillOpacity="0.35" />
+            )
+          }))}
+
+          {/* 7-day average lines — gaps where the average is null */}
           <g clipPath="url(#explore-plot)">
             {selected.map((v, si) => {
               const colour = SERIES_COLOURS[si]
+              const avg = averages[v] ?? []
               const runs: [number, number][][] = []
               let cur: [number, number][] = []
-              dates.forEach((d, i) => {
-                const z = d.variables[v].z
-                if (z == null) { if (cur.length) { runs.push(cur); cur = [] } }
-                else cur.push([xOf(i), yOf(z)])
+              dates.forEach((_, i) => {
+                const a = avg[i]
+                if (a == null) { if (cur.length) { runs.push(cur); cur = [] } }
+                else cur.push([xOf(i), yOf(a)])
               })
               if (cur.length) runs.push(cur)
               return (
@@ -187,14 +220,6 @@ function ExploreChart({
               )
             })}
           </g>
-
-          {/* Outlier dots — outside the clip so edge-clamped dots stay whole */}
-          {selected.map((v, si) => dates.map((d, i) => {
-            const z = d.variables[v].z
-            return z != null && outlierKeys.has(`${d.date}|${v}`) && (
-              <circle key={`o${v}${d.date}`} cx={xOf(i)} cy={yOf(z)} r="3.5" fill={SERIES_COLOURS[si]} />
-            )
-          }))}
 
           {/* GLP-1 injections — downward triangles along the top edge */}
           {dates.map((d, i) => injectionDates.has(d.date) && (
@@ -254,29 +279,28 @@ export default function ExploreTab() {
     }
   }
 
-  const zPoints = useMemo(
-    () => (data?.dates ?? []).map(d => ({
-      date: d.date,
-      z: Object.fromEntries(Object.entries(d.variables).map(([k, p]) => [k, p.z])) as Partial<Record<ExploreVariable, number | null>>,
-    })),
-    [data],
+  const dates = useMemo(() => data?.dates ?? [], [data])
+
+  // 7-day averages of z, per selected variable, aligned to dates.
+  const averages = useMemo(() => {
+    const out: Partial<Record<ExploreVariable, (number | null)[]>> = {}
+    for (const v of selected) out[v] = rollingAverage(dates.map(d => d.variables[v].z))
+    return out
+  }, [dates, selected])
+  const stretches = useMemo(
+    () => findStretches(dates.map(d => d.date), averages, selected),
+    [dates, averages, selected],
   )
-  const highlights = useMemo(
-    () => (selected.length > 0 && zPoints.length > 0 ? computeHighlights(zPoints, selected) : null),
-    [zPoints, selected],
-  )
-  const outlierKeys = useMemo(() => new Set(highlights?.outliers.map(o => `${o.date}|${o.variable}`) ?? []), [highlights])
-  const coincidenceDates = useMemo(() => new Set(highlights?.coincidences.map(c => c.date) ?? []), [highlights])
   const injectionDates = useMemo(() => new Set(data?.injectionDates ?? []), [data])
 
-  const dates = data?.dates ?? []
   const idx = selectedIdx ?? dates.length - 1
   const day = dates[idx]
+  const inStretch = day != null && stretches.some(s => day.date >= s.start && day.date <= s.end)
 
   const header = day
     ? fmtShortDate(day.date)
       + (injectionDates.has(day.date) ? ' · injection' : '')
-      + (coincidenceDates.has(day.date) ? ' · off together' : '')
+      + (inStretch ? ' · off together' : '')
       + (day.isSick ? ' · sick day' : '')
     : ''
 
@@ -349,25 +373,24 @@ export default function ExploreTab() {
                 <div style={{ ...muted, marginBottom: 'var(--space-xs)' }}>{header}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {selected.map((v, si) => {
-                    const p = day.variables[v]
-                    const value = fmtValue(v, p)
+                    const value = fmtValue(v, day.variables[v])
                     const note = CHIP_BY_KEY[v].note
+                    const week = weekNote(averages[v]?.[idx] ?? null)
                     return (
                       <div key={v} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 16, color: 'var(--color-text-primary)' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 16, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                           <ColourSquare colour={SERIES_COLOURS[si]} />
                           {CHIP_BY_KEY[v].label}
                           {note && <span style={muted}>{note}</span>}
                         </span>
-                        <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)', textAlign: 'right' }}>
+                        {/* Value stays on one line; the week note wraps under it when space is tight */}
+                        <span style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'baseline', columnGap: 4, fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)', textAlign: 'right' }}>
                           {value == null ? (
-                            <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}>No data</span>
+                            <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>No data</span>
                           ) : (
                             <>
-                              {value}
-                              {p.z == null
-                                ? <span style={muted}> · not enough history yet</span>
-                                : Math.abs(p.z) > OUTLIER_Z && <span style={muted}> · outlier</span>}
+                              <span style={{ whiteSpace: 'nowrap' }}>{value}</span>
+                              {week && <span style={{ ...muted, whiteSpace: 'nowrap' }}>{week}</span>}
                             </>
                           )}
                         </span>
@@ -382,12 +405,16 @@ export default function ExploreTab() {
           {/* 5. Legend */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', fontSize: 12, color: 'var(--color-text-secondary)' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span aria-hidden style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--color-amber)', opacity: 0.5 }} />
-              Off together
+              <span aria-hidden style={{ width: 14, borderTop: '2px solid var(--color-text-secondary)' }} />
+              7-day average
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span aria-hidden style={{ width: 7, height: 7, borderRadius: 'var(--radius-full)', background: 'var(--color-text-secondary)' }} />
-              Outlier
+              <span aria-hidden style={{ width: 5, height: 5, borderRadius: 'var(--radius-full)', background: 'var(--color-text-secondary)', opacity: 0.45 }} />
+              Daily value
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span aria-hidden style={{ width: 12, height: 10, borderRadius: 3, border: '1px dashed var(--color-text-secondary)' }} />
+              Off together
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <svg aria-hidden width="10" height="8" viewBox="0 0 10 8"><polygon points="0,0 10,0 5,7" fill="var(--color-text-secondary)" /></svg>
@@ -399,19 +426,17 @@ export default function ExploreTab() {
           <ExploreChart
             dates={dates}
             selected={selected}
+            averages={averages}
+            stretches={stretches}
             injectionDates={injectionDates}
-            outlierKeys={outlierKeys}
-            coincidenceDates={coincidenceDates}
             selectedIdx={idx}
             onSelect={setSelectedIdx}
           />
 
-          {/* 7. Count line */}
-          {highlights && (
+          {/* 7. Count line — needs two variables for a stretch to exist */}
+          {selected.length >= 2 && (
             <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0 }}>
-              {plural(highlights.coincidenceCount, 'coincidence day', 'coincidence days')}
-              {' · '}
-              {plural(highlights.outlierCount, 'outlier', 'outliers')} in this window
+              {plural(stretches.length, 'stretch', 'stretches')} off together in this window
             </p>
           )}
 
