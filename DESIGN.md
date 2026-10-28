@@ -47,6 +47,11 @@ BodyCipher is a deeply personal health coaching app built for one athletic woman
 
   /* Chart-specific */
   --color-spectrum-start:  #A8C4D4;  /* Soft blue — left end of VO2 Max spectrum bar */
+
+  /* Explore chart series — assigned by selection order, not by variable */
+  --color-series-blue:     #2F6FDE;  /* 1st selected variable */
+  --color-series-orange:   #F08A24;  /* 2nd selected — a series colour, NOT the warning orange */
+  --color-series-green:    #2E9E5B;  /* 3rd selected — a series colour, NOT a status green */
 }
 ```
 
@@ -145,7 +150,7 @@ The app has **4 tabs**. This is the authoritative structure. Do not add, remove,
 |---|---|---|
 | 0 | Today | Date navigator · Greeting · Score cards · 6 logging accordions · Long-term goals section |
 | 1 | Health Calendar | Health appointments list |
-| 2 | Coach | AI briefing cards + reactive chat |
+| 2 | Explore | Variable chips · Readout · Normalised z-score chart (60 days) · Count line (replaced Coach, Oct 28, 2026) |
 | 3 | Dashboard | Training Load card · Charts · History list |
 
 **Tab bar visual rules:**
@@ -220,7 +225,7 @@ Training accordions carry a left-side accent to distinguish them from data-entry
 - Sleep → moon · Training → activity icon · Nutrition → fork · Supplements → sun (morning) / moon (evening) · Hydration → droplet · Context → calendar
 
 ### Primary Insight Card
-Used as the hero element on the Coach tab, and for the Training Load card on the Dashboard.
+Used for the Training Load card on the Dashboard (previously also the Coach tab hero, removed Oct 28, 2026).
 
 - Background: `--color-navy`
 - Left border: 4px solid `--color-amber`
@@ -264,7 +269,7 @@ Used for Sleep Quality (1–10) and RPE.
 - **Mark All Taken** (Supplements): full width, `--color-navy`, white text, inside accordion header area
 - Never half-width buttons — they overflow on small screens
 
-### Floating Chat Input (Coach tab)
+### Floating Chat Input (Coach tab — removed Oct 28, 2026; reference only)
 
 - Pinned to bottom above tab bar
 - Pill-shaped container: `--color-surface`, `--shadow-input`
@@ -411,7 +416,18 @@ Three collapsible cards stacked vertically.
 
 ---
 
-## Coach Tab
+## Explore Tab (replaced Coach, Oct 28, 2026)
+
+Full layout and behaviour: BODYCIPHER.md → EXPLORE → UI.
+
+- **Chips:** pill (`--radius-full`), 1px `--color-border`, and a 10px colour square that is filled with the series colour when selected and an empty muted outline when not. A selected chip has a `--color-navy` border and primary text.
+- **Series colours:** `--color-series-blue` → `-orange` → `-green` in selection order. When one is removed, the rest move up.
+- **Readout:** a standard card with a muted date header, and rows at 16px with the value right-aligned. Notes ("(prev. day)", "· outlier", "· not enough history yet") are 12px muted.
+- **Chart:** z-score line chart, 250px tall, fixed −3.5…+3.5, with a typical band −1…+1 in `--color-navy-tint` and 1px `--color-border-subtle` grid lines. "Off together" days use amber column shading (amber is the accent, not a warning). Injection triangles use `--color-text-secondary`.
+
+## Coach Tab — REMOVED (Oct 28, 2026)
+
+The specs below (Briefing Cards, Time Mode Headers) and the Floating Chat Input describe the deleted Coach tab and are kept for reference only.
 
 ### Briefing Cards
 Use Primary Insight Card styling for each non-null coach field (Recovery · Training · Nutrition · Insight).

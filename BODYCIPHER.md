@@ -1,6 +1,13 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 28, 2026 (Session: Explore tab, Phase 1 — data layer only, branch `feat/explore-data-layer`). The Explore tab will replace the Coach tab with a normalised chart of up to three daily variables over 60 days. This session built:
+_Last updated: October 28, 2026 (Session: Explore tab, Phase 2 — UI, branch `feat/explore-ui`). The Coach tab is replaced by the Explore tab.
+- **Removed:** `components/CoachTab.tsx`, `app/api/coach/route.ts` (briefing + chat) and the `spin` / `pulse` keyframes only CoachTab used. Nothing else called them: the push-notification crons, the MCP server and `sw.js` never touched the coach route.
+- **Navigation:** the tab bar reads Today · Explore · Dashboard · Health Log. Explore is in Coach's old position, with a new `IconExplore` (trend line over a baseline).
+- **New UI:** `components/ExploreTab.tsx` has chips, a readout, a legend, a z-score chart and a count line. It reads `GET /api/explore`, and highlights are computed client-side.
+- **New tokens:** `--color-series-blue` / `-orange` / `-green` in `app/globals.css` and DESIGN.md.
+- **Not built yet:** Phase 3 (coach questions under the count line, Anthropic calls, `explore_answers`) and Phase 4. `lib/explore/*`, scoring and the dashboard are unchanged.
+See EXPLORE → UI and Navigation._
+_Previous update: October 28, 2026 (Session: Explore tab, Phase 1 — data layer only, branch `feat/explore-data-layer`). The Explore tab will replace the Coach tab with a normalised chart of up to three daily variables over 60 days. This session built:
 - **Pure functions:** `lib/explore/series.ts`, `normalise.ts` and `highlights.ts`. They define seven variables (hrv, rhr, sleep_duration, bedtime, training_stress, load_ratio, last_meal), with training_stress and last_meal shifted to D+1. Values are converted to robust z-scores against a 28-day baseline that needs at least 20 values, with an Oura cutoff for the four sleep variables. Sick days are excluded. The functions also flag outliers (|z| > 2) and coincidences (2+ variables with |z| > 1).
 - **Server:** `lib/explore/fetch.ts` and `GET /api/explore`.
 - **Tests:** vitest added (`npm test`, 18 tests in `lib/explore/explore.test.ts`).
@@ -39,11 +46,11 @@ See SCORING MODEL, Coach Tab and "Oura Ring sleep sync". Previous session: Oura 
 **Local:** `/Users/julienathan/Documents/Northstar/health-coach`
 **GitHub:** `git@github.com:jnjulienathan-eng/health-coach.git` (SSH only — HTTPS has failed repeatedly)
 **Stack:** Next.js (App Router) + Supabase (West EU, `cprcamywvhtcboprtkjp.supabase.co`) + Vercel + Anthropic API
-**Key files:** `app/api/coach/route.ts`, `lib/db.ts`, `lib/types.ts`, `lib/scores.ts`, `lib/trainingLoad.ts`
+**Key files:** `lib/explore/*` + `app/api/explore/route.ts` (Explore), `lib/db.ts`, `lib/types.ts`, `lib/scores.ts`, `lib/trainingLoad.ts`
 **Scripts:** `scripts/generate-icon.mjs` — generates `public/apple-touch-icon.png` (180×180 PNG, dark bg + BodyCipher mark). Run with `node scripts/generate-icon.mjs` from the project root. Requires `sharp`.
 **Tests:** `npm test` runs vitest (`vitest run`). Added Oct 28, 2026 for `lib/explore/`. Test files sit next to the module (`*.test.ts`).
 **Sections:** `components/sections/` — SleepSection, TrainingSection, NutritionSection, HydrationSection, SupplementsSection, Glp1Section (+ named export `Glp1RefillCard`, not date-navigable), ContextSection
-**Other components:** `components/CoachTab.tsx`, `components/DashboardTab.tsx` (not imported, preserved on disk), `components/HistoryTab.tsx` (not imported, preserved on disk), `components/GoalsTab.tsx` (not imported, preserved on disk), `components/SplashScreen.tsx`
+**Other components:** `components/ExploreTab.tsx`, `components/DashboardTab.tsx` (not imported, preserved on disk), `components/HistoryTab.tsx` (not imported, preserved on disk), `components/GoalsTab.tsx` (not imported, preserved on disk), `components/SplashScreen.tsx`
 
 ---
 
@@ -254,7 +261,7 @@ Original Oct 15 text: Training sessions now come from Oura's `/v2/usercollection
 |---|---|---|---|
 | 0 | Today | Daily logging accordions (inline in app/page.tsx) | Live |
 | 1 | Health Log | Hero card + appointment list (inline in app/page.tsx) | Live — design Step 5 complete |
-| 2 | Coach | `CoachTab` | Live |
+| 2 | Explore | `ExploreTab` (replaced Coach, Oct 28, 2026) | Live — Phase 2 UI; coach questions (Phase 3) not built |
 | 3 | Dashboard | Inline in app/page.tsx (charts + history list) | Live — design Step 6 complete |
 
 Default active tab: 0 (Today). GoalsTab, DashboardTab, and HistoryTab components preserved on disk but removed from the tab bar and no longer imported in app/page.tsx.
@@ -538,7 +545,10 @@ Supersedes the fat/lean split in v3 item 2 above. The **headline row is unchange
 
 ---
 
-### Coach Tab
+### Coach Tab — REMOVED (October 28, 2026, branch `feat/explore-ui`)
+
+**Replaced by the Explore tab** (see EXPLORE). `components/CoachTab.tsx` and `app/api/coach/route.ts` were deleted, so the briefing modes, the reactive chat and the `JULIE_PROFILE` prompt constant no longer exist in the code. The notes below are kept as history only. Do not re-add any of this without explicit instruction. Phase 3 of Explore brings back Anthropic-backed answers in a different form (coach questions about the chart, cached in `explore_answers`).
+
 
 - 5 time-based modes detected client-side from time of day:
   - wakeup: before 09:00
@@ -813,13 +823,13 @@ Self-hosted, single-user, fully stateless OAuth 2.1 + PKCE in front of `/api/mcp
 
 ---
 
-## EXPLORE (Phase 1 — data layer, October 28, 2026, branch `feat/explore-data-layer`)
+## EXPLORE (Phase 1 — data layer, branch `feat/explore-data-layer`; Phase 2 — UI, branch `feat/explore-ui`; both October 28, 2026)
 
-The Explore tab will replace the Coach tab. It shows a normalised chart of up to three daily variables over the last 60 days.
+The Explore tab replaced the Coach tab (tab index 2). It shows a normalised chart of up to three daily variables over the last 60 days.
 **Status:**
-- Only the data layer exists. **The UI (Phase 2) and the Coach/answer layer (Phase 3) are not built yet.**
-- The Coach tab, scoring and dashboard are unchanged.
-- No Anthropic calls are made yet. `explore_answers` (see DATA MODEL) exists, but nothing reads or writes it.
+- **Built:** the data layer (Phase 1) and the UI (Phase 2, see "UI" below).
+- **Not built yet:** Phase 3 (coach questions below the count line, Anthropic calls via a server route, `explore_answers` reads and writes) and Phase 4.
+- No Anthropic calls are made. `explore_answers` (see DATA MODEL) exists, but nothing reads or writes it.
 
 ### Files
 - `lib/explore/series.ts` — pure. Holds the variable keys, the raw daily series keyed by chart date (already shifted), the bedtime and last-meal minute encodings with their HH:MM inverses, and the GLP-1 injection info.
@@ -880,6 +890,45 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
 ```
 - **Errors:** 500 with `{ error }`. PostgrestError fields are walked one by one with the same `describe()` helper as `app/api/nutrition/food-item/route.ts`.
 - **Verification:** not yet run against live data. Local `.env.local` has no `SUPABASE_SERVICE_ROLE_KEY`, so check it on the branch preview.
+
+### UI (Phase 2) — `components/ExploreTab.tsx`
+**Data:**
+- Fetches `GET /api/explore` once on mount (`cache: 'no-store'`).
+- Loading shows the small dim "LOADING" label the dashboard history uses. An error shows a red 14px line ("Failed to load Explore data: <status>").
+- Highlights come from `computeHighlights()` for the current selection, and are skipped when nothing is selected. The route nests z inside `variables`, so the tab maps it to `{ date, z }` first. `lib/explore` is unchanged.
+
+**Layout, top to bottom (mobile-first, 375px):**
+1. **Header:** "Explore" on the left, "Last 60 days" on the right (secondary text).
+2. **Chips** (wrapping): HRV, RHR, Sleep duration, Bedtime, Training stress, Load ratio, Last meal.
+   - Each chip has a 10px colour square: filled with the series colour when selected, an empty muted outline when not.
+   - Up to 3 can be selected. Tapping a 4th shows "Up to 3 variables. Remove one first." under the chips; the message clears on the next valid tap.
+   - Tapping a selected chip removes it, and all chips may be deselected.
+3. **Colours:** follow selection order — 1st `--color-series-blue`, 2nd `--color-series-orange`, 3rd `--color-series-green`. When a variable is removed, the rest move up and take their new colours.
+4. **Readout box** (card) for the selected day, which defaults to the latest date:
+   - **Header line** (muted): "27 Oct", plus " · injection" on an injection day, " · off together" on a coincidence day and " · sick day" on a sick-flagged day. "Off together" matches the legend and stays accurate when all three variables are off.
+   - **Rows:** one per selected variable — colour square and name on the left, value on the right.
+     - Training stress carries a muted "(prev. day)" note after its name; Last meal carries "(prev. evening)".
+     - Values: HRV `N ms`, RHR `N bpm`, Sleep `Xh Ym`, Bedtime / Last meal `HH:MM` (the route's `display`), Training stress a whole number, Load ratio to 2 decimals.
+     - " · outlier" (muted) is added when |z| > `OUTLIER_Z`.
+     - A value with a null z gets " · not enough history yet". No value shows "No data". Sick days show "No data" for every row.
+   - With nothing selected the box shows "Pick a variable to start."
+5. **Legend** (12px secondary): amber square "Off together", dot "Outlier", downward triangle "Injection".
+6. **Chart:** hand-rolled SVG, like the dashboard charts (no chart library), 250px tall, width measured with a ResizeObserver.
+   - **Axes:** x is the 60 dates, with at most 5 labels ("30 Aug"). y is the z-score on a fixed −3.5…+3.5 scale; values beyond are clamped to the edge. Ticks read "typical" at 0 and +1…+3 / −1…−3, with light grid lines.
+   - **Typical band:** −1 to +1, shaded `--color-navy-tint`.
+   - **Lines:** one 2px solid line per selected variable, lightly smoothed (Catmull-Rom, tension 0.12) and clipped to the plot. A null z breaks the line and is never interpolated across. A lone point is drawn as a small dot.
+   - **Outliers:** a 3.5px filled dot in the variable's colour, drawn outside the clip so dots clamped at the edge stay whole.
+   - **Coincidences:** amber shading (`--color-amber`, 22% opacity) over the whole day column, behind everything.
+   - **GLP-1 injections:** small downward triangles along the top edge.
+   - **Selecting a day:** tap or drag (pointer capture, `touch-action: pan-y`, text selection off) picks the nearest day column. A thin vertical line marks it and the readout updates. There is no tooltip.
+7. **Count line** (secondary): "N coincidence days · N outliers in this window", singular when 1, hidden when nothing is selected.
+8. The space below the count line is left empty for the Phase 3 coach questions.
+
+**Defaults:**
+- Selection is HRV, Last meal, Training stress, in that order.
+- It resets to that default every time the tab opens, because the component remounts on tab switch. Nothing is persisted.
+
+**Verification:** checked at 375px against a synthetic `/api/explore` response injected in the browser. It covered the chips, the 4-variable limit, colour shifting, the readout cases (injection, coincidence, sick day, outlier, short history, no data), tap and drag, the empty state, the error state and resetting on reopen. Not yet checked against live data (no service-role key locally) — open the tab on the branch preview.
 
 ---
 
