@@ -36,6 +36,11 @@
   /* Training Load */
   --color-training-easy: #6DBF8A;
 
+  /* Explore chart series — assigned by selection order (1st, 2nd, 3rd) */
+  --color-series-blue:   #2F6FDE;
+  --color-series-orange: #F08A24;
+  --color-series-green:  #2E9E5B;
+
   /* Hydration cups */
   --hydration-cups-gap: 2px;
   --hydration-cup-min:  44px;
