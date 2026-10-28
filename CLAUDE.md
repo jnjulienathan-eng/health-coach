@@ -143,8 +143,6 @@ pasting. Do not attempt HTTPS auth.
 
 - The old daily_entries.nutrition JSONB columns (pre_workout_snack, breakfast, lunch, dinner,
   incidentals + their macro fields) are legacy. Don't read or write them from new code.
-- Coach should read from daily_nutrition_summary but currently still reads
-  daily_entries.nutrition in app/api/coach/route.ts. This is backlog item #1.
 - RLS on the eight nutrition tables uses `auth.uid() = user_id`. We bypass it
   server-side with the service-role client in lib/nutrition.ts → supaAdmin().
 - New nutrition rows use `user_id = process.env.NUTRITION_USER_ID`. Never hardcode.
@@ -161,8 +159,8 @@ pasting. Do not attempt HTTPS auth.
 - Never push directly to main
 - Never rewrite a file from scratch without explicit instruction
 - Never run Supabase SQL migrations (Julie does these manually)
-- Never change JULIE_PROFILE without explicit instruction
-- Never add German or Bavarian cuisine to Coach suggestions
+- Never change JULIE'S PROFILE (BODYCIPHER.md) without explicit instruction
+- Never add German or Bavarian cuisine to food suggestions
 - Never re-add avg_heart_rate to training sessions
 - Never re-add hrv_score to ContextSection
 - Never add calorie warnings or penalties to nutrition
