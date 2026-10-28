@@ -1,6 +1,13 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 28, 2026 (Session: Explore Phase 2b — tags, branch `feat/explore-tags`). Julie can label days or stretches herself (e.g. "Covid", 20–26 Oct), and the app derives automatic "Sick" / "Travel" tags from the Context toggles.
+_Last updated: October 28, 2026 (Session: Explore tag badges, branch `feat/explore-tag-badges`, from a mockup Julie approved).
+- **Why:** on Julie's phone (375px) the labelled tag lane failed. Over 60 days each day is about 5px wide, so tag bars showed empty pills or "Trav…" / "Si…".
+- **Chart:** tags are now thin lines (solid manual, dashed automatic) with numbered badges (filled manual, outlined automatic) that spread sideways so they never overlap. Tagged days get a faint grey band.
+- **New list:** "Tags in this window" below the count line names each tag. Tapping a row selects the tag's first day in the window.
+- **Removed:** the labelled bars and the canvas label-truncation code.
+- **Unchanged:** tag data, routes, automatic tags, the hiding rule and the readout tag controls. Only `components/ExploreTab.tsx` changed.
+See EXPLORE → UI (chart tag lane, tag list)._
+_Previous update: October 28, 2026 (Session: Explore Phase 2b — tags, branch `feat/explore-tags`). Julie can label days or stretches herself (e.g. "Covid", 20–26 Oct), and the app derives automatic "Sick" / "Travel" tags from the Context toggles.
 - **New table:** `explore_tags` (migration run by Julie; see DATA MODEL).
 - **New modules:** `lib/explore/tags.ts` (pure: `deriveAutoTags`, `visibleAutoTags`, `validateTag`) and `lib/explore/tagsDb.ts`.
 - **New routes:** `POST /api/explore/tags`, and `PATCH` / `DELETE /api/explore/tags/[id]`.
@@ -1000,16 +1007,22 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
    - **Stretches:** a rounded rectangle (rx 6) for each stretch, spanning the full plot height across its dates. It has a dashed `--color-text-secondary` outline and a very light fill (6%), drawn behind the dots and lines.
    - **Removed Oct 28, 2026:** the amber coincidence columns and the outlier dots. On real data, single-day flags on jagged daily values made the chart too busy (even at 2.5 / 1.5). Sustained stretches on the 7-day averages show the same "off together" story with far less noise.
    - **GLP-1 injections:** small downward triangles along the top edge.
-   - **Tag lane** (Phase 2b): along the top of the chart, above the injection triangles.
-     - **Bars:** each tag is a rounded bar (14px tall, rx 4) spanning its dates, clipped to the window. The label sits inside in 10px/600 text, truncated with "…" (canvas-measured) when it doesn't fit.
-     - **Styles:** manual tags are filled `--color-text-secondary` with `--color-surface` text; automatic tags are outlined (surface fill, `--color-text-secondary` stroke and text).
-     - **Stacking:** overlapping tags (only Sick + Travel can overlap) stack in a second row, by greedy row assignment.
-     - **Height:** the lane adds 17px per row to the chart, and nothing when there are no tags.
-     - **Not tappable:** tapping the lane still selects the nearest day.
-     - **Short tags:** over 60 days a day is about 5px wide at 375px, so a tag shorter than about a week shows as an unlabelled bar. The readout header names it.
+   - **Tagged days:** a faint grey band (`--color-text-secondary`, 7% opacity) across the full plot height on every tagged day, behind the stretch boxes, dots and lines. Overlapping tags are merged into one run, so a Sick + Travel day isn't shaded twice.
+   - **Tag lane** (badge design, replacing the Phase 2b labelled bars, Oct 28, 2026): along the top of the chart, above the injection triangles.
+     - **Why it changed:** at 375px each of the 60 days is about 5px wide, so labelled bars showed empty pills or "Trav…" / "Si…". Tags are now numbered on the chart and named in the list below it.
+     - **Numbering:** the tags in the window are numbered 1, 2, 3… by start date (ties: manual before automatic, then Sick before Travel), in `markTags()`. The same numbers are used on the chart and in the list.
+     - **Lines:** a thin 2px line spans each tag's dates, clipped to the window: solid `--color-text-primary` for manual tags, dashed (3 2) `--color-text-secondary` for automatic tags.
+     - **Badges:** a 14px round badge with the tag's number, centred over its line. Manual tags are filled `--color-text-primary` with `--color-surface` text; automatic tags are outlined (surface fill, `--color-text-secondary` stroke and text). Numbers are 9px/700.
+     - **Stacking:** overlapping tags (only Sick + Travel can overlap) stack their lines in a second row, by greedy row assignment.
+     - **Spreading:** `spreadBadges()` shifts badge centres sideways across the whole lane so no two badges overlap (16px minimum between centres), keeping them inside the plot. This covers stacked pairs and short neighbouring tags in the same row. On a tag of about 3 days or fewer the badge covers its own line, since it is wider than the line.
+     - **Height:** each row adds 17px to the chart. With no tags the lane, bands and list are absent and the chart stays 250px.
+     - **Not tappable:** tapping anywhere on the chart, badges included, still selects the nearest day.
    - **Selecting a day:** tap or drag (pointer capture, `touch-action: pan-y`, text selection off) picks the nearest day column. A thin vertical line marks it and the readout updates. There is no tooltip.
 7. **Count line** (secondary): "N stretches off together in this window" ("1 stretch" when singular). It is hidden when fewer than two variables are selected, since a stretch needs two.
-8. The space below the count line is left empty for the Phase 3 coach questions.
+8. **Tag list** — "Tags in this window" (14px/600 secondary heading). It is hidden when there are no tags in the window.
+   - **Rows:** one per tag in number order — the badge (same styles as the chart), the label, " (from toggle)" in 12px muted for automatic tags, and the date range on the right ("7–8 Oct", "30 Sep – 2 Oct", "14 Oct"). A tag that starts before the window shows its real start date.
+   - **Behaviour:** rows are full-width buttons (min-height 36px, subtle divider). Tapping one selects the tag's first day inside the window and updates the readout.
+9. The space below the tag list is left empty for the Phase 3 coach questions.
 
 **Defaults:**
 - Selection is HRV, Last meal, Training stress, in that order.
@@ -1023,6 +1036,10 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
   - flows: Add, Edit, Rename (Sick → "Flu", which also hid the overlapping Travel run), Delete with confirm (the hidden Travel run reappeared), and the overlap error;
   - the restored history note.
   - The real routes were smoke-tested locally up to the DB call: invalid JSON → 400, a bad id → 404.
+- Tag badges: checked at 375px with synthetic data. It covered:
+  - tags: a 1-day tag next to a 2-day tag (badges spread side by side), a 9-day tag starting before the window (line from the left edge; its row selects 30 Aug), automatic Sick + Travel on the same days (stacked, badges side by side) and a 7-day manual tag;
+  - every list row, each selecting the right day;
+  - no tags at all: 250px chart, no badges, bands or list.
 - Not yet checked against live data (no service-role key locally) — open the tab on the branch preview.
 
 ---

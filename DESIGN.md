@@ -436,12 +436,17 @@ Full layout and behaviour: BODYCIPHER.md → EXPLORE → UI.
   - **Daily dots:** daily values are faint dots (2px radius, 35% opacity) in the same colour, behind the line.
   - **Off together:** stretches are rounded rectangles (6px radius) with a dashed `--color-text-secondary` outline and a very light fill, full plot height, behind dots and lines. There is no amber shading and there are no outlier dots on this chart any more.
   - **Injection triangles** use `--color-text-secondary`.
-  - **Tag lane** (Phase 2b), along the top of the chart above the injection triangles:
-    - **Bars:** rounded (14px tall, 4px radius) across each tag's dates, with a 10px/600 label inside, ellipsis-truncated.
-    - **Manual tags:** filled `--color-text-secondary` with `--color-surface` text.
-    - **Automatic tags (Sick / Travel):** the same shape, outlined — surface fill, `--color-text-secondary` 1px stroke and text.
-    - **Stacking:** overlapping tags stack in a second row.
-    - **Interaction:** tags are not separately tappable.
+  - **Tag lane** (badge design, Oct 28, 2026 — it replaced the labelled tag bars, which were unreadable at about 5px per day on a 375px phone), along the top of the chart above the injection triangles:
+    - **Numbering:** tags are numbered 1, 2, 3… by start date (manual before automatic on ties). The same numbers appear in the tag list.
+    - **Lines:** a 2px line across each tag's dates — solid `--color-text-primary` for manual tags, dashed `--color-text-secondary` for automatic tags (Sick / Travel).
+    - **Badges:** a 14px round badge centred over each line, with a 9px/700 number. Manual tags are filled `--color-text-primary` with `--color-surface` text; automatic tags are outlined (surface fill, 1px `--color-text-secondary` stroke and text).
+    - **Stacking and spacing:** overlapping tags stack in a second row. Badges shift sideways so none overlap (16px between centres).
+    - **Tagged days:** a faint `--color-text-secondary` band (about 7% opacity) across the full plot height, behind stretch boxes, dots and lines.
+    - **Interaction:** badges are not separately tappable; a tap selects the nearest day.
+- **Tag list** (below the count line, hidden with no tags):
+  - **Heading:** "Tags in this window", 14px/600 `--color-text-secondary`.
+  - **Rows:** full-width buttons, min-height 36px, with a 1px `--color-border-subtle` divider. Each row has the badge, the label at 14px primary, " (from toggle)" at 12px muted for automatic tags, and the date range right-aligned at 14px secondary.
+  - **Tapping a row** selects the tag's first day in the window.
 
 ## Coach Tab — REMOVED (Oct 28, 2026)
 
