@@ -43,9 +43,11 @@ const Z_MAX = 3.5
 const Y_TICKS = [3, 2, 1, 0, -1, -2, -3]
 const MAX_X_LABELS = 5
 // Tag lane above the injection triangles — one row per stacking level.
+// Each row is a thin line across the tag's dates with a numbered badge.
 const TAG_ROW_H = 14
 const TAG_ROW_GAP = 3
-const TAG_FONT = '600 10px Manrope, sans-serif'
+const TAG_BADGE_R = 7
+const TAG_BADGE_GAP = 2
 
 // ─── Formatting ───────────────────────────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -98,35 +100,57 @@ function dayIndex(first: string, date: string): number {
   return Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(first + 'T00:00:00Z')) / 86_400_000)
 }
 
-// Greedy row assignment: a tag goes in the first row whose last tag ended
-// before it starts. Only overlapping tags (Sick + Travel) stack.
-function assignTagRows(tags: ExploreTag[]): { tag: ExploreTag; row: number }[] {
+// A tag as drawn: its number (1, 2, 3… shared by the chart badges and the
+// list below the chart) and its lane row.
+interface TagMark { tag: ExploreTag; num: number; row: number }
+
+// Numbers tags by start date (ties: manual before automatic), then assigns
+// rows greedily: a tag goes in the first row whose last tag ended before it
+// starts. Only overlapping tags (Sick + Travel) stack.
+function markTags(tags: ExploreTag[]): TagMark[] {
+  const rank = (t: ExploreTag) => (t.source === 'manual' ? 0 : t.source === 'sick' ? 1 : 2)
   const rowEnds: string[] = []
   return [...tags]
-    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0))
-    .map(tag => {
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : rank(a) - rank(b)))
+    .map((tag, i) => {
       let row = rowEnds.findIndex(end => end < tag.start)
       if (row < 0) { row = rowEnds.length; rowEnds.push(tag.end) } else rowEnds[row] = tag.end
-      return { tag, row }
+      return { tag, num: i + 1, row }
     })
 }
 
-// Truncate a label with an ellipsis to fit maxW pixels (canvas-measured).
-let measureCtx: CanvasRenderingContext2D | null = null
-function fitLabel(label: string, maxW: number): string {
-  if (maxW <= 0) return ''
-  if (!measureCtx) {
-    measureCtx = document.createElement('canvas').getContext('2d')
-    if (!measureCtx) return label
-    measureCtx.font = TAG_FONT
+// Spreads badge centres so no two badges overlap: forward pass pushes right,
+// then a backward pass pulls back inside [lo, hi]. Input order = output order.
+function spreadBadges(xs: number[], lo: number, hi: number): number[] {
+  const step = TAG_BADGE_R * 2 + TAG_BADGE_GAP
+  const order = xs.map((x, i) => ({ x, i })).sort((a, b) => a.x - b.x || a.i - b.i)
+  for (let k = 0; k < order.length; k++) {
+    order[k].x = Math.max(order[k].x, lo, k > 0 ? order[k - 1].x + step : -Infinity)
   }
-  const ctx = measureCtx
-  if (ctx.measureText(label).width <= maxW) return label
-  for (let n = label.length - 1; n > 0; n--) {
-    const t = label.slice(0, n).trimEnd() + '…'
-    if (ctx.measureText(t).width <= maxW) return t
+  for (let k = order.length - 1; k >= 0; k--) {
+    order[k].x = Math.min(order[k].x, hi, k < order.length - 1 ? order[k + 1].x - step : Infinity)
   }
-  return ''
+  const out = new Array<number>(xs.length)
+  for (const o of order) out[o.i] = o.x
+  return out
+}
+
+function TagBadge({ num, manual }: { num: number; manual: boolean }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: TAG_BADGE_R * 2, height: TAG_BADGE_R * 2, flexShrink: 0, boxSizing: 'border-box',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: 'var(--radius-full)', fontSize: 9, fontWeight: 700, lineHeight: 1,
+        background: manual ? 'var(--color-text-primary)' : 'var(--color-surface)',
+        color: manual ? 'var(--color-surface)' : 'var(--color-text-secondary)',
+        border: manual ? 'none' : '1px solid var(--color-text-secondary)',
+      }}
+    >
+      {num}
+    </span>
+  )
 }
 
 // Straight segments through one gap-free run of points — no smoothing,
@@ -230,7 +254,7 @@ function ExploreChart({
   selected: ExploreVariable[]
   averages: Partial<Record<ExploreVariable, (number | null)[]>>   // aligned to dates
   stretches: ExploreStretch[]
-  tags: ExploreTag[]
+  tags: TagMark[]
   injectionDates: Set<string>
   selectedIdx: number
   onSelect: (i: number) => void
@@ -246,8 +270,7 @@ function ExploreChart({
     return () => ro.disconnect()
   }, [])
 
-  const tagRows = useMemo(() => assignTagRows(tags), [tags])
-  const rowCount = tagRows.reduce((m, r) => Math.max(m, r.row + 1), 0)
+  const rowCount = tags.reduce((m, t) => Math.max(m, t.row + 1), 0)
   const laneH = rowCount * (TAG_ROW_H + TAG_ROW_GAP)
   const padT = PAD_T + laneH
   const chartH = CHART_H + laneH
@@ -264,6 +287,28 @@ function ExploreChart({
     if (!rect || n === 0) return
     const i = Math.floor((clientX - rect.left - PAD_L) / colW)
     onSelect(Math.max(0, Math.min(n - 1, i)))
+  }
+
+  // Tag spans clipped to the window, and badge centres spread apart.
+  const tagSpans = n === 0 ? [] : tags.map(m => {
+    const a = Math.max(0, dayIndex(dates[0].date, m.tag.start))
+    const b = Math.min(n - 1, dayIndex(dates[0].date, m.tag.end))
+    return { m, a, b, x1: PAD_L + a * colW + 1, x2: PAD_L + (b + 1) * colW - 1 }
+  }).filter(t => t.a <= t.b)
+  const badgeX = spreadBadges(
+    tagSpans.map(t => (t.x1 + t.x2) / 2),
+    PAD_L + TAG_BADGE_R, PAD_L + plotW - TAG_BADGE_R,
+  )
+  // Tagged days, merged into runs so overlapping tags don't darken twice.
+  const taggedRuns: [number, number][] = []
+  {
+    const on = new Array<boolean>(n).fill(false)
+    for (const t of tagSpans) for (let i = t.a; i <= t.b; i++) on[i] = true
+    let start = -1
+    for (let i = 0; i <= n; i++) {
+      if (i < n && on[i]) { if (start < 0) start = i }
+      else if (start >= 0) { taggedRuns.push([start, i - 1]); start = -1 }
+    }
   }
 
   const labelIdx = n <= 1
@@ -300,6 +345,16 @@ function ExploreChart({
           {n > 0 && (
             <line x1={xOf(selectedIdx)} x2={xOf(selectedIdx)} y1={padT} y2={padT + plotH} stroke="var(--color-text-primary)" strokeOpacity="0.45" strokeWidth="1" />
           )}
+
+          {/* Tagged days — faint grey band, full plot height, behind the
+              stretch boxes, dots and lines */}
+          {taggedRuns.map(([a, b]) => (
+            <rect
+              key={`g${a}`}
+              x={PAD_L + a * colW} y={padT} width={(b - a + 1) * colW} height={plotH}
+              fill="var(--color-text-secondary)" fillOpacity="0.07"
+            />
+          ))}
 
           {/* Off-together stretches — dashed rounded boxes, full plot height,
               behind the dots and lines */}
@@ -351,34 +406,32 @@ function ExploreChart({
             })}
           </g>
 
-          {/* Tag lane — rounded bars across each tag's dates (clipped to the
-              window), label inside, ellipsis when it doesn't fit. Manual tags
-              filled, automatic tags outlined. Not separately tappable. */}
-          {n > 0 && tagRows.map(({ tag, row }) => {
-            const a = Math.max(0, dayIndex(dates[0].date, tag.start))
-            const b = Math.min(n - 1, dayIndex(dates[0].date, tag.end))
-            if (a > b) return null
-            const x = PAD_L + a * colW + 0.5
-            const w = Math.max((b - a + 1) * colW - 1, 2)
-            const y = 2 + row * (TAG_ROW_H + TAG_ROW_GAP)
-            const manual = tag.source === 'manual'
-            const text = fitLabel(tag.label, w - 6)
+          {/* Tag lane — a thin line across each tag's dates (solid manual,
+              dashed automatic) with its numbered badge centred over it, badges
+              spread so they never overlap. Not separately tappable. */}
+          {tagSpans.map(({ m, x1, x2 }, k) => {
+            const manual = m.tag.source === 'manual'
+            const y = 2 + TAG_BADGE_R + m.row * (TAG_ROW_H + TAG_ROW_GAP)
+            const colour = manual ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'
             return (
-              <g key={`t${tag.source}${tag.id ?? ''}${tag.start}`}>
-                <rect
-                  x={x} y={y} width={w} height={TAG_ROW_H} rx="4"
-                  fill={manual ? 'var(--color-text-secondary)' : 'var(--color-surface)'}
+              <g key={`t${m.num}`}>
+                <line
+                  x1={x1} x2={Math.max(x2, x1 + 1)} y1={y} y2={y}
+                  stroke={colour} strokeWidth="2" strokeLinecap="round"
+                  strokeDasharray={manual ? undefined : '3 2'}
+                />
+                <circle
+                  cx={badgeX[k]} cy={y} r={manual ? TAG_BADGE_R : TAG_BADGE_R - 0.5}
+                  fill={manual ? 'var(--color-text-primary)' : 'var(--color-surface)'}
                   stroke={manual ? 'none' : 'var(--color-text-secondary)'} strokeWidth="1"
                 />
-                {text && (
-                  <text
-                    x={x + 3} y={y + TAG_ROW_H / 2 + 3.5}
-                    fontSize="10" fontWeight="600"
-                    fill={manual ? 'var(--color-surface)' : 'var(--color-text-secondary)'}
-                  >
-                    {text}
-                  </text>
-                )}
+                <text
+                  x={badgeX[k]} y={y + 3} textAnchor="middle"
+                  fontSize="9" fontWeight="700"
+                  fill={manual ? 'var(--color-surface)' : 'var(--color-text-secondary)'}
+                >
+                  {m.num}
+                </text>
               </g>
             )
           })}
@@ -463,6 +516,7 @@ export default function ExploreTab() {
   )
   const injectionDates = useMemo(() => new Set(data?.injectionDates ?? []), [data])
   const tags = useMemo(() => data?.tags ?? [], [data])
+  const tagMarks = useMemo(() => markTags(tags), [tags])
 
   const idx = selectedIdx ?? dates.length - 1
   const day = dates[idx]
@@ -695,7 +749,7 @@ export default function ExploreTab() {
             selected={selected}
             averages={averages}
             stretches={stretches}
-            tags={tags}
+            tags={tagMarks}
             injectionDates={injectionDates}
             selectedIdx={idx}
             onSelect={selectDay}
@@ -706,6 +760,37 @@ export default function ExploreTab() {
             <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0 }}>
               {plural(stretches.length, 'stretch', 'stretches')} off together in this window
             </p>
+          )}
+
+          {/* Tag list — numbered like the chart badges; a row selects the
+              tag's first day inside the window */}
+          {tagMarks.length > 0 && dates.length > 0 && (
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>
+                Tags in this window
+              </div>
+              {tagMarks.map(({ tag, num }) => (
+                <button
+                  key={`l${num}`}
+                  type="button"
+                  onClick={() => selectDay(Math.max(0, dayIndex(dates[0].date, tag.start)))}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 36,
+                    padding: '4px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                    borderBottom: '1px solid var(--color-border-subtle)',
+                  }}
+                >
+                  <TagBadge num={num} manual={tag.source === 'manual'} />
+                  <span style={{ fontSize: 14, color: 'var(--color-text-primary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {tag.label}
+                    {tag.source !== 'manual' && <span style={muted}> (from toggle)</span>}
+                  </span>
+                  <span style={{ marginLeft: 'auto', fontSize: 14, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {fmtRange(tag.start, tag.end)}
+                  </span>
+                </button>
+              ))}
+            </div>
           )}
 
           {/* 8. Reserved for Phase 3 coach questions */}
