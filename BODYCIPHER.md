@@ -1,6 +1,11 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 28, 2026 (Session: Explore tab, Phase 2 — UI, branch `feat/explore-ui`). The Coach tab is replaced by the Explore tab.
+_Last updated: October 28, 2026 (Session: Explore chart tuning, branch `feat/explore-ui`). On real data the chart was too busy: 23 outliers and 18 coincidence days in 60 days, roughly a third of days flagged. The smoothed lines also overshot between daily values.
+- **Thresholds:** `OUTLIER_Z` 2 → **2.5** and `COINCIDENCE_Z` 1 → **1.5** (`lib/explore/highlights.ts`). The readout's " · outlier" uses the same 2.5. The chart's typical band stays at ±1.
+- **Lines:** straight segments between daily points, no smoothing. Gaps on null z are unchanged.
+- **Tests:** the highlight tests were updated for the new values, and boundary tests were added at exactly 2.5 and 1.5 (20 tests).
+See EXPLORE → Highlights and UI._
+_Previous update: October 28, 2026 (Session: Explore tab, Phase 2 — UI, branch `feat/explore-ui`). The Coach tab is replaced by the Explore tab.
 - **Removed:** `components/CoachTab.tsx`, `app/api/coach/route.ts` (briefing + chat) and the `spin` / `pulse` keyframes only CoachTab used. Nothing else called them: the push-notification crons, the MCP server and `sw.js` never touched the coach route.
 - **Navigation:** the tab bar reads Today · Explore · Dashboard · Health Log. Explore is in Coach's old position, with a new `IconExplore` (trend line over a baseline).
 - **New UI:** `components/ExploreTab.tsx` has chips, a readout, a legend, a z-score chart and a count line. It reads `GET /api/explore`, and highlights are computed client-side.
@@ -868,8 +873,9 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 - **Sick chart dates** get no values and no z-scores for any variable.
 
 ### Highlights (computed client-side for the current selection, not by the route)
-- **Outlier:** a selected variable with |z| > `OUTLIER_Z` (2) on a date.
-- **Coincidence:** a date where at least `COINCIDENCE_MIN_VARIABLES` (2) selected variables have |z| > `COINCIDENCE_Z` (1), in any direction.
+- **Outlier:** a selected variable with |z| > `OUTLIER_Z` (**2.5**) on a date. Exactly 2.5 is not an outlier.
+- **Coincidence:** a date where at least `COINCIDENCE_MIN_VARIABLES` (2) selected variables have |z| > `COINCIDENCE_Z` (**1.5**), in any direction. Exactly 1.5 does not count.
+- **Why 2.5 / 1.5 (changed Oct 28, 2026, from 2 / 1):** on real data the original thresholds flagged roughly a third of days (23 outliers and 18 coincidence days in 60 days), which made the chart too busy to read. The chart's typical band stays at ±1; it is a visual reference, not a highlight threshold.
 - **Returns:** `{ outliers, coincidences, outlierCount, coincidenceCount }`. Selection is 1–`MAX_SELECTED_VARIABLES` (3).
 
 ### Route shape — `GET /api/explore`
@@ -909,14 +915,14 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
    - **Rows:** one per selected variable — colour square and name on the left, value on the right.
      - Training stress carries a muted "(prev. day)" note after its name; Last meal carries "(prev. evening)".
      - Values: HRV `N ms`, RHR `N bpm`, Sleep `Xh Ym`, Bedtime / Last meal `HH:MM` (the route's `display`), Training stress a whole number, Load ratio to 2 decimals.
-     - " · outlier" (muted) is added when |z| > `OUTLIER_Z`.
+     - " · outlier" (muted) is added when |z| > `OUTLIER_Z` (2.5), the same threshold as the chart's outlier dots.
      - A value with a null z gets " · not enough history yet". No value shows "No data". Sick days show "No data" for every row.
    - With nothing selected the box shows "Pick a variable to start."
 5. **Legend** (12px secondary): amber square "Off together", dot "Outlier", downward triangle "Injection".
 6. **Chart:** hand-rolled SVG, like the dashboard charts (no chart library), 250px tall, width measured with a ResizeObserver.
    - **Axes:** x is the 60 dates, with at most 5 labels ("30 Aug"). y is the z-score on a fixed −3.5…+3.5 scale; values beyond are clamped to the edge. Ticks read "typical" at 0 and +1…+3 / −1…−3, with light grid lines.
    - **Typical band:** −1 to +1, shaded `--color-navy-tint`.
-   - **Lines:** one 2px solid line per selected variable, lightly smoothed (Catmull-Rom, tension 0.12) and clipped to the plot. A null z breaks the line and is never interpolated across. A lone point is drawn as a small dot.
+   - **Lines:** one 2px solid line per selected variable: straight segments between daily points, with no smoothing (changed Oct 28, 2026; the earlier Catmull-Rom smoothing overshot between daily values). Clipped to the plot. A null z breaks the line and is never interpolated across. A lone point is drawn as a small dot.
    - **Outliers:** a 3.5px filled dot in the variable's colour, drawn outside the clip so dots clamped at the edge stay whole.
    - **Coincidences:** amber shading (`--color-amber`, 22% opacity) over the whole day column, behind everything.
    - **GLP-1 injections:** small downward triangles along the top edge.

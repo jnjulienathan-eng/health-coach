@@ -5,7 +5,7 @@ import {
   computeInjectionInfo, bedtimeMinutesToHHMM, lastMealMinutesToHHMM, type ExploreSeries,
 } from './series'
 import { robustZ, normaliseExplore, MAD_SCALE, MEAN_AD_SCALE, BASELINE_WINDOW_DAYS, BASELINE_MIN_VALUES } from './normalise'
-import { computeHighlights } from './highlights'
+import { computeHighlights, OUTLIER_Z, COINCIDENCE_Z } from './highlights'
 
 function emptySeries(): ExploreSeries {
   return Object.fromEntries(EXPLORE_VARIABLES.map(v => [v, {}])) as ExploreSeries
@@ -160,18 +160,39 @@ describe('normaliseExplore', () => {
 
 describe('computeHighlights', () => {
   const points = [
-    { date: '2026-10-01', z: { hrv: 2.5, rhr: -0.5, bedtime: null } },
-    { date: '2026-10-02', z: { hrv: -1.2, rhr: 1.1, bedtime: 0.2 } },
-    { date: '2026-10-03', z: { hrv: 0.1, rhr: -2.1, bedtime: -1.5 } },
+    { date: '2026-10-01', z: { hrv: 2.8, rhr: -0.5, bedtime: null } },
+    { date: '2026-10-02', z: { hrv: -1.7, rhr: 1.6, bedtime: 0.2 } },
+    { date: '2026-10-03', z: { hrv: 0.1, rhr: -2.6, bedtime: -1.8 } },
   ]
 
-  it('flags outliers above |z| 2 and coincidences of 2+ variables above |z| 1', () => {
+  it('flags outliers above |z| 2.5 and coincidences of 2+ variables above |z| 1.5', () => {
     const h = computeHighlights(points, ['hrv', 'rhr', 'bedtime'])
     expect(h.outliers.map(o => [o.date, o.variable])).toEqual([['2026-10-01', 'hrv'], ['2026-10-03', 'rhr']])
     expect(h.coincidences.map(c => c.date)).toEqual(['2026-10-02', '2026-10-03'])
     expect(h.coincidences[1].variables.map(v => v.variable)).toEqual(['rhr', 'bedtime'])
     expect(h.outlierCount).toBe(2)
     expect(h.coincidenceCount).toBe(2)
+  })
+
+  it('outlier boundary: |z| 2.5 is not an outlier, just above it is', () => {
+    expect(OUTLIER_Z).toBe(2.5)
+    const h = computeHighlights([
+      { date: '2026-10-01', z: { hrv: 2.5 } },
+      { date: '2026-10-02', z: { hrv: -2.5 } },
+      { date: '2026-10-03', z: { hrv: 2.51 } },
+      { date: '2026-10-04', z: { hrv: -2.51 } },
+    ], ['hrv'])
+    expect(h.outliers.map(o => o.date)).toEqual(['2026-10-03', '2026-10-04'])
+  })
+
+  it('coincidence boundary: two variables at |z| 1.5 do not count, just above does', () => {
+    expect(COINCIDENCE_Z).toBe(1.5)
+    const h = computeHighlights([
+      { date: '2026-10-01', z: { hrv: 1.5, rhr: -1.5 } },
+      { date: '2026-10-02', z: { hrv: 1.51, rhr: -1.51 } },
+      { date: '2026-10-03', z: { hrv: 1.51, rhr: 1.5 } },
+    ], ['hrv', 'rhr'])
+    expect(h.coincidences.map(c => c.date)).toEqual(['2026-10-02'])
   })
 
   it('only looks at selected variables', () => {

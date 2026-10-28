@@ -3,8 +3,10 @@
 
 import type { ExploreVariable } from './series'
 
-export const OUTLIER_Z = 2
-export const COINCIDENCE_Z = 1
+// Raised from 2 / 1 (Oct 2026): the originals flagged roughly a third of
+// days on real data.
+export const OUTLIER_Z = 2.5
+export const COINCIDENCE_Z = 1.5
 export const COINCIDENCE_MIN_VARIABLES = 2
 export const MAX_SELECTED_VARIABLES = 3
 

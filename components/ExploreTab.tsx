@@ -36,7 +36,6 @@ const PAD_B = 22
 const Z_MAX = 3.5
 const Y_TICKS = [3, 2, 1, 0, -1, -2, -3]
 const MAX_X_LABELS = 5
-const SMOOTHING = 0.12   // Catmull-Rom tension — light smoothing
 
 // ─── Formatting ───────────────────────────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -69,21 +68,10 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`
 }
 
-// Lightly smoothed path through one gap-free run of points.
-function smoothPath(pts: [number, number][]): string {
-  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] ?? pts[i]
-    const p1 = pts[i]
-    const p2 = pts[i + 1]
-    const p3 = pts[i + 2] ?? p2
-    const c1x = p1[0] + (p2[0] - p0[0]) * SMOOTHING
-    const c1y = p1[1] + (p2[1] - p0[1]) * SMOOTHING
-    const c2x = p2[0] - (p3[0] - p1[0]) * SMOOTHING
-    const c2y = p2[1] - (p3[1] - p1[1]) * SMOOTHING
-    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`
-  }
-  return d
+// Straight segments through one gap-free run of daily points — no smoothing,
+// so the line never overshoots between days.
+function linePath(pts: [number, number][]): string {
+  return pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
 }
 
 // ─── Small shared marks ───────────────────────────────────────────
@@ -193,7 +181,7 @@ function ExploreChart({
                 <g key={v}>
                   {runs.map((pts, ri) => pts.length === 1
                     ? <circle key={ri} cx={pts[0][0]} cy={pts[0][1]} r="1.75" fill={colour} />
-                    : <path key={ri} d={smoothPath(pts)} fill="none" stroke={colour} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    : <path key={ri} d={linePath(pts)} fill="none" stroke={colour} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   )}
                 </g>
               )
