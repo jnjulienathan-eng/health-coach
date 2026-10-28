@@ -1,6 +1,13 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 3, 2026 (Session: Oura scoring + Coach, Session 3 of 3, branch `feat/oura-scoring-coach`, Julie approved the locked SCORING MODEL / JULIE'S PROFILE changes.
+_Last updated: October 28, 2026 (Session: Explore tab, Phase 1 — data layer only, branch `feat/explore-data-layer`). The Explore tab will replace the Coach tab with a normalised chart of up to three daily variables over 60 days. This session built:
+- **Pure functions:** `lib/explore/series.ts`, `normalise.ts` and `highlights.ts`. They define seven variables (hrv, rhr, sleep_duration, bedtime, training_stress, load_ratio, last_meal), with training_stress and last_meal shifted to D+1. Values are converted to robust z-scores against a 28-day baseline that needs at least 20 values, with an Oura cutoff for the four sleep variables. Sick days are excluded. The functions also flag outliers (|z| > 2) and coincidences (2+ variables with |z| > 1).
+- **Server:** `lib/explore/fetch.ts` and `GET /api/explore`.
+- **Tests:** vitest added (`npm test`, 18 tests in `lib/explore/explore.test.ts`).
+- **New table:** `explore_answers` (migration run by Julie). Nothing reads or writes it yet.
+- **Not built yet:** the UI (Phase 2) and the Coach layer (Phase 3). The Coach tab, scoring and dashboard are unchanged.
+See EXPLORE and DATA MODEL → `explore_answers`._
+_Previous update: October 3, 2026 (Session: Oura scoring + Coach, Session 3 of 3, branch `feat/oura-scoring-coach`, Julie approved the locked SCORING MODEL / JULIE'S PROFILE changes.
 - **Behavior Score:** the training component reads Oura readiness (≥85 / 70–84 / 60–69 / <60) instead of the HRV bands.
 - **Outcome Score:** the HRV curve is proportional to baseline (×1.14 / ×1.00 / ×0.80 / ×0.57). The HRV fallback is 88 → 45, and the baseline median counts only dates on or after the new shared constant `OURA_START_DATE` (2026-09-17).
 - **Coach:** "overnight average HRV" / "lowest overnight RHR" wording, the readiness framework, readiness in the context line, the Sept 17 step-change note, all estradiol PM reads removed, and the estradiol (2 sprays AM) and Phosphatidylserine profile lines fixed.
@@ -34,6 +41,7 @@ See SCORING MODEL, Coach Tab and "Oura Ring sleep sync". Previous session: Oura 
 **Stack:** Next.js (App Router) + Supabase (West EU, `cprcamywvhtcboprtkjp.supabase.co`) + Vercel + Anthropic API
 **Key files:** `app/api/coach/route.ts`, `lib/db.ts`, `lib/types.ts`, `lib/scores.ts`, `lib/trainingLoad.ts`
 **Scripts:** `scripts/generate-icon.mjs` — generates `public/apple-touch-icon.png` (180×180 PNG, dark bg + BodyCipher mark). Run with `node scripts/generate-icon.mjs` from the project root. Requires `sharp`.
+**Tests:** `npm test` runs vitest (`vitest run`). Added Oct 28, 2026 for `lib/explore/`. Test files sit next to the module (`*.test.ts`).
 **Sections:** `components/sections/` — SleepSection, TrainingSection, NutritionSection, HydrationSection, SupplementsSection, Glp1Section (+ named export `Glp1RefillCard`, not date-navigable), ContextSection
 **Other components:** `components/CoachTab.tsx`, `components/DashboardTab.tsx` (not imported, preserved on disk), `components/HistoryTab.tsx` (not imported, preserved on disk), `components/GoalsTab.tsx` (not imported, preserved on disk), `components/SplashScreen.tsx`
 
@@ -805,6 +813,76 @@ Self-hosted, single-user, fully stateless OAuth 2.1 + PKCE in front of `/api/mcp
 
 ---
 
+## EXPLORE (Phase 1 — data layer, October 28, 2026, branch `feat/explore-data-layer`)
+
+The Explore tab will replace the Coach tab. It shows a normalised chart of up to three daily variables over the last 60 days.
+**Status:**
+- Only the data layer exists. **The UI (Phase 2) and the Coach/answer layer (Phase 3) are not built yet.**
+- The Coach tab, scoring and dashboard are unchanged.
+- No Anthropic calls are made yet. `explore_answers` (see DATA MODEL) exists, but nothing reads or writes it.
+
+### Files
+- `lib/explore/series.ts` — pure. Holds the variable keys, the raw daily series keyed by chart date (already shifted), the bedtime and last-meal minute encodings with their HH:MM inverses, and the GLP-1 injection info.
+- `lib/explore/normalise.ts` — pure. Robust z-scores per variable per chart date.
+- `lib/explore/highlights.ts` — pure and client-safe. `computeHighlights(points, selected)` finds outliers and coincidences for the current 1–3 selected variables and throws a RangeError for any other count.
+- `lib/explore/fetch.ts` — server-only, uses `supaAdmin()`. `loadExploreData()` loads three inputs and runs the pure functions:
+  - all `daily_entries` with sessions, via `loadAllEntries(supaAdmin())`;
+  - `meal_logs.logged_at` from 30 days before the window, filtered by `nutritionUserId()`;
+  - all `glp1_injections` dates.
+- `app/api/explore/route.ts` — `GET /api/explore`, `dynamic = 'force-dynamic'`, `revalidate = 0`.
+- `lib/explore/explore.test.ts` — vitest.
+- `berlinParts()` in `lib/nutrition.ts` is now exported, so last-meal time of day uses the same Berlin clock as `dayKeyFromTimestamp()`.
+
+### Variables (keys)
+| Key | Source | Encoding | Shift |
+|---|---|---|---|
+| `hrv` | daily_entries.hrv (wake date) | ms | none |
+| `rhr` | daily_entries.rhr (wake date) | bpm | none |
+| `sleep_duration` | daily_entries.sleep_duration_min (naps excluded) | minutes | none |
+| `bedtime` | daily_entries.bedtime | minutes since midnight − 720, mod 1440 (noon-centred, as in `getBedtimeRolling30DayAvg()`): 23:30 = 690, 00:15 = 735 | none |
+| `training_stress` | daily TSU (`computeDailyTSU()`, via the `tsu` from `computeTrainingLoadHistory()`) | TSU | day D plotted on **D+1** |
+| `load_ratio` | `ratio` from `computeTrainingLoadHistory()` over the **full** entry history, so the EWMA is correct | ratio | none; a null ratio means no value |
+| `last_meal` | latest `meal_logs.logged_at` per app day (`dayKeyFromTimestamp()`, 05:00 Berlin boundary, photo estimates included) | minutes after 05:00 Berlin: 21:00 = 960, 00:30 = 1170 | app day D plotted on **D+1**; no meals means no value |
+
+- **Training stress on rest days:** `computeTrainingLoadHistory()` fills every date between the first and last entry. Days with no entry row count as 0 TSU, so they plot as 0, not as gaps. This matches the EWMA.
+- **Known limit:** sessions load only for dates that have a daily_entries row, as with `loadAllEntries`. `loadSessionsForDates()` logs errors and returns `{}`, so a failed sessions query reads as zero training.
+- **GLP-1 is not a chart variable.** The data includes the injection dates inside the window and a per-date `daysSinceInjection`. That is the number of days since the most recent injection on or before the date, with the injection day itself as 0. It is null when there was no injection in the preceding 14 days (`GLP1_LOOKBACK_DAYS`); day 14 still gets a number.
+
+### Normalisation (per variable, per chart date, on the already-shifted series)
+- **Baseline:** values from the `BASELINE_WINDOW_DAYS = 28` calendar days before the chart date (the date itself is excluded). Nulls and sick-flagged dates (`daily_entries.is_sick`) are skipped.
+- **Oura cutoff:** for `hrv`, `rhr`, `sleep_duration` and `bedtime`, baseline values only count from `OURA_START_DATE` (2026-09-17) onward. Chart dates before it keep their raw value but get no z-score.
+- **Minimum:** a z-score needs at least `BASELINE_MIN_VALUES = 20` baseline values.
+- **Formula:** `z = (value − median) / (1.4826 × MAD)` (`MAD_SCALE`).
+  - If MAD = 0, the scale falls back to `1.2533 × mean absolute deviation from the median` (`MEAN_AD_SCALE`).
+  - If that is also 0, z = null.
+- **Sick chart dates** get no values and no z-scores for any variable.
+
+### Highlights (computed client-side for the current selection, not by the route)
+- **Outlier:** a selected variable with |z| > `OUTLIER_Z` (2) on a date.
+- **Coincidence:** a date where at least `COINCIDENCE_MIN_VARIABLES` (2) selected variables have |z| > `COINCIDENCE_Z` (1), in any direction.
+- **Returns:** `{ outliers, coincidences, outlierCount, coincidenceCount }`. Selection is 1–`MAX_SELECTED_VARIABLES` (3).
+
+### Route shape — `GET /api/explore`
+The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin calendar date).
+```
+{
+  startDate, endDate,
+  injectionDates: string[],            // glp1_injections dates inside the window
+  dates: [{
+    date, isSick, daysSinceInjection,  // number | null
+    variables: {
+      <key>: { value: number | null,   // ms / bpm / minutes / TSU / ratio / encoded minutes
+               display: string | null, // Berlin "HH:MM" for bedtime and last_meal, else null
+               z: number | null }
+    }                                   // all seven keys, always present
+  }]
+}
+```
+- **Errors:** 500 with `{ error }`. PostgrestError fields are walked one by one with the same `describe()` helper as `app/api/nutrition/food-item/route.ts`.
+- **Verification:** not yet run against live data. Local `.env.local` has no `SUPABASE_SERVICE_ROLE_KEY`, so check it on the branch preview.
+
+---
+
 ## TRAINING LOAD
 
 ### Computation (lib/trainingLoad.ts — pure module, no Supabase calls)
@@ -1096,6 +1174,32 @@ Stores Web Push device subscriptions for server-initiated notifications.
   ```
 - **Single-use refresh tokens:** every refresh writes the new access_token AND the new refresh_token in one update. Losing the new refresh token means reconnecting via `/api/oura/connect`.
 - **Ownership lock:** the OAuth callback refuses to overwrite this row if the authorizing Oura account's id differs from the stored `oura_user_id`. To deliberately switch accounts, delete the row in Supabase first.
+
+### `explore_answers` (added Oct 28, 2026 — Explore tab, Phase 1)
+
+- **Columns:**
+  - id (uuid PK, `gen_random_uuid()`), user_id (text NOT NULL, default 'julie'), cache_key (text NOT NULL), question (text NOT NULL), variables (text[] NOT NULL);
+  - focus_date (date, nullable), data_hash (text NOT NULL), answer (text NOT NULL), model (text NOT NULL), created_at (timestamptz NOT NULL, default now());
+  - unique constraint `explore_answers_user_cache_key` on (user_id, cache_key).
+- **Purpose:** caches Coach-layer answers about the Explore chart (Phase 3). `data_hash` lets an answer be invalidated when the underlying data changes.
+- **Not read or written by any code yet.** Phase 3 will access it via `supaAdmin()`.
+- **Migration — run by Julie in the Supabase SQL editor, before Oct 28, 2026.** It follows the "new public tables" rule: RLS on with no policies, service_role only.
+  ```sql
+  create table if not exists public.explore_answers (
+    id uuid primary key default gen_random_uuid(),
+    user_id text not null default 'julie',
+    cache_key text not null,
+    question text not null,
+    variables text[] not null,
+    focus_date date,
+    data_hash text not null,
+    answer text not null,
+    model text not null,
+    created_at timestamptz not null default now(),
+    constraint explore_answers_user_cache_key unique (user_id, cache_key)
+  );
+  -- RLS enabled, no policies; anon/authenticated revoked; service_role granted select/insert/update/delete.
+  ```
 
 ### `user_profiles`
 
