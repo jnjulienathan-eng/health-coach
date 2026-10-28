@@ -288,7 +288,7 @@ export default function ExploreTab() {
   const header = day
     ? fmtShortDate(day.date)
       + (injectionDates.has(day.date) ? ' · injection' : '')
-      + (coincidenceDates.has(day.date) ? ' · two variables off together' : '')
+      + (coincidenceDates.has(day.date) ? ' · off together' : '')
       + (day.isSick ? ' · sick day' : '')
     : ''
 
