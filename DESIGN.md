@@ -422,7 +422,13 @@ Full layout and behaviour: BODYCIPHER.md → EXPLORE → UI.
 
 - **Chips:** pill (`--radius-full`), 1px `--color-border`, and a 10px colour square that is filled with the series colour when selected and an empty muted outline when not. A selected chip has a `--color-navy` border and primary text.
 - **Series colours:** `--color-series-blue` → `-orange` → `-green` in selection order. When one is removed, the rest move up.
-- **Readout:** a standard card with a muted date header, and rows at 16px with the value right-aligned. Notes ("(prev. day)", "· week typical", "· week above usual", "· week below usual") are 12px muted. The variable name never wraps; at 375px the week note drops under the value.
+- **Readout:** a standard card with a muted date header (date · tags · injection · off together), and rows at 16px with the value right-aligned.
+  - **Notes** are 12px muted: "(prev. day)" after the name, and under the value on its own right-aligned line "in line with last month", "above last month", "below last month" or "not enough history yet". The variable name never wraps.
+  - **Tag controls:**
+    - a small row at the bottom of the card, above a 1px `--color-border-subtle` divider;
+    - text links at 14px/600 in `--color-text-primary` — "Add tag", "Rename Sick", "Edit", "Delete" — with the destructive confirm "Delete" in `--color-danger`;
+    - an existing manual tag shows as "Covid · 20–26 Oct" in `--color-text-secondary`.
+  - **Inline tag form:** a 12px/600 secondary field label above each field. Inputs are 16px (no iOS zoom), min-height 40px, 1px `--color-border`, `--radius-md`. Start / End dates sit in a 2-column grid. Save / Cancel are text links. Errors are 14px `--color-danger` under the form.
 - **Legend** (12px `--color-text-secondary`, above the chart): a short 2px line "7-day average", a faint dot "Daily value", a small dashed rounded box "Off together", a downward triangle "Injection".
 - **Chart** (redesign, Oct 28, 2026):
   - 250px tall z-score chart, fixed −3.5…+3.5, with a typical band −1…+1 in `--color-navy-tint` and 1px `--color-border-subtle` grid lines.
@@ -430,6 +436,12 @@ Full layout and behaviour: BODYCIPHER.md → EXPLORE → UI.
   - **Daily dots:** daily values are faint dots (2px radius, 35% opacity) in the same colour, behind the line.
   - **Off together:** stretches are rounded rectangles (6px radius) with a dashed `--color-text-secondary` outline and a very light fill, full plot height, behind dots and lines. There is no amber shading and there are no outlier dots on this chart any more.
   - **Injection triangles** use `--color-text-secondary`.
+  - **Tag lane** (Phase 2b), along the top of the chart above the injection triangles:
+    - **Bars:** rounded (14px tall, 4px radius) across each tag's dates, with a 10px/600 label inside, ellipsis-truncated.
+    - **Manual tags:** filled `--color-text-secondary` with `--color-surface` text.
+    - **Automatic tags (Sick / Travel):** the same shape, outlined — surface fill, `--color-text-secondary` 1px stroke and text.
+    - **Stacking:** overlapping tags stack in a second row.
+    - **Interaction:** tags are not separately tappable.
 
 ## Coach Tab — REMOVED (Oct 28, 2026)
 

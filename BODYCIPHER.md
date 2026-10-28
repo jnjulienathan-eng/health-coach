@@ -1,6 +1,20 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 28, 2026 (Session: Explore chart redesign, branch `feat/explore-ui`, from a mockup Julie approved). On real data the daily lines were too jagged to read, even with the stricter 2.5 / 1.5 highlight thresholds.
+_Last updated: October 28, 2026 (Session: Explore Phase 2b — tags, branch `feat/explore-tags`). Julie can label days or stretches herself (e.g. "Covid", 20–26 Oct), and the app derives automatic "Sick" / "Travel" tags from the Context toggles.
+- **New table:** `explore_tags` (migration run by Julie; see DATA MODEL).
+- **New modules:** `lib/explore/tags.ts` (pure: `deriveAutoTags`, `visibleAutoTags`, `validateTag`) and `lib/explore/tagsDb.ts`.
+- **New routes:** `POST /api/explore/tags`, and `PATCH` / `DELETE /api/explore/tags/[id]`.
+- **`GET /api/explore`:** adds per-date `isTravelling` and a `tags` list.
+- **Chart:** a tag lane above the injection triangles.
+- **Readout:**
+  - the header lists that day's tags, and " · sick day" is removed;
+  - tag controls: Add / Rename / Edit / Delete;
+  - week notes reworded to "in line with / above / below last month";
+  - " · not enough history yet" restored.
+- **Tests:** 43.
+- **Unchanged:** normalisation, trend and stretch logic, scoring and the dashboard. No Anthropic calls; the coach reads tags in Phase 3.
+See EXPLORE → Tags and DATA MODEL → `explore_tags`._
+_Previous update: October 28, 2026 (Session: Explore chart redesign, branch `feat/explore-ui`, from a mockup Julie approved). On real data the daily lines were too jagged to read, even with the stricter 2.5 / 1.5 highlight thresholds.
 - **Trends:** each variable is now drawn as a 7-day average trend line over faint daily z-score dots. New `lib/explore/trends.ts` provides `rollingAverage` and `findStretches` (`ROLLING_WINDOW` 7, `ROLLING_MIN_VALUES` 4, `STRETCH_Z` 0.8, `STRETCH_MIN_DAYS` 3).
 - **Stretches:** a dashed box marks each run of 3+ days where 2+ selected variables' 7-day averages stay beyond ±0.8. The amber coincidence columns and outlier dots are removed, because single-day flags on noisy daily data were what made the chart busy.
 - **Readout:** each row gets a week note (typical / above usual / below usual). " · off together" now means the date is inside a stretch. " · outlier" and " · not enough history yet" are removed.
@@ -841,7 +855,8 @@ Self-hosted, single-user, fully stateless OAuth 2.1 + PKCE in front of `/api/mcp
 The Explore tab replaced the Coach tab (tab index 2). It shows a normalised chart of up to three daily variables over the last 60 days.
 **Status:**
 - **Built:** the data layer (Phase 1) and the UI (Phase 2, see "UI" below).
-- **Not built yet:** Phase 3 (coach questions below the count line, Anthropic calls via a server route, `explore_answers` reads and writes) and Phase 4.
+- **Also built:** Phase 2b, tags (see "Tags" below).
+- **Not built yet:** Phase 3 (coach questions below the count line, Anthropic calls via a server route, `explore_answers` reads and writes; **the coach will read tags** — manual and automatic — as context) and Phase 4.
 - No Anthropic calls are made. `explore_answers` (see DATA MODEL) exists, but nothing reads or writes it.
 
 ### Files
@@ -849,11 +864,16 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 - `lib/explore/normalise.ts` — pure. Robust z-scores per variable per chart date.
 - `lib/explore/highlights.ts` — pure and client-safe. `computeHighlights(points, selected)` finds outliers and coincidences for the current 1–3 selected variables and throws a RangeError for any other count. **The chart no longer uses it** (since the Oct 28 redesign). It is kept for Phase 3, which may use outliers in the coach context.
 - `lib/explore/trends.ts` — pure and client-safe. `rollingAverage(values)` and `findStretches(dates, averages, selected)`, used by the chart (see Trends below).
-- `lib/explore/fetch.ts` — server-only, uses `supaAdmin()`. `loadExploreData()` loads three inputs and runs the pure functions:
+- `lib/explore/tags.ts` — pure and client-safe. `deriveAutoTags`, `visibleAutoTags`, `tagsOverlap` and `validateTag`, plus the `ExploreTag` type and `TAG_LABEL_MAX = 40` (see Tags below).
+- `lib/explore/tagsDb.ts` — server-only. `loadManualTags(client)`, `rowToManualTag`, `EXPLORE_TAGS_USER = 'julie'` and the `describe()` error helper.
+- `lib/explore/tags.test.ts` — vitest, for the tag functions.
+- `lib/explore/fetch.ts` — server-only, uses `supaAdmin()`. `loadExploreData()` loads four inputs and runs the pure functions. It also exports `todayBerlin()`, which the tag routes use:
   - all `daily_entries` with sessions, via `loadAllEntries(supaAdmin())`;
   - `meal_logs.logged_at` from 30 days before the window, filtered by `nutritionUserId()`;
-  - all `glp1_injections` dates.
+  - all `glp1_injections` dates;
+  - all manual tags from `explore_tags`.
 - `app/api/explore/route.ts` — `GET /api/explore`, `dynamic = 'force-dynamic'`, `revalidate = 0`.
+- `app/api/explore/tags/route.ts` (POST) and `app/api/explore/tags/[id]/route.ts` (PATCH, DELETE) — manual tags, service role, `force-dynamic`.
 - `lib/explore/explore.test.ts` — vitest.
 - `berlinParts()` in `lib/nutrition.ts` is now exported, so last-meal time of day uses the same Berlin clock as `dayKeyFromTimestamp()`.
 
@@ -895,14 +915,37 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 - **Why 2.5 / 1.5 (changed Oct 28, 2026, from 2 / 1):** on real data the original thresholds flagged roughly a third of days (23 outliers and 18 coincidence days in 60 days), which made the chart too busy to read. The chart's typical band stays at ±1; it is a visual reference, not a highlight threshold.
 - **Returns:** `{ outliers, coincidences, outlierCount, coincidenceCount }`. Selection is 1–`MAX_SELECTED_VARIABLES` (3).
 
+### Tags (Phase 2b, Oct 28, 2026)
+Tags label days or stretches on the chart. Each tag is `{ id?, label, start, end, source }`, with inclusive `YYYY-MM-DD` dates and `source` 'manual' | 'sick' | 'travel'.
+- **Manual tags:** Julie's own labels (e.g. "Covid", 20–26 Oct), stored in `explore_tags` under `user_id = 'julie'`. Manual tags never overlap each other.
+- **Automatic tags** (`deriveAutoTags`): derived on every request from the full `daily_entries` history, never stored.
+  - Each run of consecutive calendar dates with `context.is_sick` true becomes one "Sick" tag; each run with `context.travelling` true becomes one "Travel" tag.
+  - A missing date (no row) or an unflagged day breaks a run.
+  - Because the history is full, a run that began before the window keeps its real start date.
+- **Hiding rule** (`visibleAutoTags`): an automatic tag is hidden if any manual tag overlaps any of its dates. Renaming Sick to "Flu" therefore hides both the Sick tag and any Travel tag it overlaps.
+- **In `GET /api/explore`:** `tags` holds every manual tag plus every visible automatic tag that overlaps the 60-day window, sorted by start.
+- **Routes** (service role, `force-dynamic`):
+  - `POST /api/explore/tags { label, start, end }` → 201 with the tag.
+  - `PATCH /api/explore/tags/[id]`: any of label, start, end. It merges the change onto the stored tag, re-validates and sets `updated_at`.
+  - `DELETE /api/explore/tags/[id]` → `{ ok: true }`.
+  - A malformed or unknown id → 404. Other failures → 500 `{ error }` (via `describe()`).
+- **Validation** (`validateTag`, used by POST and PATCH): every failure is a 400, except an overlap.
+  - The label is trimmed and must be 1–`TAG_LABEL_MAX` (40) characters.
+  - Both dates must be valid `YYYY-MM-DD`; start must be on or before end; end must not be after today (Berlin).
+  - The tag must not overlap another manual tag (PATCH excludes the tag itself). An overlap returns **409** with `overlap: { id, label, start, end }`, so the UI can name the other tag.
+- **Phase 3:** the coach will read tags (manual and automatic) as context. Nothing reads them server-side yet beyond the chart.
+
 ### Route shape — `GET /api/explore`
 The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin calendar date).
 ```
 {
   startDate, endDate,
   injectionDates: string[],            // glp1_injections dates inside the window
+  tags: [{ id?, label, start, end,     // manual tags + visible automatic tags overlapping the window,
+           source }],                  // sorted by start; source 'manual' | 'sick' | 'travel'; id on manual only
   dates: [{
-    date, isSick, daysSinceInjection,  // number | null
+    date, isSick, isTravelling,        // context.is_sick / context.travelling
+    daysSinceInjection,                // number | null
     variables: {
       <key>: { value: number | null,   // ms / bpm / minutes / TSU / ratio / encoded minutes
                display: string | null, // Berlin "HH:MM" for bedtime and last_meal, else null
@@ -916,7 +959,7 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
 
 ### UI (Phase 2) — `components/ExploreTab.tsx`
 **Data:**
-- Fetches `GET /api/explore` once on mount (`cache: 'no-store'`).
+- Fetches `GET /api/explore` once on mount (`cache: 'no-store'`). After any tag save or delete it fetches again and re-selects the same day.
 - Loading shows the small dim "LOADING" label the dashboard history uses. An error shows a red 14px line ("Failed to load Explore data: <status>").
 - For the current selection, the tab computes each variable's 7-day average with `rollingAverage()` over the day-ordered z-scores, and the stretches with `findStretches()`. `computeHighlights()` is no longer called by the UI.
 
@@ -928,13 +971,25 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
    - Tapping a selected chip removes it, and all chips may be deselected.
 3. **Colours:** follow selection order — 1st `--color-series-blue`, 2nd `--color-series-orange`, 3rd `--color-series-green`. When a variable is removed, the rest move up and take their new colours.
 4. **Readout box** (card) for the selected day, which defaults to the latest date:
-   - **Header line** (muted): "27 Oct", plus " · injection" on an injection day, " · off together" when the date falls inside a stretch, and " · sick day" on a sick-flagged day.
+   - **Header line** (muted): "27 Oct", then each tag covering that date (" · Covid", " · Sick · Travel"), then " · injection" and " · off together" (inside a stretch) as applicable. " · sick day" was removed in Phase 2b; the Sick tag replaces it.
    - **Rows:** one per selected variable — colour square and name on the left, value on the right.
      - Training stress carries a muted "(prev. day)" note after its name; Last meal carries "(prev. evening)".
      - Values: HRV `N ms`, RHR `N bpm`, Sleep `Xh Ym`, Bedtime / Last meal `HH:MM` (the route's `display`), Training stress a whole number, Load ratio to 2 decimals.
-     - After the value, a 12px muted week note from that variable's 7-day average on that date: " · week typical" (within ±0.8), " · week above usual" (> +0.8) or " · week below usual" (< −0.8). There is no note when the average is null. At 375px the variable name stays on one line and the note wraps under the value.
+     - **Week note** (reworded in Phase 2b): a 12px muted note from that variable's 7-day average on that date — "in line with last month" (within ±0.8), "above last month" (> +0.8) or "below last month" (< −0.8). There is no note when the average is null.
+       - It sits on its own right-aligned line under the value, without the leading "·", so the longer wording never pushes the value out of the card at 375px. The variable name stays on one line.
+       - The baseline it compares against is the previous 28 days ("last month").
+     - A value with no z-score shows "not enough history yet" in place of the week note (restored in Phase 2b).
      - No value shows "No data". Sick days show their real values like any other day.
-     - Removed Oct 28, 2026: " · outlier" (outlier dots are gone from the chart) and " · not enough history yet" (the brief says no note when the average is null).
+     - " · outlier" was removed in the Oct 28 redesign, along with the chart's outlier dots.
+   - **Tag controls** (Phase 2b): a small row at the bottom of the readout, below a subtle divider.
+     - **No manual tag on the day:** an "Add tag" link, plus "Rename Sick" / "Rename Travel" for each automatic tag covering the day.
+     - **A manual tag covers the day:** "Covid · 20–26 Oct" with Edit and Delete links. Dates read "20–26 Oct", "28 Sep – 3 Oct", or "20 Oct" for a single day.
+     - **Inline form** (Add, Edit and Rename open it inside the readout):
+       - fields: a label (`maxLength` 40) and native start / end date inputs, side by side (`max` = today), then Save / Cancel;
+       - defaults: Add sets both dates to the selected day; Rename pre-fills the automatic tag's label and dates and saves a **new manual tag** (which then hides the automatic one); Edit PATCHes the manual tag.
+     - **Delete** asks inline: "Delete this tag?" with Delete / Cancel.
+     - **Errors** show inline under the form in the app's error style (14px `--color-danger`). On a 409: `Overlaps "Covid" (20–26 Oct). Edit that tag instead.`
+     - Selecting another day closes any open form or confirm.
    - With nothing selected the box shows "Pick a variable to start."
 5. **Legend** (12px secondary): short line "7-day average", faint dot "Daily value", small dashed box "Off together", downward triangle "Injection". At 375px "Injection" wraps to a second line.
 6. **Chart:** hand-rolled SVG, like the dashboard charts (no chart library), 250px tall, width measured with a ResizeObserver.
@@ -945,6 +1000,13 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
    - **Stretches:** a rounded rectangle (rx 6) for each stretch, spanning the full plot height across its dates. It has a dashed `--color-text-secondary` outline and a very light fill (6%), drawn behind the dots and lines.
    - **Removed Oct 28, 2026:** the amber coincidence columns and the outlier dots. On real data, single-day flags on jagged daily values made the chart too busy (even at 2.5 / 1.5). Sustained stretches on the 7-day averages show the same "off together" story with far less noise.
    - **GLP-1 injections:** small downward triangles along the top edge.
+   - **Tag lane** (Phase 2b): along the top of the chart, above the injection triangles.
+     - **Bars:** each tag is a rounded bar (14px tall, rx 4) spanning its dates, clipped to the window. The label sits inside in 10px/600 text, truncated with "…" (canvas-measured) when it doesn't fit.
+     - **Styles:** manual tags are filled `--color-text-secondary` with `--color-surface` text; automatic tags are outlined (surface fill, `--color-text-secondary` stroke and text).
+     - **Stacking:** overlapping tags (only Sick + Travel can overlap) stack in a second row, by greedy row assignment.
+     - **Height:** the lane adds 17px per row to the chart, and nothing when there are no tags.
+     - **Not tappable:** tapping the lane still selects the nearest day.
+     - **Short tags:** over 60 days a day is about 5px wide at 375px, so a tag shorter than about a week shows as an unlabelled bar. The readout header names it.
    - **Selecting a day:** tap or drag (pointer capture, `touch-action: pan-y`, text selection off) picks the nearest day column. A thin vertical line marks it and the readout updates. There is no tooltip.
 7. **Count line** (secondary): "N stretches off together in this window" ("1 stretch" when singular). It is hidden when fewer than two variables are selected, since a stretch needs two.
 8. The space below the count line is left empty for the Phase 3 coach questions.
@@ -956,6 +1018,11 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
 **Verification:**
 - Phase 2: checked at 375px against a synthetic `/api/explore` response injected in the browser. It covered the chips, the 4-variable limit, colour shifting, readout cases, tap and drag, the empty state, the error state and resetting on reopen.
 - Redesign: checked the same way with a 9-day two-variable stretch, a 6-day gap, a sick day with values, the first date (partial window) and a single selected variable (no box, no count line).
+- Phase 2b (tags): checked at 375px with synthetic data and all four tag endpoints mocked in the browser (in-memory store, automatic-tag hiding, 409 on overlap). It covered:
+  - display: a manual multi-day tag, an automatic Sick run, Sick + Travel on the same days (stacked), a Travel run hidden by a manual tag, and a long label truncated;
+  - flows: Add, Edit, Rename (Sick → "Flu", which also hid the overlapping Travel run), Delete with confirm (the hidden Travel run reappeared), and the overlap error;
+  - the restored history note.
+  - The real routes were smoke-tested locally up to the DB call: invalid JSON → 400, a bad id → 404.
 - Not yet checked against live data (no service-role key locally) — open the tab on the branch preview.
 
 ---
@@ -1274,6 +1341,32 @@ Stores Web Push device subscriptions for server-initiated notifications.
     model text not null,
     created_at timestamptz not null default now(),
     constraint explore_answers_user_cache_key unique (user_id, cache_key)
+  );
+  -- RLS enabled, no policies; anon/authenticated revoked; service_role granted select/insert/update/delete.
+  ```
+
+### `explore_tags` (added Oct 28, 2026 — Explore Phase 2b, tags)
+
+- **Columns:**
+  - id (uuid PK, `gen_random_uuid()`), user_id (text NOT NULL, default 'julie'), start_date (date NOT NULL), end_date (date NOT NULL);
+  - label (text NOT NULL), created_at (timestamptz NOT NULL, default now()), updated_at (timestamptz NOT NULL, default now());
+  - check `explore_tags_dates`: end_date ≥ start_date;
+  - check `explore_tags_label`: `char_length(trim(label))` between 1 and 40.
+- **Purpose:** Julie's **manual** Explore tags only. Automatic Sick / Travel tags are derived from `daily_entries` on every request and never stored.
+- **Access:** read by `loadManualTags()` (`lib/explore/tagsDb.ts`) for `GET /api/explore`; written by `POST /api/explore/tags` and `PATCH` / `DELETE /api/explore/tags/[id]`, all via `supaAdmin()`.
+- **App-level rules:** `updated_at` is set explicitly on PATCH. "No overlap between manual tags" and "end not after today" are enforced in `validateTag()`, not by the database.
+- **Migration — run by Julie in the Supabase SQL editor, before Oct 28, 2026.** It follows the "new public tables" rule: RLS on with no policies, service_role only.
+  ```sql
+  create table if not exists public.explore_tags (
+    id uuid primary key default gen_random_uuid(),
+    user_id text not null default 'julie',
+    start_date date not null,
+    end_date date not null,
+    label text not null,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint explore_tags_dates check (end_date >= start_date),
+    constraint explore_tags_label check (char_length(trim(label)) between 1 and 40)
   );
   -- RLS enabled, no policies; anon/authenticated revoked; service_role granted select/insert/update/delete.
   ```
