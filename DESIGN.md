@@ -422,8 +422,14 @@ Full layout and behaviour: BODYCIPHER.md → EXPLORE → UI.
 
 - **Chips:** pill (`--radius-full`), 1px `--color-border`, and a 10px colour square that is filled with the series colour when selected and an empty muted outline when not. A selected chip has a `--color-navy` border and primary text.
 - **Series colours:** `--color-series-blue` → `-orange` → `-green` in selection order. When one is removed, the rest move up.
-- **Readout:** a standard card with a muted date header, and rows at 16px with the value right-aligned. Notes ("(prev. day)", "· outlier", "· not enough history yet") are 12px muted.
-- **Chart:** z-score line chart, 250px tall, fixed −3.5…+3.5, with a typical band −1…+1 in `--color-navy-tint` and 1px `--color-border-subtle` grid lines. "Off together" days use amber column shading (amber is the accent, not a warning). Injection triangles use `--color-text-secondary`.
+- **Readout:** a standard card with a muted date header, and rows at 16px with the value right-aligned. Notes ("(prev. day)", "· week typical", "· week above usual", "· week below usual") are 12px muted. The variable name never wraps; at 375px the week note drops under the value.
+- **Legend** (12px `--color-text-secondary`, above the chart): a short 2px line "7-day average", a faint dot "Daily value", a small dashed rounded box "Off together", a downward triangle "Injection".
+- **Chart** (redesign, Oct 28, 2026):
+  - 250px tall z-score chart, fixed −3.5…+3.5, with a typical band −1…+1 in `--color-navy-tint` and 1px `--color-border-subtle` grid lines.
+  - **Trend lines:** each variable is a 2px solid line of its 7-day average in its series colour, drawn as straight segments with gaps.
+  - **Daily dots:** daily values are faint dots (2px radius, 35% opacity) in the same colour, behind the line.
+  - **Off together:** stretches are rounded rectangles (6px radius) with a dashed `--color-text-secondary` outline and a very light fill, full plot height, behind dots and lines. There is no amber shading and there are no outlier dots on this chart any more.
+  - **Injection triangles** use `--color-text-secondary`.
 
 ## Coach Tab — REMOVED (Oct 28, 2026)
 

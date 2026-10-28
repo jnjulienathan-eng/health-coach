@@ -1,6 +1,14 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 28, 2026 (Session: Explore chart tuning, branch `feat/explore-ui`). On real data the chart was too busy: 23 outliers and 18 coincidence days in 60 days, roughly a third of days flagged. The smoothed lines also overshot between daily values.
+_Last updated: October 28, 2026 (Session: Explore chart redesign, branch `feat/explore-ui`, from a mockup Julie approved). On real data the daily lines were too jagged to read, even with the stricter 2.5 / 1.5 highlight thresholds.
+- **Trends:** each variable is now drawn as a 7-day average trend line over faint daily z-score dots. New `lib/explore/trends.ts` provides `rollingAverage` and `findStretches` (`ROLLING_WINDOW` 7, `ROLLING_MIN_VALUES` 4, `STRETCH_Z` 0.8, `STRETCH_MIN_DAYS` 3).
+- **Stretches:** a dashed box marks each run of 3+ days where 2+ selected variables' 7-day averages stay beyond ±0.8. The amber coincidence columns and outlier dots are removed, because single-day flags on noisy daily data were what made the chart busy.
+- **Readout:** each row gets a week note (typical / above usual / below usual). " · off together" now means the date is inside a stretch. " · outlier" and " · not enough history yet" are removed.
+- **Count line:** "N stretches off together in this window".
+- **Sick days:** now keep their values and z-scores and are drawn like any other day. They are still excluded from every 28-day baseline.
+- **Unchanged:** `computeHighlights` and its tests stay, because Phase 3 may use outliers in the coach context. Tests: 29.
+See EXPLORE → Trends and UI._
+_Previous update: October 28, 2026 (Session: Explore chart tuning, branch `feat/explore-ui`). On real data the chart was too busy: 23 outliers and 18 coincidence days in 60 days, roughly a third of days flagged. The smoothed lines also overshot between daily values.
 - **Thresholds:** `OUTLIER_Z` 2 → **2.5** and `COINCIDENCE_Z` 1 → **1.5** (`lib/explore/highlights.ts`). The readout's " · outlier" uses the same 2.5. The chart's typical band stays at ±1.
 - **Lines:** straight segments between daily points, no smoothing. Gaps on null z are unchanged.
 - **Tests:** the highlight tests were updated for the new values, and boundary tests were added at exactly 2.5 and 1.5 (20 tests).
@@ -839,7 +847,8 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 ### Files
 - `lib/explore/series.ts` — pure. Holds the variable keys, the raw daily series keyed by chart date (already shifted), the bedtime and last-meal minute encodings with their HH:MM inverses, and the GLP-1 injection info.
 - `lib/explore/normalise.ts` — pure. Robust z-scores per variable per chart date.
-- `lib/explore/highlights.ts` — pure and client-safe. `computeHighlights(points, selected)` finds outliers and coincidences for the current 1–3 selected variables and throws a RangeError for any other count.
+- `lib/explore/highlights.ts` — pure and client-safe. `computeHighlights(points, selected)` finds outliers and coincidences for the current 1–3 selected variables and throws a RangeError for any other count. **The chart no longer uses it** (since the Oct 28 redesign). It is kept for Phase 3, which may use outliers in the coach context.
+- `lib/explore/trends.ts` — pure and client-safe. `rollingAverage(values)` and `findStretches(dates, averages, selected)`, used by the chart (see Trends below).
 - `lib/explore/fetch.ts` — server-only, uses `supaAdmin()`. `loadExploreData()` loads three inputs and runs the pure functions:
   - all `daily_entries` with sessions, via `loadAllEntries(supaAdmin())`;
   - `meal_logs.logged_at` from 30 days before the window, filtered by `nutritionUserId()`;
@@ -870,9 +879,17 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 - **Formula:** `z = (value − median) / (1.4826 × MAD)` (`MAD_SCALE`).
   - If MAD = 0, the scale falls back to `1.2533 × mean absolute deviation from the median` (`MEAN_AD_SCALE`).
   - If that is also 0, z = null.
-- **Sick chart dates** get no values and no z-scores for any variable.
+- **Sick chart dates** (changed Oct 28, 2026) keep their values and z-scores and are drawn like any other day, flagged with `isSick`. They are still excluded from every baseline (the previous-28-days window), so illness doesn't shift "usual". Before this change, sick dates were blanked entirely.
 
-### Highlights (computed client-side for the current selection, not by the route)
+### Trends and stretches (`lib/explore/trends.ts`, computed client-side for the current selection)
+- **`rollingAverage`:** for each chart date, the mean of the z-scores in a centred `ROLLING_WINDOW = 7` window (the date plus 3 days either side), skipping nulls.
+  - It is null when the window has fewer than `ROLLING_MIN_VALUES = 4` values.
+  - At the start and end of the 60-day range, only the part of the window inside the range is used, with the same 4-value minimum.
+- **`findStretches`:** a date is flagged when at least `STRETCH_MIN_VARIABLES = 2` selected variables have a 7-day average beyond ±`STRETCH_Z = 0.8`, in either direction. Exactly 0.8 doesn't count, and a null average never counts.
+  - Runs of at least `STRETCH_MIN_DAYS = 3` consecutive flagged dates are returned as `{ start, end }`. One unflagged day splits a run.
+  - With fewer than 2 selected variables there are no stretches. More than 3 throws a RangeError.
+
+### Highlights (`computeHighlights` — not drawn since the Oct 28 redesign; kept for Phase 3)
 - **Outlier:** a selected variable with |z| > `OUTLIER_Z` (**2.5**) on a date. Exactly 2.5 is not an outlier.
 - **Coincidence:** a date where at least `COINCIDENCE_MIN_VARIABLES` (2) selected variables have |z| > `COINCIDENCE_Z` (**1.5**), in any direction. Exactly 1.5 does not count.
 - **Why 2.5 / 1.5 (changed Oct 28, 2026, from 2 / 1):** on real data the original thresholds flagged roughly a third of days (23 outliers and 18 coincidence days in 60 days), which made the chart too busy to read. The chart's typical band stays at ±1; it is a visual reference, not a highlight threshold.
@@ -901,7 +918,7 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
 **Data:**
 - Fetches `GET /api/explore` once on mount (`cache: 'no-store'`).
 - Loading shows the small dim "LOADING" label the dashboard history uses. An error shows a red 14px line ("Failed to load Explore data: <status>").
-- Highlights come from `computeHighlights()` for the current selection, and are skipped when nothing is selected. The route nests z inside `variables`, so the tab maps it to `{ date, z }` first. `lib/explore` is unchanged.
+- For the current selection, the tab computes each variable's 7-day average with `rollingAverage()` over the day-ordered z-scores, and the stretches with `findStretches()`. `computeHighlights()` is no longer called by the UI.
 
 **Layout, top to bottom (mobile-first, 375px):**
 1. **Header:** "Explore" on the left, "Last 60 days" on the right (secondary text).
@@ -911,30 +928,35 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
    - Tapping a selected chip removes it, and all chips may be deselected.
 3. **Colours:** follow selection order — 1st `--color-series-blue`, 2nd `--color-series-orange`, 3rd `--color-series-green`. When a variable is removed, the rest move up and take their new colours.
 4. **Readout box** (card) for the selected day, which defaults to the latest date:
-   - **Header line** (muted): "27 Oct", plus " · injection" on an injection day, " · off together" on a coincidence day and " · sick day" on a sick-flagged day. "Off together" matches the legend and stays accurate when all three variables are off.
+   - **Header line** (muted): "27 Oct", plus " · injection" on an injection day, " · off together" when the date falls inside a stretch, and " · sick day" on a sick-flagged day.
    - **Rows:** one per selected variable — colour square and name on the left, value on the right.
      - Training stress carries a muted "(prev. day)" note after its name; Last meal carries "(prev. evening)".
      - Values: HRV `N ms`, RHR `N bpm`, Sleep `Xh Ym`, Bedtime / Last meal `HH:MM` (the route's `display`), Training stress a whole number, Load ratio to 2 decimals.
-     - " · outlier" (muted) is added when |z| > `OUTLIER_Z` (2.5), the same threshold as the chart's outlier dots.
-     - A value with a null z gets " · not enough history yet". No value shows "No data". Sick days show "No data" for every row.
+     - After the value, a 12px muted week note from that variable's 7-day average on that date: " · week typical" (within ±0.8), " · week above usual" (> +0.8) or " · week below usual" (< −0.8). There is no note when the average is null. At 375px the variable name stays on one line and the note wraps under the value.
+     - No value shows "No data". Sick days show their real values like any other day.
+     - Removed Oct 28, 2026: " · outlier" (outlier dots are gone from the chart) and " · not enough history yet" (the brief says no note when the average is null).
    - With nothing selected the box shows "Pick a variable to start."
-5. **Legend** (12px secondary): amber square "Off together", dot "Outlier", downward triangle "Injection".
+5. **Legend** (12px secondary): short line "7-day average", faint dot "Daily value", small dashed box "Off together", downward triangle "Injection". At 375px "Injection" wraps to a second line.
 6. **Chart:** hand-rolled SVG, like the dashboard charts (no chart library), 250px tall, width measured with a ResizeObserver.
    - **Axes:** x is the 60 dates, with at most 5 labels ("30 Aug"). y is the z-score on a fixed −3.5…+3.5 scale; values beyond are clamped to the edge. Ticks read "typical" at 0 and +1…+3 / −1…−3, with light grid lines.
    - **Typical band:** −1 to +1, shaded `--color-navy-tint`.
-   - **Lines:** one 2px solid line per selected variable: straight segments between daily points, with no smoothing (changed Oct 28, 2026; the earlier Catmull-Rom smoothing overshot between daily values). Clipped to the plot. A null z breaks the line and is never interpolated across. A lone point is drawn as a small dot.
-   - **Outliers:** a 3.5px filled dot in the variable's colour, drawn outside the clip so dots clamped at the edge stay whole.
-   - **Coincidences:** amber shading (`--color-amber`, 22% opacity) over the whole day column, behind everything.
+   - **Trend lines** (redesign, Oct 28, 2026): one 2px solid line per selected variable in its series colour, drawn through its **7-day average**. Straight segments, with no smoothing beyond the average itself; the earlier Catmull-Rom smoothing overshot. Clipped to the plot. A null average breaks the line and is never interpolated across. A lone point is drawn as a small dot.
+   - **Daily dots:** each daily z-score is a faint dot (r 2, 35% opacity) in the same colour, drawn behind the lines.
+   - **Stretches:** a rounded rectangle (rx 6) for each stretch, spanning the full plot height across its dates. It has a dashed `--color-text-secondary` outline and a very light fill (6%), drawn behind the dots and lines.
+   - **Removed Oct 28, 2026:** the amber coincidence columns and the outlier dots. On real data, single-day flags on jagged daily values made the chart too busy (even at 2.5 / 1.5). Sustained stretches on the 7-day averages show the same "off together" story with far less noise.
    - **GLP-1 injections:** small downward triangles along the top edge.
    - **Selecting a day:** tap or drag (pointer capture, `touch-action: pan-y`, text selection off) picks the nearest day column. A thin vertical line marks it and the readout updates. There is no tooltip.
-7. **Count line** (secondary): "N coincidence days · N outliers in this window", singular when 1, hidden when nothing is selected.
+7. **Count line** (secondary): "N stretches off together in this window" ("1 stretch" when singular). It is hidden when fewer than two variables are selected, since a stretch needs two.
 8. The space below the count line is left empty for the Phase 3 coach questions.
 
 **Defaults:**
 - Selection is HRV, Last meal, Training stress, in that order.
 - It resets to that default every time the tab opens, because the component remounts on tab switch. Nothing is persisted.
 
-**Verification:** checked at 375px against a synthetic `/api/explore` response injected in the browser. It covered the chips, the 4-variable limit, colour shifting, the readout cases (injection, coincidence, sick day, outlier, short history, no data), tap and drag, the empty state, the error state and resetting on reopen. Not yet checked against live data (no service-role key locally) — open the tab on the branch preview.
+**Verification:**
+- Phase 2: checked at 375px against a synthetic `/api/explore` response injected in the browser. It covered the chips, the 4-variable limit, colour shifting, readout cases, tap and drag, the empty state, the error state and resetting on reopen.
+- Redesign: checked the same way with a 9-day two-variable stretch, a 6-day gap, a sick day with values, the first date (partial window) and a single selected variable (no box, no count line).
+- Not yet checked against live data (no service-role key locally) — open the tab on the branch preview.
 
 ---
 
