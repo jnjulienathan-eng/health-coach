@@ -43,7 +43,7 @@ export function nutritionUserId(): string {
 const BERLIN = 'Europe/Berlin'
 const DAY_START_HOUR = 5
 
-function berlinParts(d: Date): { y: number; m: number; d: number; h: number; mi: number; s: number } {
+export function berlinParts(d: Date): { y: number; m: number; d: number; h: number; mi: number; s: number } {
   const fmt = new Intl.DateTimeFormat('en-CA', {
     timeZone: BERLIN,
     year: 'numeric', month: '2-digit', day: '2-digit',
