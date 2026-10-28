@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { emptyEntry, type DailyEntry } from '../types'
 import {
   EXPLORE_VARIABLES, addDays, bedtimeToMinutes, lastMealToMinutes, buildExploreSeries,
-  computeInjectionInfo, type ExploreSeries,
+  computeInjectionInfo, bedtimeMinutesToHHMM, lastMealMinutesToHHMM, type ExploreSeries,
 } from './series'
 import { robustZ, normaliseExplore, MAD_SCALE, MEAN_AD_SCALE, BASELINE_WINDOW_DAYS, BASELINE_MIN_VALUES } from './normalise'
 import { computeHighlights } from './highlights'
@@ -34,6 +34,13 @@ describe('variable encoding', () => {
     expect(lastMealToMinutes('2026-07-10T19:00:00Z')).toBe(960)  // 21:00 CEST
     expect(lastMealToMinutes('2026-07-10T22:30:00Z')).toBe(1170) // 00:30 CEST
     expect(lastMealToMinutes('2026-12-10T20:00:00Z')).toBe(960)  // 21:00 CET
+  })
+
+  it('formats encoded minutes back to Berlin HH:MM', () => {
+    expect(bedtimeMinutesToHHMM(690)).toBe('23:30')
+    expect(bedtimeMinutesToHHMM(735)).toBe('00:15')
+    expect(lastMealMinutesToHHMM(960)).toBe('21:00')
+    expect(lastMealMinutesToHHMM(1170)).toBe('00:30')
   })
 })
 

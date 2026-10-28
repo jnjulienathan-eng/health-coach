@@ -58,6 +58,22 @@ export function lastMealToMinutes(isoTs: string): number {
   return ((p.h * 60 + p.mi) - DAY_START_MINUTES + 1440) % 1440
 }
 
+// ─── Display helpers (inverse of the encodings above) ─────────────
+function hhmm(minutesSinceMidnight: number): string {
+  const m = ((Math.round(minutesSinceMidnight) % 1440) + 1440) % 1440
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
+
+// Noon-centred bedtime minutes → "HH:MM".
+export function bedtimeMinutesToHHMM(mins: number): string {
+  return hhmm(mins + 720)
+}
+
+// Minutes after 05:00 Berlin → Berlin wall-clock "HH:MM".
+export function lastMealMinutesToHHMM(mins: number): string {
+  return hhmm(mins + DAY_START_MINUTES)
+}
+
 // ─── buildExploreSeries ───────────────────────────────────────────
 // entries: full daily_entries history (sessions attached) — load_ratio's
 //   EWMA needs all of it to be correct.
