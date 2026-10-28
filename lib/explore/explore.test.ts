@@ -6,6 +6,7 @@ import {
 } from './series'
 import { robustZ, normaliseExplore, MAD_SCALE, MEAN_AD_SCALE, BASELINE_WINDOW_DAYS, BASELINE_MIN_VALUES } from './normalise'
 import { computeHighlights, OUTLIER_Z, COINCIDENCE_Z } from './highlights'
+import { rollingAverage, findStretches } from './trends'
 
 function emptySeries(): ExploreSeries {
   return Object.fromEntries(EXPLORE_VARIABLES.map(v => [v, {}])) as ExploreSeries
@@ -141,16 +142,27 @@ describe('normaliseExplore', () => {
     expect(q.z.rhr).toBeNull()
   })
 
-  it('blanks sick chart dates and skips sick dates in the baseline', () => {
+  it('draws sick chart dates but leaves them out of later baselines', () => {
     const s = emptySeries()
     fillBefore(s.hrv, date, 28, i => 40 + (i % 5))
     s.hrv[date] = 60
-    expect(normaliseExplore([date], s, new Set())[0].z.hrv).not.toBeNull()
+    const healthy = normaliseExplore([date], s, new Set())[0]
 
+    // The sick date itself keeps its value and z-score.
     const sickChart = normaliseExplore([date], s, new Set([date]))[0]
     expect(sickChart.isSick).toBe(true)
-    expect(sickChart.values.hrv).toBeNull()
-    expect(sickChart.z.hrv).toBeNull()
+    expect(sickChart.values.hrv).toBe(60)
+    expect(sickChart.z.hrv).toBeCloseTo(healthy.z.hrv!)
+
+    // The next day's baseline skips the sick date: 19 healthy days + the
+    // sick day would be 20 values (enough for a z) only if it counted.
+    const s2 = emptySeries()
+    fillBefore(s2.hrv, date, 19, i => 40 + (i % 5))
+    s2.hrv[date] = 60
+    const next = addDays(date, 1)
+    s2.hrv[next] = 45
+    expect(normaliseExplore([next], s2, new Set())[0].z.hrv).not.toBeNull()
+    expect(normaliseExplore([next], s2, new Set([date]))[0].z.hrv).toBeNull()
 
     // 9 sick baseline days → 19 values left → no z.
     const sick = new Set(Array.from({ length: 9 }, (_, k) => addDays(date, -(k + 1))))
@@ -204,6 +216,69 @@ describe('computeHighlights', () => {
   it('requires 1–3 selected variables', () => {
     expect(() => computeHighlights(points, [])).toThrow(RangeError)
     expect(() => computeHighlights(points, ['hrv', 'rhr', 'bedtime', 'last_meal'])).toThrow(RangeError)
+  })
+})
+
+describe('rollingAverage', () => {
+  it('averages a centred 7-day window', () => {
+    const vals = Array.from({ length: 11 }, (_, i) => i)
+    expect(rollingAverage(vals)[5]).toBe(5)  // mean of 2..8
+    const spike = [0, 0, 0, 7, 0, 0, 0, 0, 0, 0]
+    expect(rollingAverage(spike)[0]).toBeCloseTo(7 / 4)  // window 0..3
+    expect(rollingAverage(spike)[6]).toBeCloseTo(7 / 7)  // window 3..9
+    expect(rollingAverage(spike)[7]).toBe(0)             // window 4..9 — spike out of range
+  })
+
+  it('skips nulls', () => {
+    expect(rollingAverage([1, null, 3, null, 5, null, 7])[3]).toBe(4)
+  })
+
+  it('needs at least 4 values in the window', () => {
+    expect(rollingAverage([1, null, 3, null, 5, null, null])[3]).toBeNull()  // 3 values
+    expect(rollingAverage([1, null, 3, null, 5, null, 7])[3]).not.toBeNull() // 4 values
+  })
+
+  it('uses the partial window at the edges with the same minimum', () => {
+    const vals = [1, 2, 3, 4, 5, 6, 7, 8]
+    const avg = rollingAverage(vals)
+    expect(avg[0]).toBeCloseTo(2.5)  // 1..4
+    expect(avg[7]).toBeCloseTo(6.5)  // 5..8
+    expect(rollingAverage([1, 2, null, 4, 5, 6, 7])[0]).toBeNull() // only 3 in 0..3
+  })
+})
+
+describe('findStretches', () => {
+  const dates = Array.from({ length: 10 }, (_, i) => addDays('2026-10-01', i))
+  const flat = (v: number) => Array(10).fill(v)
+  const at = (on: number[], high: number, low = 0) => dates.map((_, i) => (on.includes(i) ? high : low))
+
+  it('flags only beyond ±0.8, in either direction', () => {
+    expect(findStretches(dates, { hrv: flat(0.8), rhr: flat(-0.8) }, ['hrv', 'rhr'])).toEqual([])
+    expect(findStretches(dates, { hrv: flat(0.81), rhr: flat(-0.81) }, ['hrv', 'rhr']))
+      .toEqual([{ start: dates[0], end: dates[9] }])
+  })
+
+  it('needs at least 3 consecutive flagged days', () => {
+    expect(findStretches(dates, { hrv: at([2, 3], 1), rhr: at([2, 3], -1) }, ['hrv', 'rhr'])).toEqual([])
+    expect(findStretches(dates, { hrv: at([2, 3, 4], 1), rhr: at([2, 3, 4], -1) }, ['hrv', 'rhr']))
+      .toEqual([{ start: dates[2], end: dates[4] }])
+  })
+
+  it('splits a run broken by one unflagged day', () => {
+    const on = [0, 1, 2, 4, 5, 6]
+    expect(findStretches(dates, { hrv: at(on, 1), rhr: at(on, 1) }, ['hrv', 'rhr']))
+      .toEqual([{ start: dates[0], end: dates[2] }, { start: dates[4], end: dates[6] }])
+  })
+
+  it('needs two of the selected variables, and nulls never count', () => {
+    const h = at([1, 2, 3], 1)
+    expect(findStretches(dates, { hrv: h, rhr: h.map(() => null), bedtime: h }, ['hrv', 'rhr'])).toEqual([])
+    expect(findStretches(dates, { hrv: h, rhr: flat(0), bedtime: h }, ['hrv', 'rhr', 'bedtime']))
+      .toEqual([{ start: dates[1], end: dates[3] }])
+  })
+
+  it('returns none with one variable selected', () => {
+    expect(findStretches(dates, { hrv: flat(2) }, ['hrv'])).toEqual([])
   })
 })
 

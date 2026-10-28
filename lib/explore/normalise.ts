@@ -43,8 +43,10 @@ export function robustZ(value: number, baseline: number[]): number | null {
 
 // ─── normaliseExplore ─────────────────────────────────────────────
 // series: shifted series from buildExploreSeries (full history).
-// sickDates: daily_entries dates with is_sick = true. Sick chart dates get
-// no values or z-scores; sick dates never count toward a baseline.
+// sickDates: daily_entries dates with is_sick = true. Sick chart dates keep
+// their values and z-scores (drawn like any other day, flagged via isSick),
+// but sick dates never count toward a baseline, so illness doesn't shift
+// "usual".
 export function normaliseExplore(
   chartDates: string[],
   series: ExploreSeries,
@@ -56,8 +58,6 @@ export function normaliseExplore(
     const z = {} as Record<ExploreVariable, number | null>
 
     for (const v of EXPLORE_VARIABLES) {
-      if (isSick) { values[v] = null; z[v] = null; continue }
-
       const value = series[v][date] ?? null
       values[v] = value
       z[v] = null
