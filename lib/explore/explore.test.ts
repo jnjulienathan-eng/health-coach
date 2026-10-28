@@ -121,25 +121,37 @@ describe('normaliseExplore', () => {
     expect(z).toBeCloseTo(robustZ(100, window)!)
   })
 
-  it('applies the Oura cutoff to hrv but not to non-Oura variables', () => {
+  it('applies the Oura cutoff to hrv and rhr only — not sleep_duration, bedtime or others', () => {
     const s = emptySeries()
     // 2026-10-05: window 09-07..10-04 — only 18 days on/after 2026-09-17.
     const d = '2026-10-05'
-    fillBefore(s.hrv, d, 28, i => 40 + (i % 5))
-    fillBefore(s.training_stress, d, 28, i => 40 + (i % 5))
-    s.hrv[d] = 60; s.training_stress[d] = 60
+    const cutoff = ['hrv', 'rhr'] as const
+    const fullHistory = ['sleep_duration', 'bedtime', 'training_stress'] as const
+    for (const v of [...cutoff, ...fullHistory]) {
+      fillBefore(s[v], d, 28, i => 40 + (i % 5))
+      s[v][d] = 60
+    }
     const p = normaliseExplore([d], s, new Set())[0]
-    expect(p.z.hrv).toBeNull()
-    expect(p.z.training_stress).not.toBeNull()
-    expect(p.values.hrv).toBe(60)
+    for (const v of cutoff) {
+      expect(p.z[v]).toBeNull()
+      expect(p.values[v]).toBe(60)
+    }
+    for (const v of fullHistory) expect(p.z[v]).not.toBeNull()
 
-    // A pre-Oura chart date keeps its value but gets no z-score.
+    // A pre-Oura chart date: hrv / rhr keep their value but get no z-score;
+    // sleep_duration and bedtime get one from their pre-Oura history.
     const pre = '2026-09-16'
-    fillBefore(s.rhr, pre, 28, i => 50 + (i % 3))
-    s.rhr[pre] = 55
+    for (const v of ['hrv', 'rhr', 'sleep_duration', 'bedtime'] as const) {
+      fillBefore(s[v], pre, 28, i => 50 + (i % 3))
+      s[v][pre] = 55
+    }
     const q = normaliseExplore([pre], s, new Set())[0]
-    expect(q.values.rhr).toBe(55)
-    expect(q.z.rhr).toBeNull()
+    for (const v of cutoff) {
+      expect(q.values[v]).toBe(55)
+      expect(q.z[v]).toBeNull()
+    }
+    expect(q.z.sleep_duration).not.toBeNull()
+    expect(q.z.bedtime).not.toBeNull()
   })
 
   it('draws sick chart dates but leaves them out of later baselines', () => {

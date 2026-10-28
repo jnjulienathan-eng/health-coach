@@ -21,9 +21,13 @@ export const EXPLORE_VARIABLES = [
 ] as const
 export type ExploreVariable = typeof EXPLORE_VARIABLES[number]
 
-// Oura-sourced variables: baseline values only count from OURA_START_DATE,
-// and chart dates before it get no z-score (pre-Oura values were manual).
-export const OURA_VARIABLES: readonly ExploreVariable[] = ['hrv', 'rhr', 'sleep_duration', 'bedtime']
+// Variables with the Oura cutoff: baseline values only count from
+// OURA_START_DATE, and chart dates before it get no z-score, because the
+// pre-Oura manual waking HRV / RHR aren't comparable with Oura's overnight
+// measures. sleep_duration and bedtime are NOT here: Julie confirmed her
+// pre-Oura values are accurate and consistent with Oura's, so they use their
+// full history like the other variables.
+export const OURA_VARIABLES: readonly ExploreVariable[] = ['hrv', 'rhr']
 
 // Variables whose day-D value is plotted on D+1.
 export const SHIFTED_VARIABLES: readonly ExploreVariable[] = ['training_stress', 'last_meal']
