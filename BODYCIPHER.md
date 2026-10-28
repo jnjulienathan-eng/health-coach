@@ -1,6 +1,12 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 28, 2026 (Session: Explore tag badges, branch `feat/explore-tag-badges`, from a mockup Julie approved).
+_Last updated: October 28, 2026 (Session: Explore sleep baseline fix, branch `fix/explore-sleep-baseline`). The Explore Oura cutoff now applies to **HRV and RHR only**.
+- **Why:** Julie confirmed her pre-Oura sleep duration and bedtime are accurate and consistent with Oura's.
+- **Effect:** `sleep_duration` and `bedtime` use their full history, with the same 28-day baseline and 20-value minimum as the other variables. Dates before 2026-09-17 can now get z-scores for them, and their baselines can include pre-Oura nights.
+- **Code:** `OURA_VARIABLES` in `lib/explore/series.ts` is now `['hrv', 'rhr']`, and the Oura-cutoff test checks both sides.
+- **Unchanged:** the rest of normalisation, trends, stretches, tags and the UI. Scoring (Outcome Score HRV baseline) is untouched.
+See EXPLORE → Normalisation._
+_Previous update: October 28, 2026 (Session: Explore tag badges, branch `feat/explore-tag-badges`, from a mockup Julie approved).
 - **Why:** on Julie's phone (375px) the labelled tag lane failed. Over 60 days each day is about 5px wide, so tag bars showed empty pills or "Trav…" / "Si…".
 - **Chart:** tags are now thin lines (solid manual, dashed automatic) with numbered badges (filled manual, outlined automatic) that spread sideways so they never overlap. Tagged days get a faint grey band.
 - **New list:** "Tags in this window" below the count line names each tag. Tapping a row selects the tag's first day in the window.
@@ -901,7 +907,9 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 
 ### Normalisation (per variable, per chart date, on the already-shifted series)
 - **Baseline:** values from the `BASELINE_WINDOW_DAYS = 28` calendar days before the chart date (the date itself is excluded). Nulls and sick-flagged dates (`daily_entries.is_sick`) are skipped.
-- **Oura cutoff:** for `hrv`, `rhr`, `sleep_duration` and `bedtime`, baseline values only count from `OURA_START_DATE` (2026-09-17) onward. Chart dates before it keep their raw value but get no z-score.
+- **Oura cutoff — HRV and RHR only** (`OURA_VARIABLES = ['hrv', 'rhr']` in `lib/explore/series.ts`): baseline values only count from `OURA_START_DATE` (2026-09-17) onward, and chart dates before it keep their raw value but get no z-score.
+  - **Why HRV and RHR:** before that date they were manual waking values, which run higher than Oura's overnight measures.
+  - **Why not sleep duration and bedtime** (removed from the cutoff Oct 28, 2026): Julie confirmed her pre-Oura values are accurate and consistent with Oura's. They use their full history, with the same 28-day baseline and 20-value minimum as the other variables.
 - **Minimum:** a z-score needs at least `BASELINE_MIN_VALUES = 20` baseline values.
 - **Formula:** `z = (value − median) / (1.4826 × MAD)` (`MAD_SCALE`).
   - If MAD = 0, the scale falls back to `1.2533 × mean absolute deviation from the median` (`MEAN_AD_SCALE`).
