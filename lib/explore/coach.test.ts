@@ -95,6 +95,57 @@ describe('buildCoachPayload', () => {
   })
 })
 
+describe('buildCoachPayload — Oura cutoff', () => {
+  // 14–20 Sep: old-device HRV 80 / RHR 60 before 17 Sep, Oura HRV 45 /
+  // RHR 50 from 17 Sep. Dev exists only on Oura days, as in normaliseExplore.
+  function straddlingData(): ExploreData {
+    const d = syntheticData()
+    const dates = d.dates.slice(0, 7).map((x, i) => {
+      const date = addDays('2026-09-14', i)
+      const oura = date >= '2026-09-17'
+      return {
+        ...x, date, isSick: false,
+        variables: {
+          ...x.variables,
+          hrv: { value: oura ? 45 : 80, display: null, z: oura ? -0.5 : null },
+          rhr: { value: oura ? 50 : 60, display: null, z: oura ? 0.2 : null },
+          sleep_duration: { value: oura ? 480 : 420, display: null, z: 0 },
+        },
+      }
+    })
+    return { ...d, startDate: '2026-09-14', endDate: '2026-09-20', dates, injectionDates: [], tags: [] }
+  }
+  const day = (p: ReturnType<typeof buildCoachPayload>, i: number) =>
+    p.days[i] as unknown as Record<string, { value: unknown; avg7: unknown; avg7_dev: unknown; dev: unknown }>
+
+  it('treats HRV and RHR before 17 Sep as missing', () => {
+    const p = buildCoachPayload(straddlingData(), 'next', ['hrv'])
+    for (const i of [0, 1, 2]) {
+      expect(day(p, i).hrv).toEqual({ value: null, avg7: null, avg7_dev: null, dev: null })
+      expect(day(p, i).rhr).toEqual({ value: null, avg7: null, avg7_dev: null, dev: null })
+    }
+  })
+
+  it('averages Oura days only in a window that straddles 17 Sep', () => {
+    const p = buildCoachPayload(straddlingData(), 'next', ['hrv'])
+    // 17 Sep's window is 14–20 Sep: 3 old-device days + 4 Oura days. Only the
+    // Oura days count, so avg7 is 45 ms / 50 bpm, not a blend with 80 / 60.
+    expect(day(p, 3).hrv).toEqual({ value: 45, avg7: 45, avg7_dev: -0.5, dev: -0.5 })
+    expect(day(p, 3).rhr).toEqual({ value: 50, avg7: 50, avg7_dev: 0.2, dev: 0.2 })
+  })
+
+  it('leaves the other variables, and the chart data, as they are', () => {
+    const data = straddlingData()
+    const p = buildCoachPayload(data, 'next', ['hrv'])
+    // Sleep before 17 Sep keeps its value, and its avg7 mixes both sides
+    // (3 × 7:00 + 4 × 8:00 → 7:34).
+    expect(day(p, 0).sleep_duration.value).toBe('7:00')
+    expect(day(p, 3).sleep_duration.avg7).toBe('7:34')
+    // The data the chart reads is not modified.
+    expect(data.dates[0].variables.hrv.value).toBe(80)
+  })
+})
+
 describe('coachCacheKey', () => {
   it('one-tap keys sort the selection; custom keys are unique', () => {
     expect(coachCacheKey('see', ['rhr', 'hrv'], '2026-10-28')).toBe('see|hrv,rhr|2026-10-28')

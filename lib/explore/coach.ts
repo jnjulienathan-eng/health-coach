@@ -8,7 +8,8 @@ import { createHash, randomUUID } from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExploreData } from './fetch'
-import { EXPLORE_VARIABLES, bedtimeMinutesToHHMM, lastMealMinutesToHHMM, type ExploreVariable } from './series'
+import { EXPLORE_VARIABLES, OURA_VARIABLES, bedtimeMinutesToHHMM, lastMealMinutesToHHMM, type ExploreVariable } from './series'
+import { OURA_START_DATE } from '../types'
 import { rollingAverage, findStretches } from './trends'
 import { buildCoachSystemPrompt, COACH_SYSTEM_PROMPT, COACH_TASKS, type CoachRequestType } from './coachPrompts'
 import { describe } from './tagsDb'
@@ -63,11 +64,17 @@ export function buildCoachPayload(data: ExploreData, type: CoachRequestType, sel
   // rawAverages: the same centred window over raw values (avg7), so the
   // average reads in real units. Bedtime and last meal average their
   // encoded minutes, which don't wrap at midnight.
+  // Coach only: HRV and RHR before OURA_START_DATE come from the old device
+  // and aren't comparable, so they are treated as missing here — value,
+  // avg7, avg7_dev and dev are null on those dates, and the real-unit avg7
+  // around the cutoff averages Oura days only. The chart, readout and
+  // stretches (from `averages`) are unchanged.
+  const preOura = (v: ExploreVariable, date: string) => OURA_VARIABLES.includes(v) && date < OURA_START_DATE
   const averages: Partial<Record<ExploreVariable, (number | null)[]>> = {}
   const rawAverages: Partial<Record<ExploreVariable, (number | null)[]>> = {}
   for (const v of new Set([...included, ...selected])) {
     averages[v] = rollingAverage(data.dates.map(d => d.variables[v].z))
-    rawAverages[v] = rollingAverage(data.dates.map(d => d.variables[v].value))
+    rawAverages[v] = rollingAverage(data.dates.map(d => (preOura(v, d.date) ? null : d.variables[v].value)))
   }
   const injections = new Set(data.injectionDates)
 
@@ -78,7 +85,9 @@ export function buildCoachPayload(data: ExploreData, type: CoachRequestType, sel
       date: d.date,
       sick: d.isSick,
       injection: injections.has(d.date),
-      ...Object.fromEntries(included.map(v => [v, {
+      ...Object.fromEntries(included.map(v => [v, preOura(v, d.date) ? {
+        value: null, avg7: null, avg7_dev: null, dev: null,
+      } : {
         value: displayValue(v, d.variables[v].value),
         avg7: displayValue(v, rawAverages[v]?.[i] ?? null),
         avg7_dev: round2(averages[v]?.[i] ?? null),

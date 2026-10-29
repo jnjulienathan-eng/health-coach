@@ -11,6 +11,7 @@ _Last updated: October 29, 2026 (Session: Explore Phase 3 — the coach, branch 
   - The payload sends `avg7` in real units (the centred 7-day average of raw values) next to `avg7_dev` (the chart's average of dev). Two prompt lines were updated to match.
   - `data_hash` now includes a prompt version: a hash of the model name, the system prompt and the task block. Editing the prompt or changing the model makes cached answers miss.
   - Tests: 56.
+- **Second follow-up, same day and branch:** in the coach payload only, HRV and RHR before 17 Sep 2026 are treated as missing (value, avg7, avg7_dev and dev all null), and their real-unit avg7 averages Oura days only. The chart and readout are unchanged. Tests: 59.
 See EXPLORE → Coach._
 _Previous update: October 28, 2026 (Session: Explore sleep baseline fix, branch `fix/explore-sleep-baseline`). The Explore Oura cutoff now applies to **HRV and RHR only**.
 - **Why:** Julie confirmed her pre-Oura sleep duration and bedtime are accurate and consistent with Oura's.
@@ -1088,9 +1089,12 @@ Anthropic-backed answers about the chart. **Nothing calls the route automaticall
   - `days`: per chart date, `{ date, sick, injection, <variable>: { value, avg7, avg7_dev, dev } }`.
     - `value` and `avg7` are in display units: hrv / rhr / training_stress as whole numbers, sleep_duration as "h:mm", bedtime and last_meal as Berlin "HH:MM" (via `bedtimeMinutesToHHMM` / `lastMealMinutesToHHMM`), load_ratio to 2 decimals.
     - `avg7` (changed Oct 29, 2026, follow-up) is `rollingAverage()` over the raw values: the same centred 7-day window and 4-value minimum as the chart, then formatted. Bedtime and last meal average their encoded minutes (noon-centred / after 05:00), so times either side of midnight average correctly. The readout has no real-unit average of its own, so this reuses `rollingAverage` plus the readout's display formats.
-    - The raw average covers every non-null value in the window, including days with no dev (e.g. HRV before 17 Sep 2026, or last meal before its baseline fills). So `avg7` can exist where `avg7_dev` is null.
+    - The raw average covers every non-null value in the window, including days with no dev (e.g. last meal before its baseline fills). So `avg7` can exist where `avg7_dev` is null.
+    - **Oura cutoff in the payload** (changed Oct 29, 2026, second follow-up): for HRV and RHR (`OURA_VARIABLES`) on dates before `OURA_START_DATE` (2026-09-17), value, avg7, avg7_dev and dev are all `null`. Pre-Oura values are also left out of the raw average, so a window that straddles 17 Sep averages Oura days only (e.g. 17 Sep's avg7 uses 17–20 Sep, not 14–16 Sep from the old device).
+      - Coach only: the chart, readout and `/api/explore` still carry the raw pre-Oura values.
+      - Stretches still come from the chart's own averages, unmasked.
     - `dev` is the z-score and `avg7_dev` its centred 7-day average (what the chart lines draw), both to 2 decimals.
-    - Missing values and baselines are `null` (e.g. HRV / RHR dev before 17 Sep 2026).
+    - Missing values and baselines are `null`.
   - `stretches: [{ start, end, variables }]` — the chart's stretches, so for the selected variables.
   - `tags: [{ label, start, end, source: 'manual' | 'auto' }]`.
   - The selection is put in `EXPLORE_VARIABLES` order before the payload is built, so the same variables picked in a different order produce the same payload and hash.
