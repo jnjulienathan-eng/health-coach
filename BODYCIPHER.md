@@ -1,6 +1,14 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 28, 2026 (Session: Explore sleep baseline fix, branch `fix/explore-sleep-baseline`). The Explore Oura cutoff now applies to **HRV and RHR only**.
+_Last updated: October 29, 2026 (Session: Explore Phase 3 — the coach, branch `explore-phase-3-coach`). Explore can now answer questions about the chart, but only when Julie taps.
+- **UI:** below the tag list, "What do you see?", "What should I chart next?" and a custom question box. The latest answer per type shows below. A one-tap answer from another selection or window stays, greyed out, with "Based on the previous view".
+- **Route:** new `POST /api/explore/coach` calls `claude-sonnet-5-5` (thinking off via `between_tools`; max_tokens 250 / 250 / 800). It builds the payload from the same `loadExploreData()` + `rollingAverage` / `findStretches` the chart uses.
+- **Cache:** `explore_answers` is now read and written. A one-tap answer is served from cache when the cache_key and data_hash match. Custom answers are stored but never served.
+- **Errors:** out of credit → "The coach is out of API credit. The chart still works."; anything else → "The coach couldn't answer just now. Try again in a moment."
+- **New files:** `lib/explore/coachPrompts.ts`, `lib/explore/coach.ts`, `lib/explore/coach.test.ts`, `app/api/explore/coach/route.ts`. Tests: 53.
+- **No migration.** Unchanged: the data layer, the chart, tags and scoring.
+See EXPLORE → Coach._
+_Previous update: October 28, 2026 (Session: Explore sleep baseline fix, branch `fix/explore-sleep-baseline`). The Explore Oura cutoff now applies to **HRV and RHR only**.
 - **Why:** Julie confirmed her pre-Oura sleep duration and bedtime are accurate and consistent with Oura's.
 - **Effect:** `sleep_duration` and `bedtime` use their full history, with the same 28-day baseline and 20-value minimum as the other variables. Dates before 2026-09-17 can now get z-scores for them, and their baselines can include pre-Oura nights.
 - **Code:** `OURA_VARIABLES` in `lib/explore/series.ts` is now `['hrv', 'rhr']`, and the Oura-cutoff test checks both sides.
@@ -587,7 +595,7 @@ Supersedes the fat/lean split in v3 item 2 above. The **headline row is unchange
 
 ### Coach Tab — REMOVED (October 28, 2026, branch `feat/explore-ui`)
 
-**Replaced by the Explore tab** (see EXPLORE). `components/CoachTab.tsx` and `app/api/coach/route.ts` were deleted, so the briefing modes, the reactive chat and the `JULIE_PROFILE` prompt constant no longer exist in the code. The notes below are kept as history only. Do not re-add any of this without explicit instruction. Phase 3 of Explore brings back Anthropic-backed answers in a different form (coach questions about the chart, cached in `explore_answers`).
+**Replaced by the Explore tab** (see EXPLORE). `components/CoachTab.tsx` and `app/api/coach/route.ts` were deleted, so the briefing modes, the reactive chat and the `JULIE_PROFILE` prompt constant no longer exist in the code. The notes below are kept as history only. Do not re-add any of this without explicit instruction. Explore Phase 3 (built Oct 29, 2026) brought back Anthropic-backed answers in a different form: coach questions about the chart, cached in `explore_answers` (see EXPLORE → Coach).
 
 
 - 5 time-based modes detected client-side from time of day:
@@ -868,9 +876,8 @@ Self-hosted, single-user, fully stateless OAuth 2.1 + PKCE in front of `/api/mcp
 The Explore tab replaced the Coach tab (tab index 2). It shows a normalised chart of up to three daily variables over the last 60 days.
 **Status:**
 - **Built:** the data layer (Phase 1) and the UI (Phase 2, see "UI" below).
-- **Also built:** Phase 2b, tags (see "Tags" below).
-- **Not built yet:** Phase 3 (coach questions below the count line, Anthropic calls via a server route, `explore_answers` reads and writes; **the coach will read tags** — manual and automatic — as context) and Phase 4.
-- No Anthropic calls are made. `explore_answers` (see DATA MODEL) exists, but nothing reads or writes it.
+- **Also built:** Phase 2b, tags (see "Tags" below), and Phase 3, the coach (see "Coach" below, Oct 29, 2026).
+- **Not built yet:** Phase 4.
 
 ### Files
 - `lib/explore/series.ts` — pure. Holds the variable keys, the raw daily series keyed by chart date (already shifted), the bedtime and last-meal minute encodings with their HH:MM inverses, and the GLP-1 injection info.
@@ -888,6 +895,10 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 - `app/api/explore/route.ts` — `GET /api/explore`, `dynamic = 'force-dynamic'`, `revalidate = 0`.
 - `app/api/explore/tags/route.ts` (POST) and `app/api/explore/tags/[id]/route.ts` (PATCH, DELETE) — manual tags, service role, `force-dynamic`.
 - `lib/explore/explore.test.ts` — vitest.
+- `lib/explore/coachPrompts.ts` — the coach's system prompt and the three task blocks (see Coach).
+- `lib/explore/coach.ts` — server-only. Payload, cache key, data hash, the model call, error classification and `runCoach()`.
+- `lib/explore/coach.test.ts` — vitest: payload, cache key, prompts, caching and error classification.
+- `app/api/explore/coach/route.ts` — `POST /api/explore/coach`, `force-dynamic`.
 - `berlinParts()` in `lib/nutrition.ts` is now exported, so last-meal time of day uses the same Berlin clock as `dayKeyFromTimestamp()`.
 
 ### Variables (keys)
@@ -948,7 +959,7 @@ Tags label days or stretches on the chart. Each tag is `{ id?, label, start, end
   - The label is trimmed and must be 1–`TAG_LABEL_MAX` (40) characters.
   - Both dates must be valid `YYYY-MM-DD`; start must be on or before end; end must not be after today (Berlin).
   - The tag must not overlap another manual tag (PATCH excludes the tag itself). An overlap returns **409** with `overlap: { id, label, start, end }`, so the UI can name the other tag.
-- **Phase 3:** the coach will read tags (manual and automatic) as context. Nothing reads them server-side yet beyond the chart.
+- **Phase 3:** the coach reads tags (manual and automatic) as context, from the same `loadExploreData()` output.
 
 ### Route shape — `GET /api/explore`
 The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin calendar date).
@@ -1030,7 +1041,14 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
 8. **Tag list** — "Tags in this window" (14px/600 secondary heading). It is hidden when there are no tags in the window.
    - **Rows:** one per tag in number order — the badge (same styles as the chart), the label, " (from toggle)" in 12px muted for automatic tags, and the date range on the right ("7–8 Oct", "30 Sep – 2 Oct", "14 Oct"). A tag that starts before the window shows its real start date.
    - **Behaviour:** rows are full-width buttons (min-height 36px, subtle divider). Tapping one selects the tag's first day inside the window and updates the readout.
-9. The space below the tag list is left empty for the Phase 3 coach questions.
+9. **Coach** (Phase 3, Oct 29, 2026) — see "Coach" below for the route.
+   - Two full-width secondary buttons (52px, `--radius-full`, navy outline): "What do you see?" and "What should I chart next?". "What do you see?" is disabled with nothing selected.
+   - A pill question box (placeholder "Ask about this chart", 16px, `maxLength` 500) with a 44px navy round send button.
+   - **Loading:** the tapped button reads "Thinking…" (the send button shows "…"); every coach control is disabled until the answer arrives.
+   - **Answers:** one card per type (see, next, custom), latest only. Each has a 14px/600 secondary heading (the button wording, or Julie's question for custom) and the answer as 18px plain text.
+   - **Stale answers:** each one-tap answer remembers the sorted selection + window end it was asked about. When those no longer match the screen, the answer turns `--color-text-muted` with a 12px note "Based on the previous view". A new answer only comes on a new tap. Custom answers are never greyed.
+   - **Errors** (14px `--color-danger`, under the controls): "The coach is out of API credit. The chart still works." or "The coach couldn't answer just now. Try again in a moment.". The chart, tags and readout keep working.
+   - Answers live in component state, so they clear when the tab remounts; a tap after that is served from cache when nothing changed.
 
 **Defaults:**
 - Selection is HRV, Last meal, Training stress, in that order.
@@ -1049,6 +1067,37 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
   - every list row, each selecting the right day;
   - no tags at all: 250px chart, no badges, bands or list.
 - Not yet checked against live data (no service-role key locally) — open the tab on the branch preview.
+
+### Coach (Phase 3, Oct 29, 2026) — `POST /api/explore/coach`
+Anthropic-backed answers about the chart. **Nothing calls the route automatically** — not on load, not on a variable change, not on a date change. Only a tap does.
+- **Body:** `{ type: 'see' | 'next' | 'custom', variables: ExploreVariable[] (0–3), endDate?: 'YYYY-MM-DD', question?: string (custom, 1–500 chars) }`.
+  - `see` needs at least one variable.
+  - `endDate` is the chart window's end; it falls back to today (Berlin) if missing, malformed or in the future.
+- **Response:** 200 `{ answer, cached }`. Errors: 400 for bad input; **402 `{ error: 'out_of_credit' }`**; 502 `{ error: 'coach_failed' }` for every other failure, including a data-load failure; 500 `{ error: 'coach_failed' }` if `ANTHROPIC_API_KEY` is unset.
+- **Model:** `claude-sonnet-5-5` (`COACH_MODEL`), via `new Anthropic({ apiKey: ANTHROPIC_API_KEY })` — the existing key, no new env var. `max_tokens` 250 for see / next, 800 for custom.
+  - **Thinking is off** (`thinking: { type: 'between_tools' }`). Sonnet 5.5 rejects `{ type: 'disabled' }`, and with adaptive thinking on, a 250-token budget could be spent on reasoning instead of the answer. The SDK (0.82) doesn't type `between_tools` yet, so the params are cast.
+  - The system prompt is `COACH_SYSTEM_PROMPT` plus the task block for the type (`buildCoachSystemPrompt()` in `lib/explore/coachPrompts.ts`); custom replaces `{QUESTION}` with Julie's text. The user message is the JSON payload.
+  - An empty answer (e.g. a `refusal` stop) is treated as `coach_failed`. No server-side refusal fallback is configured.
+- **Payload** (`buildCoachPayload()`, compact JSON), from the same `loadExploreData()` the chart uses, with `rollingAverage` and `findStretches` from `lib/explore/trends.ts`:
+  - `view: { start, end, selected, included }` — `included` is the selected variables for `see`, all seven for `next` and `custom`.
+  - `units` for each included variable.
+  - `days`: per chart date, `{ date, sick, injection, <variable>: { value, avg7, dev } }`. `value` is in display units: hrv / rhr / training_stress as whole numbers, sleep_duration as "h:mm", bedtime and last_meal as Berlin "HH:MM", load_ratio to 2 decimals. `dev` is the z-score and `avg7` its centred 7-day average, both to 2 decimals. Missing values and baselines are `null` (e.g. HRV / RHR dev before 17 Sep 2026).
+  - `stretches: [{ start, end, variables }]` — the chart's stretches, so for the selected variables.
+  - `tags: [{ label, start, end, source: 'manual' | 'auto' }]`.
+  - The selection is put in `EXPLORE_VARIABLES` order before the payload is built, so the same variables picked in a different order produce the same payload and hash.
+- **Cache** (`runCoach()`, `explore_answers` via `supaAdmin()`, `user_id = 'julie'`):
+  - **One-tap:** `cache_key` = `type|sorted variables|endDate`, `focus_date` = endDate, `data_hash` = sha256 of the payload JSON. If a row has the same cache_key and data_hash, it is returned without calling the API (`cached: true`). If the hash differs, the API is called and the row replaced (upsert on `user_id, cache_key`). `question` stores the button wording.
+  - **Custom:** always calls the API; each answer is inserted with `question` = Julie's text and a unique `cache_key` (`custom|…|endDate|<uuid>`), never served from cache.
+  - The hash covers the payload only, not the prompt text: a prompt edit alone doesn't invalidate cached answers.
+  - A failed cache read or write is logged and doesn't block the answer.
+- **Out of credit** (`classifyCoachError()`): the API reports an empty balance as a 400 whose message mentions the credit balance (no dedicated error class). That, or a 402 with the same wording, maps to `out_of_credit`; everything else to `coach_failed`. Cost is not tracked.
+- **Prompt — the two [CHECK] sentences**, written from the code:
+  - dev: "dev is (value − median) ÷ (MAD × 1.4826), so ±1 is roughly one standard deviation, and it is null when fewer than 20 of the previous 28 days have a value." (`robustZ()` / `BASELINE_MIN_VALUES` in `lib/explore/normalise.ts`. Not mentioned to the model: when MAD is 0 the scale falls back to 1.2533 × mean absolute deviation.)
+  - load ratio: "Load ratio is acute ÷ chronic training load, where both are exponentially weighted averages of daily training stress over her full history (acute with a 7-day decay, chronic with a 28-day decay, days without training counted as 0)." (`computeTrainingLoadHistory()` in `lib/trainingLoad.ts`: `acute = tsu/7 + (1 − 1/7) × acute`, `chronic = tsu/28 + (1 − 1/28) × chronic`, ratio null when chronic is 0.)
+- **Verification (Oct 29, 2026):**
+  - vitest covers the payload, cache key, prompt assembly, a cache hit (no second model call, even with the selection in another order), a stale hash replacing the row, custom answers never served from cache, and the out-of-credit classification against a simulated `Anthropic.APIError` 400 "credit balance is too low" (no balance drained).
+  - The UI was checked at 375px with `/api/explore` and the coach route mocked in the browser: loading state, all three answer types, greying after a selection change, both error messages with the chart still drawn, and no call on load or on selection change.
+  - **Not yet run with real API calls:** the local `.env.local` `ANTHROPIC_API_KEY` is a placeholder (401), and there's no local service-role key. Check on the branch preview.
 
 ---
 
@@ -1351,7 +1400,7 @@ Stores Web Push device subscriptions for server-initiated notifications.
   - focus_date (date, nullable), data_hash (text NOT NULL), answer (text NOT NULL), model (text NOT NULL), created_at (timestamptz NOT NULL, default now());
   - unique constraint `explore_answers_user_cache_key` on (user_id, cache_key).
 - **Purpose:** caches Coach-layer answers about the Explore chart (Phase 3). `data_hash` lets an answer be invalidated when the underlying data changes.
-- **Not read or written by any code yet.** Phase 3 will access it via `supaAdmin()`.
+- **Access (since Oct 29, 2026):** read and written only by `runCoach()` in `lib/explore/coach.ts` (`POST /api/explore/coach`), via `supaAdmin()`. One-tap answers are upserted on (user_id, cache_key); custom answers are inserted with a unique cache_key. See EXPLORE → Coach.
 - **Migration — run by Julie in the Supabase SQL editor, before Oct 28, 2026.** It follows the "new public tables" rule: RLS on with no policies, service_role only.
   ```sql
   create table if not exists public.explore_answers (

@@ -150,7 +150,7 @@ The app has **4 tabs**. This is the authoritative structure. Do not add, remove,
 |---|---|---|
 | 0 | Today | Date navigator · Greeting · Score cards · 6 logging accordions · Long-term goals section |
 | 1 | Health Calendar | Health appointments list |
-| 2 | Explore | Variable chips · Readout · Normalised z-score chart (60 days) · Count line (replaced Coach, Oct 28, 2026) |
+| 2 | Explore | Variable chips · Readout · Normalised z-score chart (60 days) · Count line · Tag list · Coach (replaced Coach, Oct 28, 2026) |
 | 3 | Dashboard | Training Load card · Charts · History list |
 
 **Tab bar visual rules:**
@@ -447,6 +447,11 @@ Full layout and behaviour: BODYCIPHER.md → EXPLORE → UI.
   - **Heading:** "Tags in this window", 14px/600 `--color-text-secondary`.
   - **Rows:** full-width buttons, min-height 36px, with a 1px `--color-border-subtle` divider. Each row has the badge, the label at 14px primary, " (from toggle)" at 12px muted for automatic tags, and the date range right-aligned at 14px secondary.
   - **Tapping a row** selects the tag's first day in the window.
+- **Coach** (Phase 3, Oct 29, 2026), below the tag list:
+  - **One-tap buttons:** "What do you see?" and "What should I chart next?", stacked, full width. Secondary style: `--color-surface` background, 1px `--color-navy` border, navy text, `--radius-full`, 52px. The label is 16px/600 in sentence case, since these are questions, not category labels. Loading reads "Thinking…"; disabled controls sit at 50% opacity.
+  - **Question box:** a pill (`--radius-full`, 1px `--color-border`, `--shadow-input`) with a 16px input ("Ask about this chart") and a 44px `--color-navy` round send button with a white arrow — the old floating chat input's look, inline.
+  - **Answers:** a standard card per answer type, with a 14px/600 `--color-text-secondary` heading and the answer as `body-lg` (18px) plain text. A greyed answer uses `--color-text-muted` and a 12px muted note "Based on the previous view".
+  - **Errors:** 14px `--color-danger` under the controls.
 
 ## Coach Tab — REMOVED (Oct 28, 2026)
 

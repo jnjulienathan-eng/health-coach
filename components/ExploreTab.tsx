@@ -7,8 +7,8 @@
 // top. Data: GET /api/explore; manual tags via /api/explore/tags (see
 // BODYCIPHER.md → EXPLORE). Trends and stretches are computed here for the
 // current selection. Selection resets to the default every time the tab
-// mounts — no persistence. Phase 3 (coach questions) will sit below the
-// count line.
+// mounts — no persistence. The coach (Phase 3) sits below the tag list:
+// POST /api/explore/coach, called only when Julie taps.
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { ExploreData, ExploreDate } from '@/lib/explore/fetch'
@@ -16,6 +16,7 @@ import type { ExploreVariable } from '@/lib/explore/series'
 import { MAX_SELECTED_VARIABLES } from '@/lib/explore/highlights'
 import { rollingAverage, findStretches, STRETCH_Z, type ExploreStretch } from '@/lib/explore/trends'
 import { TAG_LABEL_MAX, type ExploreTag } from '@/lib/explore/tags'
+import type { CoachRequestType } from '@/lib/explore/coachPrompts'
 
 const CHIPS: { key: ExploreVariable; label: string; note?: string }[] = [
   { key: 'hrv',             label: 'HRV' },
@@ -246,6 +247,25 @@ function TagForm({ form, maxDate, busy, onChange, onSave, onCancel }: {
   )
 }
 
+// ─── Coach ────────────────────────────────────────────────────────
+const COACH_BUTTONS: { type: 'see' | 'next'; label: string }[] = [
+  { type: 'see',  label: 'What do you see?' },
+  { type: 'next', label: 'What should I chart next?' },
+]
+const COACH_QUESTION_MAX = 500
+const COACH_ERRORS = {
+  out_of_credit: 'The coach is out of API credit. The chart still works.',
+  coach_failed: "The coach couldn't answer just now. Try again in a moment.",
+}
+
+// viewKey: the selection + window the answer was asked about. A one-tap
+// answer whose viewKey no longer matches the screen is greyed out.
+interface CoachAnswer { text: string; viewKey: string; question?: string }
+
+function coachViewKey(selected: ExploreVariable[], endDate: string): string {
+  return `${[...selected].sort().join(',')}|${endDate}`
+}
+
 // ─── Chart ────────────────────────────────────────────────────────
 function ExploreChart({
   dates, selected, averages, stretches, tags, injectionDates, selectedIdx, onSelect,
@@ -473,6 +493,10 @@ export default function ExploreTab() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [tagError, setTagError] = useState<string | null>(null)
   const [tagBusy, setTagBusy] = useState(false)
+  const [coachAnswers, setCoachAnswers] = useState<Partial<Record<CoachRequestType, CoachAnswer>>>({})
+  const [coachBusy, setCoachBusy] = useState<CoachRequestType | null>(null)
+  const [coachError, setCoachError] = useState<string | null>(null)
+  const [coachQuestion, setCoachQuestion] = useState('')
 
   // keepDate: after a tag save/delete, re-select the same day.
   const load = useCallback(async (keepDate?: string) => {
@@ -578,6 +602,36 @@ export default function ExploreTab() {
       setTagError(e instanceof Error ? e.message : "Couldn't delete the tag.")
     } finally {
       setTagBusy(false)
+    }
+  }
+
+  const viewKey = data ? coachViewKey(selected, data.endDate) : ''
+
+  const askCoach = async (type: CoachRequestType) => {
+    if (!data || coachBusy) return
+    const question = coachQuestion.trim()
+    if (type === 'custom' && !question) return
+    const askedKey = viewKey
+    setCoachBusy(type)
+    setCoachError(null)
+    try {
+      const res = await fetch('/api/explore/coach', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({ type, variables: selected, endDate: data.endDate, question: type === 'custom' ? question : undefined }),
+      })
+      const body = await res.json().catch(() => ({})) as { answer?: string; error?: string }
+      if (!res.ok || !body.answer) {
+        setCoachError(body.error === 'out_of_credit' ? COACH_ERRORS.out_of_credit : COACH_ERRORS.coach_failed)
+        return
+      }
+      setCoachAnswers(a => ({ ...a, [type]: { text: body.answer!, viewKey: askedKey, question: type === 'custom' ? question : undefined } }))
+      if (type === 'custom') setCoachQuestion('')
+    } catch {
+      setCoachError(COACH_ERRORS.coach_failed)
+    } finally {
+      setCoachBusy(null)
     }
   }
 
@@ -793,7 +847,99 @@ export default function ExploreTab() {
             </div>
           )}
 
-          {/* 8. Reserved for Phase 3 coach questions */}
+          {/* 8. Coach — one-tap questions and a custom question. Nothing
+              here calls the API until Julie taps. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+            {COACH_BUTTONS.map(b => {
+              const disabled = coachBusy != null || (b.type === 'see' && selected.length === 0)
+              return (
+                <button
+                  key={b.type}
+                  type="button"
+                  onClick={() => askCoach(b.type)}
+                  disabled={disabled}
+                  style={{
+                    width: '100%', minHeight: 52, padding: '0 var(--space-md)',
+                    borderRadius: 'var(--radius-full)', border: '1px solid var(--color-navy)',
+                    background: 'var(--color-surface)', color: 'var(--color-navy)',
+                    fontSize: 16, fontWeight: 600,
+                    cursor: disabled ? 'default' : 'pointer',
+                    opacity: disabled && coachBusy !== b.type ? 0.5 : 1,
+                  }}
+                >
+                  {coachBusy === b.type ? 'Thinking…' : b.label}
+                </button>
+              )
+            })}
+            <form
+              onSubmit={e => { e.preventDefault(); askCoach('custom') }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 'var(--space-xs)',
+                padding: '4px 4px 4px var(--space-md)', minHeight: 52, boxSizing: 'border-box',
+                background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-full)', boxShadow: 'var(--shadow-input)',
+              }}
+            >
+              <input
+                type="text"
+                value={coachQuestion}
+                maxLength={COACH_QUESTION_MAX}
+                placeholder="Ask about this chart"
+                aria-label="Ask the coach a question"
+                onChange={e => setCoachQuestion(e.target.value)}
+                disabled={coachBusy != null}
+                style={{
+                  flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
+                  fontSize: 16, color: 'var(--color-text-primary)',
+                }}
+              />
+              <button
+                type="submit"
+                aria-label="Send question"
+                disabled={coachBusy != null || coachQuestion.trim() === ''}
+                style={{
+                  width: 44, height: 44, flexShrink: 0, borderRadius: 'var(--radius-full)', border: 'none',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'var(--color-navy)', color: 'var(--color-surface)',
+                  fontSize: 16, fontWeight: 700,
+                  cursor: coachBusy != null || coachQuestion.trim() === '' ? 'default' : 'pointer',
+                  opacity: coachBusy != null && coachBusy !== 'custom' ? 0.5 : coachQuestion.trim() === '' && coachBusy == null ? 0.5 : 1,
+                }}
+              >
+                {coachBusy === 'custom' ? '…' : (
+                  <svg aria-hidden width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                )}
+              </button>
+            </form>
+            {coachError && (
+              <p style={{ fontSize: 14, color: 'var(--color-danger)', margin: 0 }}>{coachError}</p>
+            )}
+          </div>
+
+          {/* Latest answer per type. A one-tap answer from another selection
+              or window stays, greyed out, until the next tap. */}
+          {(['see', 'next', 'custom'] as const).map(type => {
+            const a = coachAnswers[type]
+            if (!a) return null
+            const stale = type !== 'custom' && a.viewKey !== viewKey
+            const heading = type === 'custom' ? a.question : COACH_BUTTONS.find(b => b.type === type)!.label
+            return (
+              <div key={type} style={card}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-xs)' }}>
+                  {heading}
+                </div>
+                <p style={{
+                  fontSize: 18, lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap',
+                  color: stale ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+                }}>
+                  {a.text}
+                </p>
+                {stale && <p style={{ ...muted, margin: 'var(--space-xs) 0 0' }}>Based on the previous view</p>}
+              </div>
+            )
+          })}
         </>
       )}
     </div>
