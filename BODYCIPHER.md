@@ -20,6 +20,11 @@ _Last updated: October 29, 2026 (Session: Explore Phase 3 — the coach, branch 
   - **Tag notes:** tag notes are sent to the coach with every call, and are editable in the tag form and shown in the readout.
   - **Prompt changes:** applied word for word.
   - Tests: 72.
+- **Fourth follow-up, same day and branch — structured outputs.** On the preview, "What do you see?" came back as plain text, so the parser fell back and the Reply box never appeared. The JSON shape is now enforced by the API itself.
+  - The method is `output_config.format` (`json_schema`). Claude Sonnet 5.5 rejects forced `tool_choice` with a 400, so the forced-tool route isn't available.
+  - The schema is part of the prompt version in `data_hash`, so the bad cached row misses.
+  - One-tap answers that fail to parse are logged and not cached.
+  - The prompts are unchanged. Tests: 76.
 See EXPLORE → Coach and DATA MODEL → `explore_tags`._
 _Previous update: October 28, 2026 (Session: Explore sleep baseline fix, branch `fix/explore-sleep-baseline`). The Explore Oura cutoff now applies to **HRV and RHR only**.
 - **Why:** Julie confirmed her pre-Oura sleep duration and bedtime are accurate and consistent with Oura's.
@@ -1100,12 +1105,21 @@ Anthropic-backed answers about the chart. **Nothing calls the route automaticall
   - **Thinking is off** (`thinking: { type: 'between_tools' }`). Sonnet 5.5 rejects `{ type: 'disabled' }`, and with adaptive thinking on, the token budget could be spent on reasoning instead of the answer. The SDK (0.82) doesn't type `between_tools` yet, so the params are cast.
   - The system prompt is `COACH_SYSTEM_PROMPT` plus the task block for the type (`buildCoachSystemPrompt()` in `lib/explore/coachPrompts.ts`); custom replaces `{QUESTION}` with Julie's text. The user message is the JSON payload.
   - **Reply:** the user message has two text blocks. The first is the same data payload the original answer used (built for the original type, with the answer's selection and window). The second is `{ earlier_answer, your_question, period, julie_reply }`.
-- **JSON output** (`parseCoachOutput()`): the prompts ask for JSON only.
+- **Structured outputs** (changed Oct 29, 2026, fourth follow-up): every call sends `output_config: { format: { type: 'json_schema', schema } }`, which makes the API return JSON in that exact shape. The schema comes from `coachOutputSchema(type)` / `COACH_OUTPUT_SCHEMAS` in `lib/explore/coach.ts`.
+  - **Why:** on the branch preview a "What do you see?" answer came back as plain text despite the prompt, so its question stayed inside the answer and no Reply box appeared. Prompt instructions alone don't guarantee the format.
+  - **Why not a forced tool:** Claude Sonnet 5.5 rejects `tool_choice` `any` / `tool` with a 400. Structured outputs is the documented replacement, and Sonnet 5.5 supports it (checked against the Claude API skill docs, Oct 2026).
+  - **Schemas** (every object has `additionalProperties: false` and lists all its properties as required):
+    - `answer` (see / next / custom): `answer` string; `question` string or null; `period` `{start, end}` (`format: date`) or null.
+    - `reply`: `answer` string; `tag` `{label, start, end, note}` or null.
+  - Structured outputs don't support `maxLength`, so the 40-character label and 500-character note limits are given in the schema descriptions and enforced by `parseCoachOutput()`, which trims them.
+  - **Thinking** stays `between_tools`. It works with structured outputs; its only limit is effort `high` or below, and the default effort is `high`.
+  - **Prompts:** unchanged. Nothing in them conflicts with the enforced format: the Format lines describe these same schemas, and "Reply with JSON only" agrees with them.
+- **JSON output** (`parseCoachOutput()`): the prompts ask for JSON only, and structured outputs enforce it.
   - see / next / custom: `{"answer", "question": string | null, "period": {start, end} | null}`.
   - reply: `{"answer", "tag": {label, start, end, note} | null}`.
   - Code fences and stray text around the object are tolerated.
   - A bad field is dropped to null: a period with invalid dates or start after end, an empty question, a period with no question, or a tag with no label or bad dates. Tag labels are cut to 40 characters and notes to 500.
-  - **If parsing fails,** the answer is the raw text, with no question, period or tag (`parsed: false`), so there's no Reply box. One refinement: for JSON cut off mid-way (a cut-short answer), the `"answer"` string written so far is recovered instead of showing the raw `{"answer": "…` text.
+  - **If parsing still fails** (e.g. a refusal or a cut-off answer), the answer is the raw text, with no question, period or tag (`parsed: false`), so there's no Reply box. The fallback logs a warning (`explore coach answer not valid JSON…`, with the first 200 characters, or `…cached answer not valid JSON…` on a cache hit). A one-tap answer that fails to parse is not cached, so the next tap tries again. One refinement: for JSON cut off mid-way (a cut-short answer), the `"answer"` string written so far is recovered instead of showing the raw `{"answer": "…` text.
   - An empty answer (e.g. a `refusal` stop) is treated as `coach_failed`. No server-side refusal fallback is configured.
 - **Payload** (`buildCoachPayload()`, compact JSON), from the same `loadExploreData()` the chart uses, with `rollingAverage` and `findStretches` from `lib/explore/trends.ts`:
   - `view: { start, end, selected, included }` — `included` is the selected variables for `see`, all seven for `next` and `custom`.
@@ -1124,7 +1138,7 @@ Anthropic-backed answers about the chart. **Nothing calls the route automaticall
   - The selection is put in `EXPLORE_VARIABLES` order before the payload is built, so the same variables picked in a different order produce the same payload and hash.
 - **Cache** (`runCoach()`, `explore_answers` via `supaAdmin()`, `user_id = 'julie'`):
   - **One-tap:** `cache_key` = `type|sorted variables|endDate`, `focus_date` = endDate, `data_hash` = sha256 of the prompt version + the payload JSON (`hashPayload(type, payloadJson)`).
-    - The prompt version (`coachPromptVersion(type)`) is a sha256 of `COACH_MODEL`, `COACH_SYSTEM_PROMPT` and the type's task block, so editing the prompt or changing the model makes existing cached answers miss (changed Oct 29, 2026, follow-up). If a row has the same cache_key and data_hash, it is returned without calling the API (`cached: true`). If the hash differs, the API is called and the row replaced (upsert on `user_id, cache_key`). `question` stores the button wording.
+    - The prompt version (`coachPromptVersion(type)`) is a sha256 of `COACH_MODEL`, `COACH_SYSTEM_PROMPT`, the type's task block and the output schema, so editing the prompt, changing the model or changing the schema makes existing cached answers miss (changed Oct 29, 2026, follow-ups; the schema was added in the fourth). This is also why the plain-text row cached on 29 Oct at 13:22 UTC is no longer served. If a row has the same cache_key and data_hash, it is returned without calling the API (`cached: true`). If the hash differs, the API is called and the row replaced (upsert on `user_id, cache_key`). `question` stores the button wording.
   - **Custom and reply:** always call the API. Each answer is inserted with `question` = Julie's question or reply and a unique `cache_key` (`custom|…|endDate|<uuid>`, `reply|…|endDate|<uuid>`), and is never served from cache.
   - **`answer` column:** holds the model's raw JSON text, which is parsed again on a cache hit, so a cached one-tap answer keeps its question and period. Rows from before the JSON change miss anyway, because the prompt version changed.
   - A failed cache read or write is logged and doesn't block the answer.

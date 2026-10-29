@@ -1,8 +1,9 @@
 // Explore coach — payload, cache and model call for POST /api/explore/coach.
 // Server-only. The payload is built from the same loadExploreData() output
 // and the same rollingAverage / findStretches the chart uses, so the coach
-// sees exactly what is charted. The model answers in JSON, parsed by
-// parseCoachOutput(). One-tap answers are cached in explore_answers; custom
+// sees exactly what is charted. The answer's JSON shape is enforced by
+// structured outputs (output_config.format with COACH_OUTPUT_SCHEMAS) and
+// parsed by parseCoachOutput(). One-tap answers are cached in explore_answers; custom
 // questions and replies are stored but never served from cache.
 // See BODYCIPHER.md → EXPLORE → Coach.
 
@@ -117,16 +118,72 @@ export function coachCacheKey(type: CoachRequestType, selected: ExploreVariable[
   return type === 'custom' || type === 'reply' ? `${base}|${randomUUID()}` : base
 }
 
-// Prompt version: the shared system prompt, the task block and the model.
-// It is part of data_hash, so editing the prompt or switching the model makes
-// existing cached answers miss.
+// ─── Output schemas ───────────────────────────────────────────────
+// Structured outputs (output_config.format, type json_schema) make the API
+// return JSON in exactly these shapes. Claude Sonnet 5.5 supports them; it
+// rejects forced tool_choice, so a forced tool isn't an option. Structured
+// outputs don't support maxLength, so the 40 / 500 limits are stated in the
+// descriptions and enforced in parseCoachOutput().
+const DATE_SCHEMA = { type: 'string', format: 'date' }
+const PERIOD_SCHEMA = {
+  type: 'object',
+  properties: { start: DATE_SCHEMA, end: DATE_SCHEMA },
+  required: ['start', 'end'],
+  additionalProperties: false,
+}
+export const COACH_OUTPUT_SCHEMAS = {
+  // see / next / custom
+  answer: {
+    type: 'object',
+    properties: {
+      answer: { type: 'string' },
+      question: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      period: { anyOf: [PERIOD_SCHEMA, { type: 'null' }] },
+    },
+    required: ['answer', 'question', 'period'],
+    additionalProperties: false,
+  },
+  reply: {
+    type: 'object',
+    properties: {
+      answer: { type: 'string' },
+      tag: {
+        anyOf: [
+          {
+            type: 'object',
+            properties: {
+              label: { type: 'string', description: `At most ${TAG_LABEL_MAX} characters.` },
+              start: DATE_SCHEMA,
+              end: DATE_SCHEMA,
+              note: { type: 'string', description: `At most ${TAG_NOTE_MAX} characters.` },
+            },
+            required: ['label', 'start', 'end', 'note'],
+            additionalProperties: false,
+          },
+          { type: 'null' },
+        ],
+      },
+    },
+    required: ['answer', 'tag'],
+    additionalProperties: false,
+  },
+} as const
+
+export function coachOutputSchema(type: CoachRequestType): Record<string, unknown> {
+  return type === 'reply' ? COACH_OUTPUT_SCHEMAS.reply : COACH_OUTPUT_SCHEMAS.answer
+}
+
+// Prompt version: the model, the shared system prompt, the task block and
+// the output schema. It is part of data_hash, so editing the prompt,
+// switching the model or changing the schema makes cached answers miss.
 export function coachPromptVersion(
   type: CoachRequestType,
   model: string = COACH_MODEL,
   systemPrompt: string = COACH_SYSTEM_PROMPT,
   task: string = COACH_TASKS[type],
+  schema: Record<string, unknown> = coachOutputSchema(type),
 ): string {
-  return createHash('sha256').update(`${model}\n${systemPrompt}\n${task}`).digest('hex')
+  return createHash('sha256').update(`${model}\n${systemPrompt}\n${task}\n${JSON.stringify(schema)}`).digest('hex')
 }
 
 export function hashPayload(type: CoachRequestType, payloadJson: string): string {
@@ -207,8 +264,10 @@ export function parseCoachOutput(type: CoachRequestType, text: string): CoachOut
 
 // ─── Model call ───────────────────────────────────────────────────
 // Thinking off (between_tools — Sonnet 5.5 rejects "disabled") so the
-// max_tokens budget goes to the answer, not to reasoning. user: the data
-// payload, plus the earlier exchange for a reply.
+// max_tokens budget goes to the answer, not to reasoning. between_tools is
+// compatible with structured outputs (it only rules out xhigh / max effort,
+// and the default effort is high). user: the data payload, plus the earlier
+// exchange for a reply.
 export interface CoachModelResult { text: string; cutShort: boolean }
 
 export async function callCoachModel(
@@ -218,6 +277,7 @@ export async function callCoachModel(
     model: COACH_MODEL,
     max_tokens: COACH_MAX_TOKENS[type],
     thinking: { type: 'between_tools' },
+    output_config: { format: { type: 'json_schema', schema: coachOutputSchema(type) } },
     system,
     messages: [{ role: 'user', content: user.map(text => ({ type: 'text', text })) }],
   } as unknown as Anthropic.MessageCreateParamsNonStreaming
@@ -277,7 +337,9 @@ export async function runCoach(deps: CoachDeps, data: ExploreData, req: CoachReq
       .maybeSingle()
     if (error) console.error('explore coach cache read failed:', describe(error))
     else if (row && row.data_hash === dataHash) {
-      return { ...parseCoachOutput(type, row.answer as string), cutShort: false, cached: true }
+      const cached = parseCoachOutput(type, row.answer as string)
+      if (!cached.parsed) console.warn(`explore coach cached answer not valid JSON, showing raw text (${type})`)
+      return { ...cached, cutShort: false, cached: true }
     }
   }
 
@@ -294,6 +356,10 @@ export async function runCoach(deps: CoachDeps, data: ExploreData, req: CoachReq
     : [payloadJson]
   const { text, cutShort } = await deps.callModel(type, system, user)
   if (cutShort) console.warn(`explore coach answer cut short at max_tokens ${COACH_MAX_TOKENS[type]} (${type})`)
+  const output = parseCoachOutput(type, text)
+  if (!output.parsed) {
+    console.warn(`explore coach answer not valid JSON, showing raw text (${type}): ${text.slice(0, 200)}`)
+  }
 
   const question = req.type === 'custom' ? (req.question ?? '')
     : req.type === 'reply' ? req.reply
@@ -309,8 +375,10 @@ export async function runCoach(deps: CoachDeps, data: ExploreData, req: CoachReq
     model: COACH_MODEL,
     created_at: new Date().toISOString(),
   }
+  // A one-tap answer that was cut short or couldn't be parsed isn't cached,
+  // so the next tap tries again.
   const oneTap = type === 'see' || type === 'next'
-  if (!(oneTap && cutShort)) {
+  if (!(oneTap && (cutShort || !output.parsed))) {
     const { error } = oneTap
       ? await deps.db.from('explore_answers').upsert(record, { onConflict: 'user_id,cache_key' })
       : await deps.db.from('explore_answers').insert(record)
@@ -318,5 +386,5 @@ export async function runCoach(deps: CoachDeps, data: ExploreData, req: CoachReq
     if (error) console.error('explore coach cache write failed:', describe(error))
   }
 
-  return { ...parseCoachOutput(type, text), cutShort, cached: false }
+  return { ...output, cutShort, cached: false }
 }

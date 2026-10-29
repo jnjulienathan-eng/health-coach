@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExploreData } from './fetch'
 import { EXPLORE_VARIABLES, addDays, type ExploreVariable } from './series'
 import {
   buildCoachPayload, coachCacheKey, classifyCoachError, runCoach, coachPromptVersion, hashPayload,
-  parseCoachOutput, COACH_MODEL, COACH_MAX_TOKENS,
+  parseCoachOutput, callCoachModel, coachOutputSchema, COACH_OUTPUT_SCHEMAS, COACH_MODEL, COACH_MAX_TOKENS,
 } from './coach'
 import { buildCoachSystemPrompt, COACH_SYSTEM_PROMPT, COACH_TASKS } from './coachPrompts'
 
@@ -337,6 +337,7 @@ describe('prompt version in data_hash', () => {
     expect(coachPromptVersion('see', COACH_MODEL, COACH_SYSTEM_PROMPT + ' ')).not.toBe(base)
     expect(coachPromptVersion('see', COACH_MODEL, COACH_SYSTEM_PROMPT, COACH_TASKS.see + ' ')).not.toBe(base)
     expect(coachPromptVersion('next')).not.toBe(base)
+    expect(coachPromptVersion('see', COACH_MODEL, COACH_SYSTEM_PROMPT, COACH_TASKS.see, { type: 'object' })).not.toBe(base)
   })
 
   it('a row cached under an older prompt or model misses', async () => {
@@ -351,6 +352,77 @@ describe('prompt version in data_hash', () => {
     row.data_hash = 'hash-from-an-older-prompt'
     expect(await runCoach({ db, ...m }, data, { type: 'see', selected: ['hrv'] })).toMatchObject({ answer: 'answer 2', cached: false })
     expect(m.seen.length).toBe(2)
+  })
+})
+
+describe('structured outputs', () => {
+  // Every object must list all its properties as required and set
+  // additionalProperties: false; maxLength / minLength aren't supported.
+  function checkSchema(node: unknown, path = '$'): string[] {
+    if (!node || typeof node !== 'object') return []
+    const n = node as Record<string, unknown>
+    const problems: string[] = []
+    if ('maxLength' in n || 'minLength' in n) problems.push(`${path}: string length constraint`)
+    if (n.type === 'object') {
+      if (n.additionalProperties !== false) problems.push(`${path}: additionalProperties must be false`)
+      const props = Object.keys((n.properties ?? {}) as object)
+      if (JSON.stringify([...(n.required as string[] ?? [])].sort()) !== JSON.stringify([...props].sort())) {
+        problems.push(`${path}: required must list every property`)
+      }
+    }
+    for (const [k, v] of Object.entries(n)) {
+      if (Array.isArray(v)) v.forEach((x, i) => problems.push(...checkSchema(x, `${path}.${k}[${i}]`)))
+      else if (v && typeof v === 'object') problems.push(...checkSchema(v, `${path}.${k}`))
+    }
+    return problems
+  }
+
+  it('the schemas use only supported features', () => {
+    expect(checkSchema(COACH_OUTPUT_SCHEMAS.answer)).toEqual([])
+    expect(checkSchema(COACH_OUTPUT_SCHEMAS.reply)).toEqual([])
+  })
+
+  it('see / next / custom use the answer schema; reply uses the reply schema', () => {
+    for (const t of ['see', 'next', 'custom'] as const) expect(coachOutputSchema(t)).toBe(COACH_OUTPUT_SCHEMAS.answer)
+    expect(coachOutputSchema('reply')).toBe(COACH_OUTPUT_SCHEMAS.reply)
+    expect(Object.keys(COACH_OUTPUT_SCHEMAS.answer.properties)).toEqual(['answer', 'question', 'period'])
+    expect(Object.keys(COACH_OUTPUT_SCHEMAS.reply.properties)).toEqual(['answer', 'tag'])
+  })
+
+  it('callCoachModel sends the schema, thinking between_tools and the ceiling', async () => {
+    const sent: Record<string, unknown>[] = []
+    const client = {
+      messages: {
+        create: async (params: Record<string, unknown>) => {
+          sent.push(params)
+          return { content: [{ type: 'text', text: '{"answer":"A","question":null,"period":null}' }], stop_reason: 'end_turn' }
+        },
+      },
+    } as unknown as Anthropic
+    for (const t of ['see', 'next', 'custom', 'reply'] as const) {
+      expect(await callCoachModel(client, t, 'system', ['payload'])).toEqual({
+        text: '{"answer":"A","question":null,"period":null}', cutShort: false,
+      })
+    }
+    sent.forEach((p, i) => {
+      const t = (['see', 'next', 'custom', 'reply'] as const)[i]
+      expect(p.model).toBe(COACH_MODEL)
+      expect(p.max_tokens).toBe(COACH_MAX_TOKENS[t])
+      expect(p.thinking).toEqual({ type: 'between_tools' })
+      expect(p.output_config).toEqual({ format: { type: 'json_schema', schema: coachOutputSchema(t) } })
+      expect(p.tool_choice).toBeUndefined()
+    })
+  })
+
+  it('logs and does not cache a one-tap answer that still is not JSON', async () => {
+    const { db, rows } = fakeDb()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const callModel = async () => ({ text: 'Your HRV was well above your usual. Was anything different?', cutShort: false })
+    const r = await runCoach({ db, callModel }, syntheticData(), { type: 'see', selected: ['hrv'] })
+    expect(r).toMatchObject({ answer: 'Your HRV was well above your usual. Was anything different?', question: null, parsed: false })
+    expect(rows.size).toBe(0)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('not valid JSON'))
+    warn.mockRestore()
   })
 })
 
