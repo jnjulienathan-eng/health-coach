@@ -1,6 +1,15 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 29, 2026 (Session: Explore Phase 3 — the coach, branch `explore-phase-3-coach`). Explore can now answer questions about the chart, but only when Julie taps.
+_Last updated: October 29, 2026 (Session: Explore Phase 4 — Dashboard HRV chart removed, branch `dashboard-remove-hrv-rhr-chart`). Explore now covers HRV and RHR, so the Dashboard's "HRV Overview — 30 Days" chart is gone. That chart plotted overnight HRV, its baseline and Apple's all-day HRV average; RHR was never on it.
+- **Deleted:** `HrvChart` and its `hrvData` / `appleHrvData` arrays and card in `app/page.tsx`, and the `--color-teal` token in `app/globals.css` (only that chart used it). The chart had no API route or fetch of its own.
+- **Kept, because other code uses it:**
+  - `hrvBaseline` / `hrvBaselineFromEntries` — the Today tab's Outcome bullets;
+  - `ChartCard`, `chartDate` and the shared `SVG_*` constants — the other Dashboard charts;
+  - `dashEntries` — the Training Load card and the Sleep and Training charts;
+  - `apple_hrv_avg` storage, mapping and the HAE import — data storage, left untouched. Nothing displays it any more.
+- **Unchanged:** HRV/RHR storage, the Oura sync, Explore, and every other Dashboard card. The Dashboard closes up with the standard 16px gap. No migration.
+See Dashboard and EXPLORE → Status._
+_Previous update: October 29, 2026 (Session: Explore Phase 3 — the coach, branch `explore-phase-3-coach`). Explore can now answer questions about the chart, but only when Julie taps.
 - **UI:** below the tag list, "What do you see?", "What should I chart next?" and a custom question box. The latest answer per type shows below. A one-tap answer from another selection or window stays, greyed out, with "Based on the previous view".
 - **Route:** new `POST /api/explore/coach` calls `claude-sonnet-5-5` (thinking off via `between_tools`; max_tokens 250 / 250 / 800). It builds the payload from the same `loadExploreData()` + `rollingAverage` / `findStretches` the chart uses.
 - **Cache:** `explore_answers` is now read and written. A one-tap answer is served from cache when the cache_key and data_hash match. Custom answers are stored but never served.
@@ -657,13 +666,14 @@ Supersedes the fat/lean split in v3 item 2 above. The **headline row is unchange
 **Score cards row removed** from Dashboard tab (April 30, 2026). Score cards remain on Today tab only.
 
 - No score cards in Dashboard tab.
-- 30-day trend charts: HRV, Sleep duration, Protein, Fiber, Training minutes.
+- 30-day trend charts: Sleep duration, Protein, Fiber, Training minutes. (The HRV chart was removed Oct 29, 2026 — see below.)
 - **Training Load expandable card (design Step 6):** Primary Insight Card shell — `--color-navy` background, `--radius-lg`, `--space-lg` padding, `--shadow-card`.
   - Collapsed: status label (18px/600/white) on left, zone-coloured 10px dot + ChevronDown SVG (18px, white 70%, rotates 180° on expand) on right. Zone colour computed via `zoneDisplayColor(ratio)` using design spec thresholds (not `tlResult.colour`).
   - Expanded: white 15% opacity divider, two sub-metric boxes (ACUTE TSU / CHRONIC TSU, white 8% bg), CSS linear-gradient ratio bar (0–0.6 amber / 0.6–0.8 #6DBF8A / 0.8–1.3 status-optimal / 1.3–1.5 amber / 1.5+ status-low), 3px×20px tick marker at current ratio, scale labels (0.6/0.8/1.3/1.5), ratio value (40px/800), 30-day trend SVG (amber line, white 8% optimal band). If fewer than 2 data points: "Not enough data yet" label.
   - Tapping the Training Load score card on the Today tab navigates to Dashboard and opens this card expanded via `trainingLoadExpanded` state. Manual toggle on the Dashboard card clears `trainingLoadExpanded` and resumes normal toggle behaviour.
-- **Charts (design Step 6 + targeted fixes May 10, 2026):** HRV, Sleep, Protein, Fiber, Training minutes all use inline SVGs (no Recharts). Recharts dependency fully removed from Dashboard. ChartCard: `--shadow-card`, title 18px/700/`--color-text-primary`.
-  - HRV chart — "HRV Overview — 30 Days" (160px SVG, `HrvChart`): **dual-axis** (added June 26, 2026).
+- **Charts (design Step 6 + targeted fixes May 10, 2026):** Sleep, Protein, Fiber, Training minutes all use inline SVGs (no Recharts). Recharts dependency fully removed from Dashboard. ChartCard: `--shadow-card`, title 18px/700/`--color-text-primary`.
+  - **HRV chart — REMOVED (Oct 29, 2026, branch `dashboard-remove-hrv-rhr-chart`, Explore Phase 4).** Explore covers HRV and RHR now. `HrvChart`, its data arrays, its card and the `--color-teal` token were deleted; the notes below are history only. `apple_hrv_avg` is still stored and mapped (`lib/types.ts`, `lib/db.ts`, `/api/health-import`) but no longer displayed anywhere.
+  - _(history)_ HRV chart — "HRV Overview — 30 Days" (160px SVG, `HrvChart`): **dual-axis** (added June 26, 2026).
     - **Left axis (`hrv`: Oura overnight average since 2026-09-17, manual waking HRV before; was labelled waking HRV):** navy polyline, amber dots above baseline / navy dots below, amber dashed baseline drawn flat at the computed rolling-median value (28-day median of non-null `hrv` in `dashEntries`, fallback 88; see HRV baseline note under Outcome Score), "baseline {value}ms" label (rounded) at the right edge of the plot area (y = SVG_PAD_T + 12, textAnchor end), horizontal grid lines, left y-axis labels.
     - **Right axis (Apple all-day avg HRV):** plots `daily_entries.apple_hrv_avg` (passed as the `apple` prop, built as `appleHrvData` from `chart30`) as a **teal** (`--color-teal`) polyline on its **own auto-fit y-scale** — Apple avg sits ~29–63ms and would crush flat on the waking-HRV scale (~45–184ms). Scale = min/max of non-null values ± 5, floored at 0. 2–3 teal right-edge y-labels. Drawn under the waking line; no dots. Only rendered when at least one non-null Apple value exists.
     - **Null gaps:** both the waking and Apple lines are segmented around null days — the line breaks rather than connecting across missing days.
@@ -677,7 +687,7 @@ Supersedes the fat/lean split in v3 item 2 above. The **headline row is unchange
 - **History section appended below charts** (April 30, 2026): chronological entry list with expandable detail rows and "Edit this day →" link (navigates to Today tab for that date). Uses `loadAllEntries()` fetched once on mount via dedicated state (`historyEntries`, `historyLoading`, `historyError`).
 - **History rows (design Step 6 + targeted fixes May 10, 2026):** HISTORY section label (14px/700/uppercase/letter-spacing 0.05em). Each row: `--shadow-card`, min-height 72px, date (24px/700), emojis (16px), BEHAV/OUTC columns. Chevron: ChevronDown SVG (not ChevronRight), hidden when row is expanded. **Session icon cap (July 9, 2026):** the collapsed row's icon list is capped at 4 icons with a "+N" overflow pill — see "Activity icons" → "Icon cap" above. The expanded row detail (`EntryDetail`) is unaffected and still lists every session.
 - **⚠️ Known bug, flagged Sept 7, 2026 (found during RLS fix session 2 branch-preview testing, unrelated to RLS) — BEHAV/OUTC columns don't match the Today tab's numbers for the same date.** `HistoryRow` (`app/page.tsx`) computes these by calling `behaviorScore(entry)`/`outcomeScore(entry)` from `lib/scores.ts` with no extra arguments, which silently falls back to `nutritionSummary = undefined` (drops the entire 30%-weighted nutrition component from Behavior Score), `hrvBaseline = 88` (fixed, not the real rolling 28-day median), and `bedtimeTarget = '21:45'` (fixed, not the real rolling 30-day average) — a materially different, simplified calculation from the authoritative stored `behavior_score`/`outcome_score` columns the Today tab reads via `/api/scores`. Present since the History/Dashboard merge, commit `7c0cd7c`, April 30, 2026 (confirmed via `git log -S`) — predates both RLS sessions, not something either introduced. Not fixed as part of the RLS work; needs its own decision (show the stored value per row instead, or thread the real baselines/nutrition summary into the client recompute) before it's touched.
-- Data source: `dashEntries` (already loaded by the Today tab's `loadRecentEntries(30)` effect) reused for HRV/sleep/training chart computation. `loadAllEntries()` added separately for the history list.
+- Data source: `dashEntries` (already loaded by the Today tab's `loadRecentEntries(30)` effect) reused for the Training Load card and the sleep/training chart computation (and, until Oct 29, 2026, the HRV chart). `loadAllEntries()` added separately for the history list.
 - **Protein and Fiber charts (updated May 1, 2026):** Read from `daily_nutrition_summary` via `GET /api/nutrition/chart?days=31` (service-role admin client, bypasses RLS). Stored in `nutritionSummaries` state as a `Record<string, { protein, fiber }>` keyed by plain YYYY-MM-DD strings using `.slice(0, 10)`. Chart arrays are built from an **independent 30-consecutive-date range** (`nutritionChart30`) ending at `currentDate`, not from `dashEntries`/`chart30` — so bars show even on dates where `daily_entries` has no row. Date generation uses `Date.UTC` arithmetic + `.toISOString().slice(0, 10)` with no local-timezone shift; map lookup is a direct string key comparison. Legacy `daily_entries.total_protein` / `total_fiber` columns are no longer read by the charts.
 - DashboardTab.tsx no longer imported — content fully inlined in app/page.tsx. Component preserved on disk.
 
@@ -896,7 +906,7 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 **Status:**
 - **Built:** the data layer (Phase 1) and the UI (Phase 2, see "UI" below).
 - **Also built:** Phase 2b, tags (see "Tags" below), and Phase 3, the coach (see "Coach" below, Oct 29, 2026).
-- **Not built yet:** Phase 4.
+- **Phase 4 done** (Oct 29, 2026, branch `dashboard-remove-hrv-rhr-chart`): the Dashboard's HRV chart was removed, since Explore covers HRV and RHR. See CURRENT STATE → Dashboard.
 
 ### Files
 - `lib/explore/series.ts` — pure. Holds the variable keys, the raw daily series keyed by chart date (already shifted), the bedtime and last-meal minute encodings with their HH:MM inverses, and the GLP-1 injection info.

@@ -301,16 +301,6 @@ Used on the Sleep — 30 Days chart (Dashboard tab) and any chart with a target 
 - X-axis: day numbers, `label-sm`, `--color-text-muted`
 - No background grid lines — only a horizontal rule at y=0
 
-### HRV Line Chart (Dashboard tab — HRV — 30 Days)
-
-- Line: `--color-navy`, 2px stroke
-- **Dots above baseline**: filled `--color-amber`
-- **Dots below baseline**: filled `--color-navy`
-- **Baseline**: amber dashed horizontal, `--color-amber` at 60% opacity, labelled "baseline XXms" in `label-sm`
-- Horizontal grid lines: 1px `--color-border-subtle`
-- No area fill — line and dots only
-- Dot radius: 5px
-
 ### Training Load Ratio Bar (Dashboard tab — inside Primary Insight Card)
 
 - Single horizontal bar, full card width
@@ -492,9 +482,9 @@ Uses Primary Insight Card styling. Two states:
 - 30-day trend line with shaded optimal band (0.8–1.3)
 
 ### Chart Section
-Stacked vertically: HRV — 30 Days · Sleep — 30 Days · Protein — 30 Days · Fiber — 30 Days
+Stacked vertically: Sleep — 30 Days · Protein — 30 Days · Fiber — 30 Days · Training minutes — 30 Days. The HRV — 30 Days chart was removed on Oct 29, 2026; Explore covers HRV and RHR.
 
-See Two-Tone Bar Chart and HRV Line Chart specs above.
+See the Two-Tone Bar Chart spec above.
 
 ### History Rows (bottom of Dashboard)
 
