@@ -8,9 +8,9 @@ import { createHash, randomUUID } from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExploreData } from './fetch'
-import { EXPLORE_VARIABLES, type ExploreVariable } from './series'
+import { EXPLORE_VARIABLES, bedtimeMinutesToHHMM, lastMealMinutesToHHMM, type ExploreVariable } from './series'
 import { rollingAverage, findStretches } from './trends'
-import { buildCoachSystemPrompt, type CoachRequestType } from './coachPrompts'
+import { buildCoachSystemPrompt, COACH_SYSTEM_PROMPT, COACH_TASKS, type CoachRequestType } from './coachPrompts'
 import { describe } from './tagsDb'
 
 export const COACH_MODEL = 'claude-sonnet-5-5'
@@ -33,21 +33,23 @@ const UNITS: Record<ExploreVariable, string> = {
 
 const round2 = (x: number | null) => (x == null ? null : Math.round(x * 100) / 100)
 
-// Value in display units: ms / bpm / TSU as whole numbers, sleep as "h:mm",
-// bedtime and last meal as Berlin "HH:MM", load ratio to 2 decimals.
-function displayValue(v: ExploreVariable, p: ExploreData['dates'][number]['variables'][ExploreVariable]): number | string | null {
-  if (p.value == null) return null
+// Raw value (or average of raw values) in display units, as the readout
+// shows it: ms / bpm / TSU as whole numbers, sleep as "h:mm", bedtime and
+// last meal as Berlin "HH:MM" (same converters as the route's display),
+// load ratio to 2 decimals.
+function displayValue(v: ExploreVariable, value: number | null): number | string | null {
+  if (value == null) return null
   switch (v) {
     case 'hrv':
     case 'rhr':
-    case 'training_stress': return Math.round(p.value)
+    case 'training_stress': return Math.round(value)
     case 'sleep_duration': {
-      const m = Math.round(p.value)
+      const m = Math.round(value)
       return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`
     }
-    case 'bedtime':
-    case 'last_meal':       return p.display
-    case 'load_ratio':      return round2(p.value)
+    case 'bedtime':         return bedtimeMinutesToHHMM(value)
+    case 'last_meal':       return lastMealMinutesToHHMM(value)
+    case 'load_ratio':      return round2(value)
   }
 }
 
@@ -57,9 +59,15 @@ function displayValue(v: ExploreVariable, p: ExploreData['dates'][number]['varia
 // chart's, i.e. for the selected variables.
 export function buildCoachPayload(data: ExploreData, type: CoachRequestType, selected: ExploreVariable[]) {
   const included: ExploreVariable[] = type === 'see' ? selected : [...EXPLORE_VARIABLES]
+  // averages: the chart's 7-day average of dev (avg7_dev, and stretches).
+  // rawAverages: the same centred window over raw values (avg7), so the
+  // average reads in real units. Bedtime and last meal average their
+  // encoded minutes, which don't wrap at midnight.
   const averages: Partial<Record<ExploreVariable, (number | null)[]>> = {}
+  const rawAverages: Partial<Record<ExploreVariable, (number | null)[]>> = {}
   for (const v of new Set([...included, ...selected])) {
     averages[v] = rollingAverage(data.dates.map(d => d.variables[v].z))
+    rawAverages[v] = rollingAverage(data.dates.map(d => d.variables[v].value))
   }
   const injections = new Set(data.injectionDates)
 
@@ -71,8 +79,9 @@ export function buildCoachPayload(data: ExploreData, type: CoachRequestType, sel
       sick: d.isSick,
       injection: injections.has(d.date),
       ...Object.fromEntries(included.map(v => [v, {
-        value: displayValue(v, d.variables[v]),
-        avg7: round2(averages[v]?.[i] ?? null),
+        value: displayValue(v, d.variables[v].value),
+        avg7: displayValue(v, rawAverages[v]?.[i] ?? null),
+        avg7_dev: round2(averages[v]?.[i] ?? null),
         dev: round2(d.variables[v].z),
       }])),
     })),
@@ -91,8 +100,20 @@ export function coachCacheKey(type: CoachRequestType, selected: ExploreVariable[
   return type === 'custom' ? `${base}|${randomUUID()}` : base
 }
 
-export function hashPayload(payloadJson: string): string {
-  return createHash('sha256').update(payloadJson).digest('hex')
+// Prompt version: the shared system prompt, the task block and the model.
+// It is part of data_hash, so editing the prompt or switching the model makes
+// existing cached answers miss.
+export function coachPromptVersion(
+  type: CoachRequestType,
+  model: string = COACH_MODEL,
+  systemPrompt: string = COACH_SYSTEM_PROMPT,
+  task: string = COACH_TASKS[type],
+): string {
+  return createHash('sha256').update(`${model}\n${systemPrompt}\n${task}`).digest('hex')
+}
+
+export function hashPayload(type: CoachRequestType, payloadJson: string): string {
+  return createHash('sha256').update(`${coachPromptVersion(type)}\n${payloadJson}`).digest('hex')
 }
 
 // ─── Errors ───────────────────────────────────────────────────────
@@ -150,7 +171,7 @@ export async function runCoach(
   // (and key) the same.
   selected = EXPLORE_VARIABLES.filter(v => selected.includes(v))
   const payloadJson = JSON.stringify(buildCoachPayload(data, type, selected))
-  const dataHash = hashPayload(payloadJson)
+  const dataHash = hashPayload(type, payloadJson)
   const cacheKey = coachCacheKey(type, selected, data.endDate)
 
   if (type !== 'custom') {

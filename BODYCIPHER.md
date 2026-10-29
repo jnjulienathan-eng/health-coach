@@ -7,6 +7,10 @@ _Last updated: October 29, 2026 (Session: Explore Phase 3 — the coach, branch 
 - **Errors:** out of credit → "The coach is out of API credit. The chart still works."; anything else → "The coach couldn't answer just now. Try again in a moment."
 - **New files:** `lib/explore/coachPrompts.ts`, `lib/explore/coach.ts`, `lib/explore/coach.test.ts`, `app/api/explore/coach/route.ts`. Tests: 53.
 - **No migration.** Unchanged: the data layer, the chart, tags and scoring.
+- **Follow-up, same day and branch:**
+  - The payload sends `avg7` in real units (the centred 7-day average of raw values) next to `avg7_dev` (the chart's average of dev). Two prompt lines were updated to match.
+  - `data_hash` now includes a prompt version: a hash of the model name, the system prompt and the task block. Editing the prompt or changing the model makes cached answers miss.
+  - Tests: 56.
 See EXPLORE → Coach._
 _Previous update: October 28, 2026 (Session: Explore sleep baseline fix, branch `fix/explore-sleep-baseline`). The Explore Oura cutoff now applies to **HRV and RHR only**.
 - **Why:** Julie confirmed her pre-Oura sleep duration and bedtime are accurate and consistent with Oura's.
@@ -1081,14 +1085,19 @@ Anthropic-backed answers about the chart. **Nothing calls the route automaticall
 - **Payload** (`buildCoachPayload()`, compact JSON), from the same `loadExploreData()` the chart uses, with `rollingAverage` and `findStretches` from `lib/explore/trends.ts`:
   - `view: { start, end, selected, included }` — `included` is the selected variables for `see`, all seven for `next` and `custom`.
   - `units` for each included variable.
-  - `days`: per chart date, `{ date, sick, injection, <variable>: { value, avg7, dev } }`. `value` is in display units: hrv / rhr / training_stress as whole numbers, sleep_duration as "h:mm", bedtime and last_meal as Berlin "HH:MM", load_ratio to 2 decimals. `dev` is the z-score and `avg7` its centred 7-day average, both to 2 decimals. Missing values and baselines are `null` (e.g. HRV / RHR dev before 17 Sep 2026).
+  - `days`: per chart date, `{ date, sick, injection, <variable>: { value, avg7, avg7_dev, dev } }`.
+    - `value` and `avg7` are in display units: hrv / rhr / training_stress as whole numbers, sleep_duration as "h:mm", bedtime and last_meal as Berlin "HH:MM" (via `bedtimeMinutesToHHMM` / `lastMealMinutesToHHMM`), load_ratio to 2 decimals.
+    - `avg7` (changed Oct 29, 2026, follow-up) is `rollingAverage()` over the raw values: the same centred 7-day window and 4-value minimum as the chart, then formatted. Bedtime and last meal average their encoded minutes (noon-centred / after 05:00), so times either side of midnight average correctly. The readout has no real-unit average of its own, so this reuses `rollingAverage` plus the readout's display formats.
+    - The raw average covers every non-null value in the window, including days with no dev (e.g. HRV before 17 Sep 2026, or last meal before its baseline fills). So `avg7` can exist where `avg7_dev` is null.
+    - `dev` is the z-score and `avg7_dev` its centred 7-day average (what the chart lines draw), both to 2 decimals.
+    - Missing values and baselines are `null` (e.g. HRV / RHR dev before 17 Sep 2026).
   - `stretches: [{ start, end, variables }]` — the chart's stretches, so for the selected variables.
   - `tags: [{ label, start, end, source: 'manual' | 'auto' }]`.
   - The selection is put in `EXPLORE_VARIABLES` order before the payload is built, so the same variables picked in a different order produce the same payload and hash.
 - **Cache** (`runCoach()`, `explore_answers` via `supaAdmin()`, `user_id = 'julie'`):
-  - **One-tap:** `cache_key` = `type|sorted variables|endDate`, `focus_date` = endDate, `data_hash` = sha256 of the payload JSON. If a row has the same cache_key and data_hash, it is returned without calling the API (`cached: true`). If the hash differs, the API is called and the row replaced (upsert on `user_id, cache_key`). `question` stores the button wording.
+  - **One-tap:** `cache_key` = `type|sorted variables|endDate`, `focus_date` = endDate, `data_hash` = sha256 of the prompt version + the payload JSON (`hashPayload(type, payloadJson)`).
+    - The prompt version (`coachPromptVersion(type)`) is a sha256 of `COACH_MODEL`, `COACH_SYSTEM_PROMPT` and the type's task block, so editing the prompt or changing the model makes existing cached answers miss (changed Oct 29, 2026, follow-up). If a row has the same cache_key and data_hash, it is returned without calling the API (`cached: true`). If the hash differs, the API is called and the row replaced (upsert on `user_id, cache_key`). `question` stores the button wording.
   - **Custom:** always calls the API; each answer is inserted with `question` = Julie's text and a unique `cache_key` (`custom|…|endDate|<uuid>`), never served from cache.
-  - The hash covers the payload only, not the prompt text: a prompt edit alone doesn't invalidate cached answers.
   - A failed cache read or write is logged and doesn't block the answer.
 - **Out of credit** (`classifyCoachError()`): the API reports an empty balance as a 400 whose message mentions the credit balance (no dedicated error class). That, or a 402 with the same wording, maps to `out_of_credit`; everything else to `coach_failed`. Cost is not tracked.
 - **Prompt — the two [CHECK] sentences**, written from the code:

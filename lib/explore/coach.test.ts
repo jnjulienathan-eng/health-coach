@@ -3,8 +3,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExploreData } from './fetch'
 import { EXPLORE_VARIABLES, addDays, type ExploreVariable } from './series'
-import { buildCoachPayload, coachCacheKey, classifyCoachError, runCoach } from './coach'
-import { buildCoachSystemPrompt } from './coachPrompts'
+import { buildCoachPayload, coachCacheKey, classifyCoachError, runCoach, coachPromptVersion, hashPayload, COACH_MODEL } from './coach'
+import { buildCoachSystemPrompt, COACH_SYSTEM_PROMPT, COACH_TASKS } from './coachPrompts'
 
 // 20 days ending 2026-10-28. HRV and RHR drift low together from day 10
 // (a stretch), sleep is 7h30, bedtime 21:45, last meal 19:30.
@@ -58,7 +58,22 @@ describe('buildCoachPayload', () => {
     expect(p.view.included).toEqual(sel)
     const day = p.days[0] as Record<string, unknown>
     expect(Object.keys(day)).toEqual(['date', 'sick', 'injection', 'hrv', 'rhr'])
-    expect(day.hrv).toEqual({ value: 47, avg7: 0.1, dev: 0.1 })
+    expect(day.hrv).toEqual({ value: 47, avg7: 47, avg7_dev: 0.1, dev: 0.1 })
+  })
+
+  it('avg7 is the centred 7-day average of raw values, in display units', () => {
+    const p = buildCoachPayload(syntheticData(), 'next', ['hrv'])
+    const day = (i: number) => p.days[i] as unknown as Record<string, { value: unknown; avg7: unknown; avg7_dev: unknown }>
+    // Day 10 (19 Oct): window days 7–13 = 3 × 47 + 4 × 38 → 41.9 → 42 ms.
+    expect(day(10).hrv.avg7).toBe(42)
+    expect(day(10).hrv.avg7_dev).toBe(-0.76)
+    expect(day(10).rhr.avg7).toBe(53)
+    expect(day(10).sleep_duration.avg7).toBe('7:30')
+    expect(day(10).bedtime.avg7).toBe('21:45')
+    expect(day(10).last_meal.avg7).toBe('19:30')
+    expect(day(10).load_ratio.avg7).toBe(1.05)
+    // last_meal has no dev at all, but still has a real-unit average.
+    expect(day(10).last_meal.avg7_dev).toBeNull()
   })
 
   it('"next" includes all seven and marks the selection', () => {
@@ -128,6 +143,32 @@ describe('runCoach caching', () => {
     expect(await runCoach(deps, data, 'custom', ['hrv'], 'Q?')).toEqual({ answer: 'answer 2', cached: false })
     expect(rows.size).toBe(2)
     expect([...rows.values()][0].question).toBe('Q?')
+  })
+})
+
+describe('prompt version in data_hash', () => {
+  it('changes with the model, the system prompt or the task block', () => {
+    const base = coachPromptVersion('see')
+    expect(coachPromptVersion('see', COACH_MODEL, COACH_SYSTEM_PROMPT, COACH_TASKS.see)).toBe(base)
+    expect(coachPromptVersion('see', 'claude-opus-5-5')).not.toBe(base)
+    expect(coachPromptVersion('see', COACH_MODEL, COACH_SYSTEM_PROMPT + ' ')).not.toBe(base)
+    expect(coachPromptVersion('see', COACH_MODEL, COACH_SYSTEM_PROMPT, COACH_TASKS.see + ' ')).not.toBe(base)
+    expect(coachPromptVersion('next')).not.toBe(base)
+  })
+
+  it('a row cached under an older prompt or model misses', async () => {
+    const { db, rows } = fakeDb()
+    let calls = 0
+    const deps = { db, callModel: async () => { calls++; return `answer ${calls}` } }
+    const data = syntheticData()
+    await runCoach(deps, data, 'see', ['hrv'])
+    const row = rows.get('see|hrv|2026-10-28')!
+    // Same payload hashed without the prompt version = what an old row holds.
+    const payloadJson = JSON.stringify(buildCoachPayload(data, 'see', ['hrv']))
+    expect(row.data_hash).toBe(hashPayload('see', payloadJson))
+    row.data_hash = 'hash-from-an-older-prompt'
+    expect(await runCoach(deps, data, 'see', ['hrv'])).toEqual({ answer: 'answer 2', cached: false })
+    expect(calls).toBe(2)
   })
 })
 
