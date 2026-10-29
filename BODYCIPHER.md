@@ -25,6 +25,7 @@ _Last updated: October 29, 2026 (Session: Explore Phase 3 — the coach, branch 
   - The schema is part of the prompt version in `data_hash`, so the bad cached row misses.
   - One-tap answers that fail to parse are logged and not cached.
   - The prompts are unchanged. Tests: 76.
+- **Fifth follow-up, same day and branch — when the coach asks.** In HOW TO ANSWER, the question line now reads: "When the most notable pattern has no tag and no charted variable that plausibly explains it, ask Julie one short question about that period. Put it in "question", and put the dates it refers to in "period". Otherwise set both to null." Before, the coach could ask whenever "one missing piece of context would change your reading". The prompt version changes, so cached one-tap answers miss once.
 See EXPLORE → Coach and DATA MODEL → `explore_tags`._
 _Previous update: October 28, 2026 (Session: Explore sleep baseline fix, branch `fix/explore-sleep-baseline`). The Explore Oura cutoff now applies to **HRV and RHR only**.
 - **Why:** Julie confirmed her pre-Oura sleep duration and bedtime are accurate and consistent with Oura's.
