@@ -15,8 +15,10 @@ import type { ExploreData, ExploreDate } from '@/lib/explore/fetch'
 import type { ExploreVariable } from '@/lib/explore/series'
 import { MAX_SELECTED_VARIABLES } from '@/lib/explore/highlights'
 import { rollingAverage, findStretches, STRETCH_Z, type ExploreStretch } from '@/lib/explore/trends'
-import { TAG_LABEL_MAX, type ExploreTag } from '@/lib/explore/tags'
+import { TAG_LABEL_MAX, TAG_NOTE_MAX, tagsOverlap, type ExploreTag } from '@/lib/explore/tags'
 import type { CoachRequestType } from '@/lib/explore/coachPrompts'
+
+type OriginalCoachType = Exclude<CoachRequestType, 'reply'>
 
 const CHIPS: { key: ExploreVariable; label: string; note?: string }[] = [
   { key: 'hrv',             label: 'HRV' },
@@ -177,7 +179,7 @@ function ColourSquare({ colour }: { colour: string | null }) {
 // ─── Tag controls ─────────────────────────────────────────────────
 // add: new manual tag · rename: new manual tag over an automatic tag's
 // dates · edit: PATCH an existing manual tag.
-type TagFormState = { kind: 'add' | 'rename' | 'edit'; id?: string; label: string; start: string; end: string }
+type TagFormState = { kind: 'add' | 'rename' | 'edit'; id?: string; label: string; start: string; end: string; note: string }
 
 function TextLink({ children, onClick, disabled, danger }: {
   children: React.ReactNode
@@ -229,6 +231,14 @@ function TagForm({ form, maxDate, busy, onChange, onSave, onCancel }: {
           style={field}
         />
       </label>
+      <label>
+        <span style={label}>Note (optional)</span>
+        <textarea
+          value={form.note} maxLength={TAG_NOTE_MAX} rows={3}
+          onChange={e => onChange({ ...form, note: e.target.value })}
+          style={{ ...field, minHeight: 72, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }}
+        />
+      </label>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-xs)' }}>
         <label>
           <span style={label}>Start</span>
@@ -258,9 +268,93 @@ const COACH_ERRORS = {
   coach_failed: "The coach couldn't answer just now. Try again in a moment.",
 }
 
+type CoachPeriod = { start: string; end: string }
+type CoachTagSuggestion = { label: string; start: string; end: string; note: string }
+
 // viewKey: the selection + window the answer was asked about. A one-tap
 // answer whose viewKey no longer matches the screen is greyed out.
-interface CoachAnswer { text: string; viewKey: string; question?: string }
+// coachQuestion: the coach's own question back to Julie (shows the Reply
+// box); variables / endDate: what a reply sends, so it matches the answer.
+interface CoachAnswer {
+  text: string
+  cutShort: boolean
+  viewKey: string
+  question?: string              // Julie's custom question
+  coachQuestion: string | null
+  period: CoachPeriod | null
+  variables: ExploreVariable[]
+  endDate: string
+  reply?: { text: string; answer: string; cutShort: boolean; tag: CoachTagSuggestion | null }
+}
+
+interface CoachResponseBody {
+  answer?: string
+  question?: string | null
+  period?: CoachPeriod | null
+  tag?: CoachTagSuggestion | null
+  cutShort?: boolean
+  error?: string
+}
+
+const CUT_SHORT_NOTE = '(answer was cut short)'
+
+// Pill text box with a round send button — the custom question and the
+// Reply box under an answer.
+function CoachInput({ value, onChange, onSubmit, placeholder, ariaLabel, busy, disabled }: {
+  value: string
+  onChange: (v: string) => void
+  onSubmit: () => void
+  placeholder: string
+  ariaLabel: string
+  busy: boolean        // this box's request is in flight
+  disabled: boolean    // any coach request is in flight
+}) {
+  const empty = value.trim() === ''
+  return (
+    <form
+      onSubmit={e => { e.preventDefault(); onSubmit() }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 'var(--space-xs)',
+        padding: '4px 4px 4px var(--space-md)', minHeight: 52, boxSizing: 'border-box',
+        background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-full)', boxShadow: 'var(--shadow-input)',
+      }}
+    >
+      <input
+        type="text"
+        value={value}
+        maxLength={COACH_QUESTION_MAX}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        onChange={e => onChange(e.target.value)}
+        disabled={disabled}
+        style={{
+          flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
+          fontSize: 16, color: 'var(--color-text-primary)',
+        }}
+      />
+      <button
+        type="submit"
+        aria-label={`Send: ${ariaLabel}`}
+        disabled={disabled || empty}
+        style={{
+          width: 44, height: 44, flexShrink: 0, borderRadius: 'var(--radius-full)', border: 'none',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          background: 'var(--color-navy)', color: 'var(--color-surface)',
+          fontSize: 16, fontWeight: 700,
+          cursor: disabled || empty ? 'default' : 'pointer',
+          opacity: busy ? 1 : disabled || empty ? 0.5 : 1,
+        }}
+      >
+        {busy ? '…' : (
+          <svg aria-hidden width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        )}
+      </button>
+    </form>
+  )
+}
 
 function coachViewKey(selected: ExploreVariable[], endDate: string): string {
   return `${[...selected].sort().join(',')}|${endDate}`
@@ -493,10 +587,14 @@ export default function ExploreTab() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [tagError, setTagError] = useState<string | null>(null)
   const [tagBusy, setTagBusy] = useState(false)
-  const [coachAnswers, setCoachAnswers] = useState<Partial<Record<CoachRequestType, CoachAnswer>>>({})
+  const [coachAnswers, setCoachAnswers] = useState<Partial<Record<OriginalCoachType, CoachAnswer>>>({})
   const [coachBusy, setCoachBusy] = useState<CoachRequestType | null>(null)
   const [coachError, setCoachError] = useState<string | null>(null)
   const [coachQuestion, setCoachQuestion] = useState('')
+  const [replyDrafts, setReplyDrafts] = useState<Partial<Record<OriginalCoachType, string>>>({})
+  const [replyFor, setReplyFor] = useState<OriginalCoachType | null>(null)
+  const [replyError, setReplyError] = useState<{ type: OriginalCoachType; text: string } | null>(null)
+  const readoutRef = useRef<HTMLDivElement>(null)
 
   // keepDate: after a tag save/delete, re-select the same day.
   const load = useCallback(async (keepDate?: string) => {
@@ -565,7 +663,7 @@ export default function ExploreTab() {
     setTagBusy(true)
     setTagError(null)
     try {
-      const body = JSON.stringify({ label: tagForm.label, start: tagForm.start, end: tagForm.end })
+      const body = JSON.stringify({ label: tagForm.label, start: tagForm.start, end: tagForm.end, note: tagForm.note.trim() || null })
       const res = tagForm.kind === 'edit'
         ? await fetch(`/api/explore/tags/${tagForm.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body })
         : await fetch('/api/explore/tags', { method: 'POST', headers: { 'content-type': 'application/json' }, body })
@@ -607,7 +705,7 @@ export default function ExploreTab() {
 
   const viewKey = data ? coachViewKey(selected, data.endDate) : ''
 
-  const askCoach = async (type: CoachRequestType) => {
+  const askCoach = async (type: OriginalCoachType) => {
     if (!data || coachBusy) return
     const question = coachQuestion.trim()
     if (type === 'custom' && !question) return
@@ -621,18 +719,82 @@ export default function ExploreTab() {
         cache: 'no-store',
         body: JSON.stringify({ type, variables: selected, endDate: data.endDate, question: type === 'custom' ? question : undefined }),
       })
-      const body = await res.json().catch(() => ({})) as { answer?: string; error?: string }
+      const body = await res.json().catch(() => ({})) as CoachResponseBody
       if (!res.ok || !body.answer) {
         setCoachError(body.error === 'out_of_credit' ? COACH_ERRORS.out_of_credit : COACH_ERRORS.coach_failed)
         return
       }
-      setCoachAnswers(a => ({ ...a, [type]: { text: body.answer!, viewKey: askedKey, question: type === 'custom' ? question : undefined } }))
+      setCoachAnswers(a => ({ ...a, [type]: {
+        text: body.answer!, cutShort: body.cutShort === true, viewKey: askedKey,
+        question: type === 'custom' ? question : undefined,
+        coachQuestion: body.question ?? null, period: body.period ?? null,
+        variables: selected, endDate: data.endDate,
+      } }))
+      setReplyDrafts(d => ({ ...d, [type]: '' }))
+      if (replyError?.type === type) setReplyError(null)
       if (type === 'custom') setCoachQuestion('')
     } catch {
       setCoachError(COACH_ERRORS.coach_failed)
     } finally {
       setCoachBusy(null)
     }
+  }
+
+  // Reply to the coach's question under an answer. Sends the same selection
+  // and window the answer was based on, plus the earlier answer.
+  const sendReply = async (type: OriginalCoachType) => {
+    const a = coachAnswers[type]
+    const reply = (replyDrafts[type] ?? '').trim()
+    if (!a || !a.coachQuestion || !reply || coachBusy) return
+    setCoachBusy('reply')
+    setReplyFor(type)
+    setReplyError(null)
+    try {
+      const res = await fetch('/api/explore/coach', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          type: 'reply', variables: a.variables, endDate: a.endDate, reply,
+          replyTo: { type, answer: a.text, question: a.coachQuestion, period: a.period },
+        }),
+      })
+      const body = await res.json().catch(() => ({})) as CoachResponseBody
+      if (!res.ok || !body.answer) {
+        setReplyError({ type, text: body.error === 'out_of_credit' ? COACH_ERRORS.out_of_credit : COACH_ERRORS.coach_failed })
+        return
+      }
+      setCoachAnswers(all => {
+        const cur = all[type]
+        if (!cur) return all
+        return { ...all, [type]: { ...cur, reply: { text: reply, answer: body.answer!, cutShort: body.cutShort === true, tag: body.tag ?? null } } }
+      })
+    } catch {
+      setReplyError({ type, text: COACH_ERRORS.coach_failed })
+    } finally {
+      setCoachBusy(null)
+      setReplyFor(null)
+    }
+  }
+
+  // Opens the readout's tag form pre-filled with the coach's suggestion.
+  // Nothing is saved until Julie taps Save. Manual tags can't overlap, so if
+  // the period overlaps one, the form edits that tag and adds the note to it.
+  const openSuggestedTag = (t: CoachTagSuggestion) => {
+    if (!data || dates.length === 0) return
+    const clash = tags.find(x => x.source === 'manual' && tagsOverlap(x, t))
+    const form: TagFormState = clash
+      ? {
+          kind: 'edit', id: clash.id, label: clash.label, start: clash.start, end: clash.end,
+          note: [clash.note, t.note].filter(Boolean).join(' ').slice(0, TAG_NOTE_MAX),
+        }
+      : { kind: 'add', label: t.label, start: t.start, end: t.end, note: t.note }
+    const first = clash ? clash.start : t.start
+    setSelectedIdx(Math.max(0, Math.min(dates.length - 1, dayIndex(dates[0].date, first))))
+    setConfirmDeleteId(null)
+    setTagError(null)
+    setTagForm(form)
+    readoutRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const muted: React.CSSProperties = { fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 400 }
@@ -696,7 +858,7 @@ export default function ExploreTab() {
       ) : (
         <>
           {/* 4. Readout */}
-          <div style={card}>
+          <div ref={readoutRef} style={{ ...card, scrollMarginTop: 'var(--space-md)' }}>
             {selected.length === 0 || !day ? (
               <p style={{ fontSize: 16, color: 'var(--color-text-secondary)', margin: 0 }}>Pick a variable to start.</p>
             ) : (
@@ -756,15 +918,20 @@ export default function ExploreTab() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', flexWrap: 'wrap', fontSize: 14 }}>
                     <span style={{ color: 'var(--color-text-secondary)', marginRight: 'auto' }}>
                       {manualTag.label} · {fmtRange(manualTag.start, manualTag.end)}
+                      {manualTag.note && (
+                        <span style={{ display: 'block', marginTop: 2, color: 'var(--color-text-secondary)', fontWeight: 400 }}>
+                          {manualTag.note}
+                        </span>
+                      )}
                     </span>
-                    <TextLink onClick={() => { setTagError(null); setTagForm({ kind: 'edit', id: manualTag.id, label: manualTag.label, start: manualTag.start, end: manualTag.end }) }}>Edit</TextLink>
+                    <TextLink onClick={() => { setTagError(null); setTagForm({ kind: 'edit', id: manualTag.id, label: manualTag.label, start: manualTag.start, end: manualTag.end, note: manualTag.note ?? '' }) }}>Edit</TextLink>
                     <TextLink onClick={() => { setTagError(null); setConfirmDeleteId(manualTag.id ?? null) }}>Delete</TextLink>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', flexWrap: 'wrap', fontSize: 14 }}>
-                    <TextLink onClick={() => { setTagError(null); setTagForm({ kind: 'add', label: '', start: day.date, end: day.date }) }}>Add tag</TextLink>
+                    <TextLink onClick={() => { setTagError(null); setTagForm({ kind: 'add', label: '', start: day.date, end: day.date, note: '' }) }}>Add tag</TextLink>
                     {autoTags.map(t => (
-                      <TextLink key={t.source} onClick={() => { setTagError(null); setTagForm({ kind: 'rename', label: t.label, start: t.start, end: t.end }) }}>
+                      <TextLink key={t.source} onClick={() => { setTagError(null); setTagForm({ kind: 'rename', label: t.label, start: t.start, end: t.end, note: '' }) }}>
                         Rename {t.label}
                       </TextLink>
                     ))}
@@ -871,48 +1038,15 @@ export default function ExploreTab() {
                 </button>
               )
             })}
-            <form
-              onSubmit={e => { e.preventDefault(); askCoach('custom') }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 'var(--space-xs)',
-                padding: '4px 4px 4px var(--space-md)', minHeight: 52, boxSizing: 'border-box',
-                background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-full)', boxShadow: 'var(--shadow-input)',
-              }}
-            >
-              <input
-                type="text"
-                value={coachQuestion}
-                maxLength={COACH_QUESTION_MAX}
-                placeholder="Ask about this chart"
-                aria-label="Ask the coach a question"
-                onChange={e => setCoachQuestion(e.target.value)}
-                disabled={coachBusy != null}
-                style={{
-                  flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
-                  fontSize: 16, color: 'var(--color-text-primary)',
-                }}
-              />
-              <button
-                type="submit"
-                aria-label="Send question"
-                disabled={coachBusy != null || coachQuestion.trim() === ''}
-                style={{
-                  width: 44, height: 44, flexShrink: 0, borderRadius: 'var(--radius-full)', border: 'none',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  background: 'var(--color-navy)', color: 'var(--color-surface)',
-                  fontSize: 16, fontWeight: 700,
-                  cursor: coachBusy != null || coachQuestion.trim() === '' ? 'default' : 'pointer',
-                  opacity: coachBusy != null && coachBusy !== 'custom' ? 0.5 : coachQuestion.trim() === '' && coachBusy == null ? 0.5 : 1,
-                }}
-              >
-                {coachBusy === 'custom' ? '…' : (
-                  <svg aria-hidden width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14M13 6l6 6-6 6" />
-                  </svg>
-                )}
-              </button>
-            </form>
+            <CoachInput
+              value={coachQuestion}
+              onChange={setCoachQuestion}
+              onSubmit={() => askCoach('custom')}
+              placeholder="Ask about this chart"
+              ariaLabel="Ask the coach a question"
+              busy={coachBusy === 'custom'}
+              disabled={coachBusy != null}
+            />
             {coachError && (
               <p style={{ fontSize: 14, color: 'var(--color-danger)', margin: 0 }}>{coachError}</p>
             )}
@@ -936,7 +1070,60 @@ export default function ExploreTab() {
                 }}>
                   {a.text}
                 </p>
+                {a.cutShort && <p style={{ ...muted, margin: 'var(--space-xs) 0 0' }}>{CUT_SHORT_NOTE}</p>}
                 {stale && <p style={{ ...muted, margin: 'var(--space-xs) 0 0' }}>Based on the previous view</p>}
+
+                {/* The coach's question back to Julie, and the Reply box /
+                    reply thread under it */}
+                {a.coachQuestion && (
+                  <div style={{ marginTop: 'var(--space-sm)', display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+                    <p style={{
+                      fontSize: 18, lineHeight: 1.5, fontWeight: 600, margin: 0,
+                      color: stale ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+                    }}>
+                      {a.coachQuestion}
+                    </p>
+                    {!a.reply ? (
+                      <>
+                        <CoachInput
+                          value={replyDrafts[type] ?? ''}
+                          onChange={v => setReplyDrafts(d => ({ ...d, [type]: v }))}
+                          onSubmit={() => sendReply(type)}
+                          placeholder="Reply to the coach"
+                          ariaLabel="Reply to the coach"
+                          busy={coachBusy === 'reply' && replyFor === type}
+                          disabled={coachBusy != null}
+                        />
+                        {replyError?.type === type && (
+                          <p style={{ fontSize: 14, color: 'var(--color-danger)', margin: 0 }}>{replyError.text}</p>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ paddingTop: 'var(--space-sm)', borderTop: '1px solid var(--color-border-subtle)', display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Your reply</div>
+                          <p style={{ fontSize: 16, lineHeight: 1.5, margin: 0, color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap' }}>{a.reply.text}</p>
+                        </div>
+                        <p style={{ fontSize: 18, lineHeight: 1.5, margin: 0, color: 'var(--color-text-primary)', whiteSpace: 'pre-wrap' }}>
+                          {a.reply.answer}
+                        </p>
+                        {a.reply.cutShort && <p style={{ ...muted, margin: 0 }}>{CUT_SHORT_NOTE}</p>}
+                        {a.reply.tag && (
+                          <div style={{ padding: 'var(--space-sm)', borderRadius: 'var(--radius-md)', background: 'var(--color-background)', border: '1px solid var(--color-border-subtle)' }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Suggested tag</div>
+                            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                              {a.reply.tag.label} · {fmtRange(a.reply.tag.start, a.reply.tag.end)}
+                            </div>
+                            {a.reply.tag.note && (
+                              <p style={{ fontSize: 16, lineHeight: 1.5, margin: '2px 0 0', color: 'var(--color-text-secondary)' }}>{a.reply.tag.note}</p>
+                            )}
+                            <TextLink onClick={() => openSuggestedTag(a.reply!.tag!)}>Review and save tag</TextLink>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}

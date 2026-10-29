@@ -1,7 +1,9 @@
 // Explore coach — payload, cache and model call for POST /api/explore/coach.
 // Server-only. The payload is built from the same loadExploreData() output
 // and the same rollingAverage / findStretches the chart uses, so the coach
-// sees exactly what is charted. Answers are cached in explore_answers.
+// sees exactly what is charted. The model answers in JSON, parsed by
+// parseCoachOutput(). One-tap answers are cached in explore_answers; custom
+// questions and replies are stored but never served from cache.
 // See BODYCIPHER.md → EXPLORE → Coach.
 
 import { createHash, randomUUID } from 'crypto'
@@ -13,10 +15,15 @@ import { OURA_START_DATE } from '../types'
 import { rollingAverage, findStretches } from './trends'
 import { buildCoachSystemPrompt, COACH_SYSTEM_PROMPT, COACH_TASKS, type CoachRequestType } from './coachPrompts'
 import { describe } from './tagsDb'
+import { TAG_LABEL_MAX, TAG_NOTE_MAX } from './tags'
 
 export const COACH_MODEL = 'claude-sonnet-5-5'
-export const COACH_MAX_TOKENS: Record<CoachRequestType, number> = { see: 250, next: 250, custom: 800 }
+// Ceilings the answers should never reach (the prompts ask for far less).
+// An answer that does hit one is still shown, flagged cutShort, and logged.
+export const COACH_MAX_TOKENS: Record<CoachRequestType, number> = { see: 800, next: 800, custom: 1500, reply: 1500 }
 export const COACH_QUESTION_MAX = 500
+// Earlier answer echoed back in a reply request — generous, but bounded.
+const COACH_ANSWER_MAX = 4000
 const COACH_USER = 'julie'
 
 // The one-tap buttons' wording, stored as explore_answers.question.
@@ -98,15 +105,16 @@ export function buildCoachPayload(data: ExploreData, type: CoachRequestType, sel
       .map(s => ({ start: s.start, end: s.end, variables: selected })),
     tags: data.tags.map(t => ({
       label: t.label, start: t.start, end: t.end, source: t.source === 'manual' ? 'manual' : 'auto',
+      note: t.note ?? null,
     })),
   }
 }
 
-// One-tap answers: type + sorted selection + window end. Custom answers get
-// a unique key so each one is stored but never matched again.
+// One-tap answers: type + sorted selection + window end. Custom answers and
+// replies get a unique key so each one is stored but never matched again.
 export function coachCacheKey(type: CoachRequestType, selected: ExploreVariable[], endDate: string): string {
   const base = `${type}|${[...selected].sort().join(',')}|${endDate}`
-  return type === 'custom' ? `${base}|${randomUUID()}` : base
+  return type === 'custom' || type === 'reply' ? `${base}|${randomUUID()}` : base
 }
 
 // Prompt version: the shared system prompt, the task block and the model.
@@ -138,18 +146,80 @@ export function classifyCoachError(e: unknown): CoachErrorType {
   return 'coach_failed'
 }
 
+// ─── Output parsing ───────────────────────────────────────────────
+// see / next / custom: {"answer", "question" | null, "period" | null}
+// reply:               {"answer", "tag": {label, start, end, note} | null}
+// Fields that don't fit the shape are dropped to null. If the JSON can't be
+// parsed at all, the answer is the raw text (or, for JSON cut off mid-way,
+// the "answer" string recovered from it) and there is no question or tag.
+export interface CoachPeriod { start: string; end: string }
+export interface CoachTagSuggestion { label: string; start: string; end: string; note: string }
+export interface CoachOutput {
+  answer: string
+  question: string | null
+  period: CoachPeriod | null
+  tag: CoachTagSuggestion | null
+  parsed: boolean
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const isDate = (x: unknown): x is string =>
+  typeof x === 'string' && DATE_RE.test(x) && !Number.isNaN(Date.parse(x + 'T00:00:00Z'))
+
+function asPeriod(x: unknown): CoachPeriod | null {
+  if (!x || typeof x !== 'object') return null
+  const { start, end } = x as Record<string, unknown>
+  return isDate(start) && isDate(end) && start <= end ? { start, end } : null
+}
+
+function asTag(x: unknown): CoachTagSuggestion | null {
+  const period = asPeriod(x)
+  if (!period) return null
+  const { label, note } = x as Record<string, unknown>
+  const l = typeof label === 'string' ? label.trim().slice(0, TAG_LABEL_MAX) : ''
+  if (!l) return null
+  const n = typeof note === 'string' ? note.trim().slice(0, TAG_NOTE_MAX) : ''
+  return { label: l, ...period, note: n }
+}
+
+export function parseCoachOutput(type: CoachRequestType, text: string): CoachOutput {
+  const raw = text.trim()
+  const unfenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  try {
+    const obj = JSON.parse(unfenced.slice(unfenced.indexOf('{'), unfenced.lastIndexOf('}') + 1)) as Record<string, unknown>
+    const answer = typeof obj.answer === 'string' ? obj.answer.trim() : ''
+    if (!answer) throw new Error('no answer')
+    if (type === 'reply') {
+      return { answer, question: null, period: null, tag: asTag(obj.tag), parsed: true }
+    }
+    const question = typeof obj.question === 'string' && obj.question.trim() ? obj.question.trim() : null
+    return { answer, question, period: question ? asPeriod(obj.period) : null, tag: null, parsed: true }
+  } catch {
+    // Truncated JSON: recover the answer string written so far.
+    const m = unfenced.match(/"answer"\s*:\s*"((?:[^"\\]|\\.)*)/)
+    let answer = raw
+    if (m) {
+      try { answer = (JSON.parse(`"${m[1]}"`) as string).trim() || raw } catch { /* keep raw */ }
+    }
+    return { answer, question: null, period: null, tag: null, parsed: false }
+  }
+}
+
 // ─── Model call ───────────────────────────────────────────────────
 // Thinking off (between_tools — Sonnet 5.5 rejects "disabled") so the
-// small max_tokens budget goes to the answer, not to reasoning.
+// max_tokens budget goes to the answer, not to reasoning. user: the data
+// payload, plus the earlier exchange for a reply.
+export interface CoachModelResult { text: string; cutShort: boolean }
+
 export async function callCoachModel(
-  client: Anthropic, type: CoachRequestType, payloadJson: string, question?: string,
-): Promise<string> {
+  client: Anthropic, type: CoachRequestType, system: string, user: string[],
+): Promise<CoachModelResult> {
   const params = {
     model: COACH_MODEL,
     max_tokens: COACH_MAX_TOKENS[type],
     thinking: { type: 'between_tools' },
-    system: buildCoachSystemPrompt(type, question),
-    messages: [{ role: 'user', content: payloadJson }],
+    system,
+    messages: [{ role: 'user', content: user.map(text => ({ type: 'text', text })) }],
   } as unknown as Anthropic.MessageCreateParamsNonStreaming
   const res = await client.messages.create(params)
   const text = res.content
@@ -157,33 +227,48 @@ export async function callCoachModel(
     .join('')
     .trim()
   if (!text) throw new Error(`Empty coach answer (stop_reason ${res.stop_reason})`)
-  return text
+  return { text, cutShort: res.stop_reason === 'max_tokens' }
 }
 
 // ─── runCoach ─────────────────────────────────────────────────────
 // One-tap: a stored row with the same cache_key and data_hash is returned
 // without calling the model; a stale hash calls the model and replaces the
-// row. Custom: always calls the model, then stores the answer.
-export interface CoachDeps {
-  db: SupabaseClient
-  callModel: (type: CoachRequestType, payloadJson: string, question?: string) => Promise<string>
+// row. A cut-short one-tap answer is shown but not cached, so the next tap
+// tries again. Custom and reply: always call the model, then store.
+// explore_answers.answer holds the model's raw JSON text; it is parsed again
+// on a cache hit.
+export type OriginalCoachType = Exclude<CoachRequestType, 'reply'>
+
+export interface ReplyContext {
+  type: OriginalCoachType     // the answer being replied to
+  answer: string
+  question: string
+  period: CoachPeriod | null
 }
 
-export async function runCoach(
-  deps: CoachDeps,
-  data: ExploreData,
-  type: CoachRequestType,
-  selected: ExploreVariable[],
-  question?: string,
-): Promise<{ answer: string; cached: boolean }> {
+export type CoachRequest =
+  | { type: OriginalCoachType; selected: ExploreVariable[]; question?: string }
+  | { type: 'reply'; selected: ExploreVariable[]; replyTo: ReplyContext; reply: string }
+
+export interface CoachDeps {
+  db: SupabaseClient
+  callModel: (type: CoachRequestType, system: string, user: string[]) => Promise<CoachModelResult>
+}
+
+export type CoachResponse = CoachOutput & { cutShort: boolean; cached: boolean }
+
+export async function runCoach(deps: CoachDeps, data: ExploreData, req: CoachRequest): Promise<CoachResponse> {
+  const { type } = req
   // Canonical order, so the same variables picked in another order hash
   // (and key) the same.
-  selected = EXPLORE_VARIABLES.filter(v => selected.includes(v))
-  const payloadJson = JSON.stringify(buildCoachPayload(data, type, selected))
+  const selected = EXPLORE_VARIABLES.filter(v => req.selected.includes(v))
+  // A reply sends the same data payload as the answer it replies to.
+  const payloadType = req.type === 'reply' ? req.replyTo.type : req.type
+  const payloadJson = JSON.stringify(buildCoachPayload(data, payloadType, selected))
   const dataHash = hashPayload(type, payloadJson)
   const cacheKey = coachCacheKey(type, selected, data.endDate)
 
-  if (type !== 'custom') {
+  if (type === 'see' || type === 'next') {
     const { data: row, error } = await deps.db
       .from('explore_answers')
       .select('answer, data_hash')
@@ -191,27 +276,47 @@ export async function runCoach(
       .eq('cache_key', cacheKey)
       .maybeSingle()
     if (error) console.error('explore coach cache read failed:', describe(error))
-    else if (row && row.data_hash === dataHash) return { answer: row.answer as string, cached: true }
+    else if (row && row.data_hash === dataHash) {
+      return { ...parseCoachOutput(type, row.answer as string), cutShort: false, cached: true }
+    }
   }
 
-  const answer = await deps.callModel(type, payloadJson, question)
+  const system = req.type === 'custom'
+    ? buildCoachSystemPrompt('custom', req.question)
+    : buildCoachSystemPrompt(type)
+  const user = req.type === 'reply'
+    ? [payloadJson, JSON.stringify({
+        earlier_answer: req.replyTo.answer.slice(0, COACH_ANSWER_MAX),
+        your_question: req.replyTo.question,
+        period: req.replyTo.period,
+        julie_reply: req.reply,
+      })]
+    : [payloadJson]
+  const { text, cutShort } = await deps.callModel(type, system, user)
+  if (cutShort) console.warn(`explore coach answer cut short at max_tokens ${COACH_MAX_TOKENS[type]} (${type})`)
 
+  const question = req.type === 'custom' ? (req.question ?? '')
+    : req.type === 'reply' ? req.reply
+    : COACH_QUESTIONS[req.type]
   const record = {
     user_id: COACH_USER,
     cache_key: cacheKey,
-    question: type === 'custom' ? (question ?? '') : COACH_QUESTIONS[type],
+    question,
     variables: selected,
     focus_date: data.endDate,
     data_hash: dataHash,
-    answer,
+    answer: text,
     model: COACH_MODEL,
     created_at: new Date().toISOString(),
   }
-  const { error } = type === 'custom'
-    ? await deps.db.from('explore_answers').insert(record)
-    : await deps.db.from('explore_answers').upsert(record, { onConflict: 'user_id,cache_key' })
-  // A failed write still returns the answer — only the cache is lost.
-  if (error) console.error('explore coach cache write failed:', describe(error))
+  const oneTap = type === 'see' || type === 'next'
+  if (!(oneTap && cutShort)) {
+    const { error } = oneTap
+      ? await deps.db.from('explore_answers').upsert(record, { onConflict: 'user_id,cache_key' })
+      : await deps.db.from('explore_answers').insert(record)
+    // A failed write still returns the answer — only the cache is lost.
+    if (error) console.error('explore coach cache write failed:', describe(error))
+  }
 
-  return { answer, cached: false }
+  return { ...parseCoachOutput(type, text), cutShort, cached: false }
 }

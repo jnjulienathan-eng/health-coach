@@ -428,7 +428,7 @@ Full layout and behaviour: BODYCIPHER.md → EXPLORE → UI.
     - a small row at the bottom of the card, above a 1px `--color-border-subtle` divider;
     - text links at 14px/600 in `--color-text-primary` — "Add tag", "Rename Sick", "Edit", "Delete" — with the destructive confirm "Delete" in `--color-danger`;
     - an existing manual tag shows as "Covid · 20–26 Oct" in `--color-text-secondary`.
-  - **Inline tag form:** a 12px/600 secondary field label above each field. Inputs are 16px (no iOS zoom), min-height 40px, 1px `--color-border`, `--radius-md`. Start / End dates sit in a 2-column grid. Save / Cancel are text links. Errors are 14px `--color-danger` under the form.
+  - **Inline tag form:** a 12px/600 secondary field label above each field. Inputs are 16px (no iOS zoom), min-height 40px, 1px `--color-border`, `--radius-md`. The optional note is a 3-row textarea with the same styling (min-height 72px, resizable vertically). A saved note shows under the tag's label in the readout at 14px secondary. Start / End dates sit in a 2-column grid. Save / Cancel are text links. Errors are 14px `--color-danger` under the form.
 - **Legend** (12px `--color-text-secondary`, above the chart): a short 2px line "7-day average", a faint dot "Daily value", a small dashed rounded box "Off together", a downward triangle "Injection".
 - **Chart** (redesign, Oct 28, 2026):
   - 250px tall z-score chart, fixed −3.5…+3.5, with a typical band −1…+1 in `--color-navy-tint` and 1px `--color-border-subtle` grid lines.
@@ -450,7 +450,10 @@ Full layout and behaviour: BODYCIPHER.md → EXPLORE → UI.
 - **Coach** (Phase 3, Oct 29, 2026), below the tag list:
   - **One-tap buttons:** "What do you see?" and "What should I chart next?", stacked, full width. Secondary style: `--color-surface` background, 1px `--color-navy` border, navy text, `--radius-full`, 52px. The label is 16px/600 in sentence case, since these are questions, not category labels. Loading reads "Thinking…"; disabled controls sit at 50% opacity.
   - **Question box:** a pill (`--radius-full`, 1px `--color-border`, `--shadow-input`) with a 16px input ("Ask about this chart") and a 44px `--color-navy` round send button with a white arrow — the old floating chat input's look, inline.
-  - **Answers:** a standard card per answer type, with a 14px/600 `--color-text-secondary` heading and the answer as `body-lg` (18px) plain text. A greyed answer uses `--color-text-muted` and a 12px muted note "Based on the previous view".
+  - **Answers:** a standard card per answer type, with a 14px/600 `--color-text-secondary` heading and the answer as `body-lg` (18px) plain text. A greyed answer uses `--color-text-muted` and a 12px muted note "Based on the previous view". A 12px muted "(answer was cut short)" marks an answer that hit the token ceiling.
+  - **The coach's question** sits under the answer at 18px/600, with a Reply box under it. The Reply box is the same pill as the question box, placeholder "Reply to the coach".
+  - **Reply thread** (below a 1px `--color-border-subtle` divider): "Your reply" heading (14px/600 secondary), the reply in 16px `--color-text-secondary`, then the coach's answer at 18px.
+  - **Suggested tag box:** `--color-background` fill, 1px `--color-border-subtle`, `--radius-md`. It holds a "Suggested tag" heading (14px/600 secondary), the label · dates at 16px/600 primary, the note at 16px secondary, and a "Review and save tag" text link.
   - **Errors:** 14px `--color-danger` under the controls.
 
 ## Coach Tab — REMOVED (Oct 28, 2026)

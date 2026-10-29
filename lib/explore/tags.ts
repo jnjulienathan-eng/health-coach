@@ -12,9 +12,11 @@ export interface ExploreTag {
   start: string             // YYYY-MM-DD, inclusive
   end: string               // YYYY-MM-DD, inclusive
   source: ExploreTagSource
+  note?: string | null      // manual tags only; Julie's context, read by the coach
 }
 
 export const TAG_LABEL_MAX = 40
+export const TAG_NOTE_MAX = 500
 export const AUTO_TAG_LABELS = { sick: 'Sick', travel: 'Travel' } as const
 
 function nextDay(date: string): string {
@@ -55,7 +57,7 @@ export function visibleAutoTags(auto: ExploreTag[], manual: ExploreTag[]): Explo
 // Used by POST and PATCH (PATCH passes the stored tag merged with the
 // patch, and its own id as excludeId). today = Berlin calendar date.
 export type TagValidation =
-  | { ok: true; value: { label: string; start: string; end: string } }
+  | { ok: true; value: { label: string; start: string; end: string; note: string | null } }
   | { ok: false; status: 400; error: string }
   | { ok: false; status: 409; error: string; overlap: { id: string; label: string; start: string; end: string } }
 
@@ -66,7 +68,7 @@ function isValidDate(s: unknown): s is string {
 }
 
 export function validateTag(
-  input: { label?: unknown; start?: unknown; end?: unknown },
+  input: { label?: unknown; start?: unknown; end?: unknown; note?: unknown },
   manualTags: { id: string; label: string; start: string; end: string }[],
   today: string,
   excludeId?: string,
@@ -74,6 +76,14 @@ export function validateTag(
   const label = typeof input.label === 'string' ? input.label.trim() : ''
   if (label.length < 1 || label.length > TAG_LABEL_MAX) {
     return { ok: false, status: 400, error: `Label must be 1–${TAG_LABEL_MAX} characters.` }
+  }
+  // Optional note: trimmed; empty or missing is stored as null.
+  if (input.note != null && typeof input.note !== 'string') {
+    return { ok: false, status: 400, error: 'Note must be text.' }
+  }
+  const note = typeof input.note === 'string' && input.note.trim() !== '' ? input.note.trim() : null
+  if (note != null && note.length > TAG_NOTE_MAX) {
+    return { ok: false, status: 400, error: `Note must be at most ${TAG_NOTE_MAX} characters.` }
   }
   if (!isValidDate(input.start) || !isValidDate(input.end)) {
     return { ok: false, status: 400, error: 'Start and end must be valid dates.' }
@@ -90,5 +100,5 @@ export function validateTag(
       overlap: { id: clash.id, label: clash.label, start: clash.start, end: clash.end },
     }
   }
-  return { ok: true, value: { label, start, end } }
+  return { ok: true, value: { label, start, end, note } }
 }

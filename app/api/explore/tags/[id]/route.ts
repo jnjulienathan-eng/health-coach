@@ -1,4 +1,4 @@
-// PATCH  /api/explore/tags/[id]  { label?, start?, end? } — update a manual tag
+// PATCH  /api/explore/tags/[id]  { label?, start?, end?, note? } — update a manual tag
 // DELETE /api/explore/tags/[id]                          — delete a manual tag
 // Service-role client. PATCH merges the patch onto the stored tag, then runs
 // validateTag() excluding the tag itself from the overlap check.
@@ -20,7 +20,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const { id } = await params
   if (!UUID_RE.test(id)) return Response.json({ error: 'Tag not found' }, { status: 404 })
 
-  let body: { label?: unknown; start?: unknown; end?: unknown }
+  let body: { label?: unknown; start?: unknown; end?: unknown; note?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -37,16 +37,17 @@ export async function PATCH(req: Request, { params }: Ctx) {
       label: body.label !== undefined ? body.label : current.label,
       start: body.start !== undefined ? body.start : current.start,
       end:   body.end   !== undefined ? body.end   : current.end,
+      note:  body.note  !== undefined ? body.note  : current.note,
     }
     const v = validateTag(merged, manual, todayBerlin(), id)
     if (!v.ok) return Response.json(v, { status: v.status })
 
     const { data, error } = await client
       .from('explore_tags')
-      .update({ label: v.value.label, start_date: v.value.start, end_date: v.value.end, updated_at: new Date().toISOString() })
+      .update({ label: v.value.label, start_date: v.value.start, end_date: v.value.end, note: v.value.note, updated_at: new Date().toISOString() })
       .eq('id', id)
       .eq('user_id', EXPLORE_TAGS_USER)
-      .select('id, label, start_date, end_date')
+      .select('id, label, start_date, end_date, note')
       .single()
     if (error) throw error
     return Response.json(rowToManualTag(data as Record<string, unknown>))

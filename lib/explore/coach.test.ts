@@ -3,7 +3,10 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExploreData } from './fetch'
 import { EXPLORE_VARIABLES, addDays, type ExploreVariable } from './series'
-import { buildCoachPayload, coachCacheKey, classifyCoachError, runCoach, coachPromptVersion, hashPayload, COACH_MODEL } from './coach'
+import {
+  buildCoachPayload, coachCacheKey, classifyCoachError, runCoach, coachPromptVersion, hashPayload,
+  parseCoachOutput, COACH_MODEL, COACH_MAX_TOKENS,
+} from './coach'
 import { buildCoachSystemPrompt, COACH_SYSTEM_PROMPT, COACH_TASKS } from './coachPrompts'
 
 // 20 days ending 2026-10-28. HRV and RHR drift low together from day 10
@@ -26,7 +29,10 @@ export function syntheticData(): ExploreData {
   return {
     startDate: start, endDate: addDays(start, 19), dates,
     injectionDates: [addDays(start, 3), addDays(start, 10), addDays(start, 17)],
-    tags: [{ id: 'x', label: 'Covid', start: addDays(start, 11), end: addDays(start, 16), source: 'manual' }],
+    tags: [
+      { id: 'x', label: 'Covid', start: addDays(start, 11), end: addDays(start, 16), source: 'manual', note: 'Tested positive on the 20th.' },
+      { label: 'Travel', start: addDays(start, 18), end: addDays(start, 19), source: 'travel' },
+    ],
   }
 }
 
@@ -91,7 +97,10 @@ describe('buildCoachPayload', () => {
     expect(p.days[3].injection).toBe(true)
     expect(p.days[12].sick).toBe(true)
     expect(p.stretches).toEqual([{ start: '2026-10-20', end: '2026-10-28', variables: sel }])
-    expect(p.tags).toEqual([{ label: 'Covid', start: '2026-10-20', end: '2026-10-25', source: 'manual' }])
+    expect(p.tags).toEqual([
+      { label: 'Covid', start: '2026-10-20', end: '2026-10-25', source: 'manual', note: 'Tested positive on the 20th.' },
+      { label: 'Travel', start: '2026-10-27', end: '2026-10-28', source: 'auto', note: null },
+    ])
   })
 })
 
@@ -147,53 +156,176 @@ describe('buildCoachPayload — Oura cutoff', () => {
 })
 
 describe('coachCacheKey', () => {
-  it('one-tap keys sort the selection; custom keys are unique', () => {
+  it('one-tap keys sort the selection; custom and reply keys are unique', () => {
     expect(coachCacheKey('see', ['rhr', 'hrv'], '2026-10-28')).toBe('see|hrv,rhr|2026-10-28')
     expect(coachCacheKey('custom', ['hrv'], '2026-10-28')).not.toBe(coachCacheKey('custom', ['hrv'], '2026-10-28'))
+    expect(coachCacheKey('reply', ['hrv'], '2026-10-28')).not.toBe(coachCacheKey('reply', ['hrv'], '2026-10-28'))
   })
 })
 
 describe('buildCoachSystemPrompt', () => {
   it('appends the task block, and the question for custom', () => {
     expect(buildCoachSystemPrompt('see')).toContain('TASK: see')
+    expect(buildCoachSystemPrompt('reply')).toContain('TASK: reply')
     const c = buildCoachSystemPrompt('custom', 'Why is my HRV low?')
     expect(c).toContain("Julie's question: Why is my HRV low?")
     expect(c).not.toContain('{QUESTION}')
   })
 })
 
+// A model stand-in that answers in the JSON format and counts its calls.
+function fakeModel(extra: Record<string, unknown> = {}, cutShort = false) {
+  const seen: { type: string; system: string; user: string[] }[] = []
+  const callModel = async (type: string, system: string, user: string[]) => {
+    seen.push({ type, system, user })
+    return { text: JSON.stringify({ answer: `answer ${seen.length}`, question: null, period: null, ...extra }), cutShort }
+  }
+  return { callModel, seen }
+}
+
 describe('runCoach caching', () => {
   it('serves a one-tap answer from cache when the data hash matches', async () => {
     const { db } = fakeDb()
-    let calls = 0
-    const deps = { db, callModel: async () => { calls++; return `answer ${calls}` } }
+    const m = fakeModel()
     const data = syntheticData()
-    expect(await runCoach(deps, data, 'see', ['hrv', 'rhr'])).toEqual({ answer: 'answer 1', cached: false })
-    expect(await runCoach(deps, data, 'see', ['rhr', 'hrv'])).toEqual({ answer: 'answer 1', cached: true })
-    expect(calls).toBe(1)
+    expect(await runCoach({ db, ...m }, data, { type: 'see', selected: ['hrv', 'rhr'] })).toMatchObject({ answer: 'answer 1', cached: false })
+    expect(await runCoach({ db, ...m }, data, { type: 'see', selected: ['rhr', 'hrv'] })).toMatchObject({ answer: 'answer 1', cached: true })
+    expect(m.seen.length).toBe(1)
   })
 
   it('calls again and replaces the row when the data changes', async () => {
     const { db, rows } = fakeDb()
-    let calls = 0
-    const deps = { db, callModel: async () => { calls++; return `answer ${calls}` } }
+    const m = fakeModel()
     const data = syntheticData()
-    await runCoach(deps, data, 'next', ['hrv'])
+    await runCoach({ db, ...m }, data, { type: 'next', selected: ['hrv'] })
     data.dates[19].variables.hrv.value = 60
-    expect(await runCoach(deps, data, 'next', ['hrv'])).toEqual({ answer: 'answer 2', cached: false })
+    expect(await runCoach({ db, ...m }, data, { type: 'next', selected: ['hrv'] })).toMatchObject({ answer: 'answer 2', cached: false })
     expect(rows.size).toBe(1)
-    expect(rows.get('next|hrv|2026-10-28')?.answer).toBe('answer 2')
+    expect(JSON.parse(rows.get('next|hrv|2026-10-28')?.answer as string).answer).toBe('answer 2')
   })
 
   it('stores every custom answer but never serves one from cache', async () => {
     const { db, rows } = fakeDb()
-    let calls = 0
-    const deps = { db, callModel: async () => { calls++; return `answer ${calls}` } }
+    const m = fakeModel()
     const data = syntheticData()
-    await runCoach(deps, data, 'custom', ['hrv'], 'Q?')
-    expect(await runCoach(deps, data, 'custom', ['hrv'], 'Q?')).toEqual({ answer: 'answer 2', cached: false })
+    await runCoach({ db, ...m }, data, { type: 'custom', selected: ['hrv'], question: 'Q?' })
+    expect(await runCoach({ db, ...m }, data, { type: 'custom', selected: ['hrv'], question: 'Q?' })).toMatchObject({ answer: 'answer 2', cached: false })
     expect(rows.size).toBe(2)
     expect([...rows.values()][0].question).toBe('Q?')
+  })
+
+  it('a cached answer keeps its question and period', async () => {
+    const { db } = fakeDb()
+    const m = fakeModel({ question: 'Anything different?', period: { start: '2026-10-10', end: '2026-10-16' } })
+    const data = syntheticData()
+    await runCoach({ db, ...m }, data, { type: 'see', selected: ['hrv'] })
+    expect(await runCoach({ db, ...m }, data, { type: 'see', selected: ['hrv'] })).toMatchObject({
+      cached: true, question: 'Anything different?', period: { start: '2026-10-10', end: '2026-10-16' },
+    })
+  })
+})
+
+describe('cut-off answers', () => {
+  it('uses the new ceilings', () => {
+    expect(COACH_MAX_TOKENS).toEqual({ see: 800, next: 800, custom: 1500, reply: 1500 })
+  })
+
+  it('flags a cut-short answer, shows the text so far, and does not cache it', async () => {
+    const { db, rows } = fakeDb()
+    let calls = 0
+    const callModel = async () => { calls++; return { text: '{"answer": "Your HRV climbed from 32 ms on 7 Oct to', cutShort: true } }
+    const data = syntheticData()
+    const r = await runCoach({ db, callModel }, data, { type: 'next', selected: ['hrv'] })
+    expect(r).toMatchObject({ answer: 'Your HRV climbed from 32 ms on 7 Oct to', cutShort: true, parsed: false, question: null })
+    expect(rows.size).toBe(0)
+    await runCoach({ db, callModel }, data, { type: 'next', selected: ['hrv'] })
+    expect(calls).toBe(2)
+  })
+
+  it('still stores a cut-short custom answer', async () => {
+    const { db, rows } = fakeDb()
+    const callModel = async () => ({ text: '{"answer": "Partly', cutShort: true })
+    await runCoach({ db, callModel }, syntheticData(), { type: 'custom', selected: [], question: 'Q?' })
+    expect(rows.size).toBe(1)
+  })
+})
+
+describe('parseCoachOutput', () => {
+  it('reads answer, question and period', () => {
+    const t = JSON.stringify({ answer: ' HRV rose. ', question: 'Was that week calmer?', period: { start: '2026-10-10', end: '2026-10-16' } })
+    expect(parseCoachOutput('see', t)).toEqual({
+      answer: 'HRV rose.', question: 'Was that week calmer?', period: { start: '2026-10-10', end: '2026-10-16' }, tag: null, parsed: true,
+    })
+  })
+
+  it('accepts JSON in code fences or with stray text around it', () => {
+    expect(parseCoachOutput('next', '```json\n{"answer": "A", "question": null, "period": null}\n```').answer).toBe('A')
+    expect(parseCoachOutput('next', 'Here you go: {"answer": "B", "question": null, "period": null}').answer).toBe('B')
+  })
+
+  it('drops a bad period, an empty question, and a period without a question', () => {
+    expect(parseCoachOutput('see', JSON.stringify({ answer: 'A', question: 'Q?', period: { start: '2026-10-16', end: '2026-10-10' } })).period).toBeNull()
+    expect(parseCoachOutput('see', JSON.stringify({ answer: 'A', question: 'Q?', period: { start: '10 Oct', end: '2026-10-16' } })).period).toBeNull()
+    expect(parseCoachOutput('see', JSON.stringify({ answer: 'A', question: '  ', period: null })).question).toBeNull()
+    expect(parseCoachOutput('see', JSON.stringify({ answer: 'A', question: null, period: { start: '2026-10-10', end: '2026-10-16' } })).period).toBeNull()
+  })
+
+  it('falls back to the raw text with no question when parsing fails', () => {
+    expect(parseCoachOutput('see', 'Your HRV is in line with your usual.')).toEqual({
+      answer: 'Your HRV is in line with your usual.', question: null, period: null, tag: null, parsed: false,
+    })
+    expect(parseCoachOutput('see', '{"question": "Q?"}')).toMatchObject({ answer: '{"question": "Q?"}', question: null, parsed: false })
+  })
+
+  it('reads a reply tag, trimming the label to 40 and the note to 500 characters', () => {
+    const t = JSON.stringify({ answer: 'That fits.', tag: { label: 'L'.repeat(45), start: '2026-10-10', end: '2026-10-16', note: ' n '.repeat(300) } })
+    const r = parseCoachOutput('reply', t)
+    expect(r.tag?.label).toHaveLength(40)
+    expect(r.tag?.note.length).toBeLessThanOrEqual(500)
+    expect(r.question).toBeNull()
+  })
+
+  it('a reply tag with no label or bad dates becomes null', () => {
+    expect(parseCoachOutput('reply', JSON.stringify({ answer: 'A', tag: { label: '', start: '2026-10-10', end: '2026-10-16', note: 'n' } })).tag).toBeNull()
+    expect(parseCoachOutput('reply', JSON.stringify({ answer: 'A', tag: { label: 'L', start: '2026-10-16', end: '2026-10-10', note: 'n' } })).tag).toBeNull()
+    expect(parseCoachOutput('reply', JSON.stringify({ answer: 'A', tag: null })).tag).toBeNull()
+  })
+})
+
+describe('reply flow', () => {
+  const replyTo = {
+    type: 'see' as const,
+    answer: 'HRV climbed from 44 ms to 53 ms between 8 and 13 Oct.',
+    question: 'Was anything different around 10–16 Oct?',
+    period: { start: '2026-10-10', end: '2026-10-16' },
+  }
+  const reply = 'Stressful workshop was over and my client was on vacation, so I worked in peace on my own schedule.'
+
+  it('sends the original data payload plus the earlier exchange, with the reply task', async () => {
+    const { db } = fakeDb()
+    const m = fakeModel({ tag: { label: 'Calm work week', start: '2026-10-10', end: '2026-10-16', note: 'Workshop done, client away; worked in peace on my own schedule.' } })
+    const data = syntheticData()
+    const r = await runCoach({ db, ...m }, data, { type: 'reply', selected: ['hrv', 'rhr'], replyTo, reply })
+    const call = m.seen[0]
+    expect(call.type).toBe('reply')
+    expect(call.system).toContain('TASK: reply')
+    expect(call.user[0]).toBe(JSON.stringify(buildCoachPayload(data, 'see', ['hrv', 'rhr'])))
+    expect(JSON.parse(call.user[1])).toEqual({
+      earlier_answer: replyTo.answer, your_question: replyTo.question, period: replyTo.period, julie_reply: reply,
+    })
+    expect(r.tag).toEqual({ label: 'Calm work week', start: '2026-10-10', end: '2026-10-16', note: 'Workshop done, client away; worked in peace on my own schedule.' })
+    expect(r.question).toBeNull()
+  })
+
+  it('stores each reply with Julie\'s text and never serves one from cache', async () => {
+    const { db, rows } = fakeDb()
+    const m = fakeModel({ tag: null })
+    const data = syntheticData()
+    await runCoach({ db, ...m }, data, { type: 'reply', selected: ['hrv'], replyTo, reply })
+    await runCoach({ db, ...m }, data, { type: 'reply', selected: ['hrv'], replyTo, reply })
+    expect(m.seen.length).toBe(2)
+    expect(rows.size).toBe(2)
+    expect([...rows.values()].every(r => r.question === reply)).toBe(true)
   })
 })
 
@@ -209,17 +341,16 @@ describe('prompt version in data_hash', () => {
 
   it('a row cached under an older prompt or model misses', async () => {
     const { db, rows } = fakeDb()
-    let calls = 0
-    const deps = { db, callModel: async () => { calls++; return `answer ${calls}` } }
+    const m = fakeModel()
     const data = syntheticData()
-    await runCoach(deps, data, 'see', ['hrv'])
+    await runCoach({ db, ...m }, data, { type: 'see', selected: ['hrv'] })
     const row = rows.get('see|hrv|2026-10-28')!
     // Same payload hashed without the prompt version = what an old row holds.
     const payloadJson = JSON.stringify(buildCoachPayload(data, 'see', ['hrv']))
     expect(row.data_hash).toBe(hashPayload('see', payloadJson))
     row.data_hash = 'hash-from-an-older-prompt'
-    expect(await runCoach(deps, data, 'see', ['hrv'])).toEqual({ answer: 'answer 2', cached: false })
-    expect(calls).toBe(2)
+    expect(await runCoach({ db, ...m }, data, { type: 'see', selected: ['hrv'] })).toMatchObject({ answer: 'answer 2', cached: false })
+    expect(m.seen.length).toBe(2)
   })
 })
 

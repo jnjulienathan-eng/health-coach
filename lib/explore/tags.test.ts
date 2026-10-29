@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deriveAutoTags, visibleAutoTags, validateTag, TAG_LABEL_MAX, type ExploreTag } from './tags'
+import { deriveAutoTags, visibleAutoTags, validateTag, TAG_LABEL_MAX, TAG_NOTE_MAX, type ExploreTag } from './tags'
 
 function days(spec: Record<string, { sick?: boolean; travel?: boolean }>) {
   return Object.entries(spec).map(([date, f]) => ({ date, isSick: !!f.sick, isTravelling: !!f.travel }))
@@ -62,7 +62,17 @@ describe('validateTag', () => {
 
   it('accepts a valid tag and trims the label', () => {
     expect(validateTag({ ...ok, label: '  Holiday  ' }, existing, today))
-      .toEqual({ ok: true, value: { label: 'Holiday', start: '2026-10-01', end: '2026-10-05' } })
+      .toEqual({ ok: true, value: { label: 'Holiday', start: '2026-10-01', end: '2026-10-05', note: null } })
+  })
+
+  it('accepts an optional note up to 500 characters, trimmed; empty is null', () => {
+    expect(validateTag({ ...ok, note: '  Calm week, client away.  ' }, existing, today))
+      .toMatchObject({ ok: true, value: { note: 'Calm week, client away.' } })
+    expect(validateTag({ ...ok, note: '   ' }, existing, today)).toMatchObject({ ok: true, value: { note: null } })
+    expect(validateTag({ ...ok, note: null }, existing, today)).toMatchObject({ ok: true, value: { note: null } })
+    expect(validateTag({ ...ok, note: 'x'.repeat(TAG_NOTE_MAX) }, existing, today).ok).toBe(true)
+    expect(validateTag({ ...ok, note: 'x'.repeat(TAG_NOTE_MAX + 1) }, existing, today)).toMatchObject({ ok: false, status: 400 })
+    expect(validateTag({ ...ok, note: 42 }, existing, today)).toMatchObject({ ok: false, status: 400 })
   })
 
   it('needs a 1–40 character label after trimming', () => {

@@ -12,7 +12,15 @@ _Last updated: October 29, 2026 (Session: Explore Phase 3 — the coach, branch 
   - `data_hash` now includes a prompt version: a hash of the model name, the system prompt and the task block. Editing the prompt or changing the model makes cached answers miss.
   - Tests: 56.
 - **Second follow-up, same day and branch:** in the coach payload only, HRV and RHR before 17 Sep 2026 are treated as missing (value, avg7, avg7_dev and dev all null), and their real-unit avg7 averages Oura days only. The chart and readout are unchanged. Tests: 59.
-See EXPLORE → Coach._
+- **Third follow-up, same day and branch — replies, tag notes, JSON answers.** From Julie's first real use: one answer was cut off at 250 tokens, and the coach asked a question with nowhere to answer that would be remembered.
+  - **Migration (run by Julie, confirmed):** `explore_tags.note` (optional text, max 500 characters).
+  - **Limits:** max_tokens are now 800 for see / next and 1,500 for custom / reply. An answer that still hits the limit is shown with "(answer was cut short)" and logged.
+  - **JSON answers:** the model returns JSON, which the route parses: `{answer, question, period}` for see / next / custom, `{answer, tag}` for the new `reply` type.
+  - **Reply flow:** when an answer has a question, it shows under the answer with a Reply box. The reply call sends the same data payload plus the earlier exchange. The coach answers and may suggest a tag; "Review and save tag" pre-fills the readout's tag form, and nothing is saved until Julie taps Save.
+  - **Tag notes:** tag notes are sent to the coach with every call, and are editable in the tag form and shown in the readout.
+  - **Prompt changes:** applied word for word.
+  - Tests: 72.
+See EXPLORE → Coach and DATA MODEL → `explore_tags`._
 _Previous update: October 28, 2026 (Session: Explore sleep baseline fix, branch `fix/explore-sleep-baseline`). The Explore Oura cutoff now applies to **HRV and RHR only**.
 - **Why:** Julie confirmed her pre-Oura sleep duration and bedtime are accurate and consistent with Oura's.
 - **Effect:** `sleep_duration` and `bedtime` use their full history, with the same 28-day baseline and 20-value minimum as the other variables. Dates before 2026-09-17 can now get z-scores for them, and their baselines can include pre-Oura nights.
@@ -947,7 +955,7 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 - **Returns:** `{ outliers, coincidences, outlierCount, coincidenceCount }`. Selection is 1–`MAX_SELECTED_VARIABLES` (3).
 
 ### Tags (Phase 2b, Oct 28, 2026)
-Tags label days or stretches on the chart. Each tag is `{ id?, label, start, end, source }`, with inclusive `YYYY-MM-DD` dates and `source` 'manual' | 'sick' | 'travel'.
+Tags label days or stretches on the chart. Each tag is `{ id?, label, start, end, source, note? }`, with inclusive `YYYY-MM-DD` dates and `source` 'manual' | 'sick' | 'travel'. `note` (added Oct 29, 2026) is optional context on manual tags, up to `TAG_NOTE_MAX` (500) characters. It is read by the coach.
 - **Manual tags:** Julie's own labels (e.g. "Covid", 20–26 Oct), stored in `explore_tags` under `user_id = 'julie'`. Manual tags never overlap each other.
 - **Automatic tags** (`deriveAutoTags`): derived on every request from the full `daily_entries` history, never stored.
   - Each run of consecutive calendar dates with `context.is_sick` true becomes one "Sick" tag; each run with `context.travelling` true becomes one "Travel" tag.
@@ -956,15 +964,16 @@ Tags label days or stretches on the chart. Each tag is `{ id?, label, start, end
 - **Hiding rule** (`visibleAutoTags`): an automatic tag is hidden if any manual tag overlaps any of its dates. Renaming Sick to "Flu" therefore hides both the Sick tag and any Travel tag it overlaps.
 - **In `GET /api/explore`:** `tags` holds every manual tag plus every visible automatic tag that overlaps the 60-day window, sorted by start.
 - **Routes** (service role, `force-dynamic`):
-  - `POST /api/explore/tags { label, start, end }` → 201 with the tag.
-  - `PATCH /api/explore/tags/[id]`: any of label, start, end. It merges the change onto the stored tag, re-validates and sets `updated_at`.
+  - `POST /api/explore/tags { label, start, end, note? }` → 201 with the tag.
+  - `PATCH /api/explore/tags/[id]`: any of label, start, end, note. It merges the change onto the stored tag, re-validates and sets `updated_at`. A `null` note clears it.
   - `DELETE /api/explore/tags/[id]` → `{ ok: true }`.
   - A malformed or unknown id → 404. Other failures → 500 `{ error }` (via `describe()`).
 - **Validation** (`validateTag`, used by POST and PATCH): every failure is a 400, except an overlap.
+  - The note is optional: trimmed, with empty or missing stored as `null`. It must be text of at most 500 characters.
   - The label is trimmed and must be 1–`TAG_LABEL_MAX` (40) characters.
   - Both dates must be valid `YYYY-MM-DD`; start must be on or before end; end must not be after today (Berlin).
   - The tag must not overlap another manual tag (PATCH excludes the tag itself). An overlap returns **409** with `overlap: { id, label, start, end }`, so the UI can name the other tag.
-- **Phase 3:** the coach reads tags (manual and automatic) as context, from the same `loadExploreData()` output.
+- **Phase 3:** the coach reads tags (manual and automatic) as context, notes included, from the same `loadExploreData()` output.
 
 ### Route shape — `GET /api/explore`
 The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin calendar date).
@@ -1014,9 +1023,9 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
      - " · outlier" was removed in the Oct 28 redesign, along with the chart's outlier dots.
    - **Tag controls** (Phase 2b): a small row at the bottom of the readout, below a subtle divider.
      - **No manual tag on the day:** an "Add tag" link, plus "Rename Sick" / "Rename Travel" for each automatic tag covering the day.
-     - **A manual tag covers the day:** "Covid · 20–26 Oct" with Edit and Delete links. Dates read "20–26 Oct", "28 Sep – 3 Oct", or "20 Oct" for a single day.
+     - **A manual tag covers the day:** "Covid · 20–26 Oct" with Edit and Delete links. Dates read "20–26 Oct", "28 Sep – 3 Oct", or "20 Oct" for a single day. A note shows on its own line under the label (14px secondary).
      - **Inline form** (Add, Edit and Rename open it inside the readout):
-       - fields: a label (`maxLength` 40) and native start / end date inputs, side by side (`max` = today), then Save / Cancel;
+       - fields: a label (`maxLength` 40), an optional "Note (optional)" textarea (3 rows, `maxLength` 500, added Oct 29, 2026), and native start / end date inputs side by side (`max` = today), then Save / Cancel;
        - defaults: Add sets both dates to the selected day; Rename pre-fills the automatic tag's label and dates and saves a **new manual tag** (which then hides the automatic one); Edit PATCHes the manual tag.
      - **Delete** asks inline: "Delete this tag?" with Delete / Cancel.
      - **Errors** show inline under the form in the app's error style (14px `--color-danger`). On a 409: `Overlaps "Covid" (20–26 Oct). Edit that tag instead.`
@@ -1051,6 +1060,13 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
    - A pill question box (placeholder "Ask about this chart", 16px, `maxLength` 500) with a 44px navy round send button.
    - **Loading:** the tapped button reads "Thinking…" (the send button shows "…"); every coach control is disabled until the answer arrives.
    - **Answers:** one card per type (see, next, custom), latest only. Each has a 14px/600 secondary heading (the button wording, or Julie's question for custom) and the answer as 18px plain text.
+     - **Cut short:** a 12px muted "(answer was cut short)" under an answer that hit max_tokens.
+     - **The coach's question** (when the JSON has a non-null `question`): shown under the answer at 18px/600, with a Reply box under it. The Reply box uses the same pill as the question box (placeholder "Reply to the coach", 500 characters).
+     - **After a reply,** the box is replaced by a thread under a subtle divider: "Your reply" (14px/600 secondary heading, 16px secondary text), the coach's answer (18px), the cut-short note if needed, and a "Suggested tag" box when the coach suggested one.
+     - **Suggested tag box:** background-tinted, with the label · dates (16px/600), the note (16px secondary) and a "Review and save tag" link.
+       - **Review and save tag** selects the tag's first day, opens the readout's tag form pre-filled (label, dates, note) and scrolls the readout into view. Nothing is saved until Julie taps Save.
+       - If the period overlaps an existing manual tag (manual tags can't overlap), the form instead edits that tag: its label and dates are kept, and the suggested note is added after any existing note (capped at 500).
+     - The reply sends the selection and window the answer was based on, not the current screen. Reply errors show inside the card, with the same two messages.
    - **Stale answers:** each one-tap answer remembers the sorted selection + window end it was asked about. When those no longer match the screen, the answer turns `--color-text-muted` with a 12px note "Based on the previous view". A new answer only comes on a new tap. Custom answers are never greyed.
    - **Errors** (14px `--color-danger`, under the controls): "The coach is out of API credit. The chart still works." or "The coach couldn't answer just now. Try again in a moment.". The chart, tags and readout keep working.
    - Answers live in component state, so they clear when the tab remounts; a tap after that is served from cache when nothing changed.
@@ -1075,13 +1091,21 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
 
 ### Coach (Phase 3, Oct 29, 2026) — `POST /api/explore/coach`
 Anthropic-backed answers about the chart. **Nothing calls the route automatically** — not on load, not on a variable change, not on a date change. Only a tap does.
-- **Body:** `{ type: 'see' | 'next' | 'custom', variables: ExploreVariable[] (0–3), endDate?: 'YYYY-MM-DD', question?: string (custom, 1–500 chars) }`.
+- **Body:** `{ type: 'see' | 'next' | 'custom' | 'reply', variables: ExploreVariable[] (0–3), endDate?: 'YYYY-MM-DD', question?: string (custom, 1–500 chars), reply?: string (reply, 1–500 chars), replyTo?: { type: 'see' | 'next' | 'custom', answer, question, period: { start, end } | null } (reply) }`.
   - `see` needs at least one variable.
   - `endDate` is the chart window's end; it falls back to today (Berlin) if missing, malformed or in the future.
-- **Response:** 200 `{ answer, cached }`. Errors: 400 for bad input; **402 `{ error: 'out_of_credit' }`**; 502 `{ error: 'coach_failed' }` for every other failure, including a data-load failure; 500 `{ error: 'coach_failed' }` if `ANTHROPIC_API_KEY` is unset.
-- **Model:** `claude-sonnet-5-5` (`COACH_MODEL`), via `new Anthropic({ apiKey: ANTHROPIC_API_KEY })` — the existing key, no new env var. `max_tokens` 250 for see / next, 800 for custom.
-  - **Thinking is off** (`thinking: { type: 'between_tools' }`). Sonnet 5.5 rejects `{ type: 'disabled' }`, and with adaptive thinking on, a 250-token budget could be spent on reasoning instead of the answer. The SDK (0.82) doesn't type `between_tools` yet, so the params are cast.
+- **Response:** 200 `{ answer, question, period, tag, parsed, cutShort, cached }`. Errors: 400 for bad input; **402 `{ error: 'out_of_credit' }`**; 502 `{ error: 'coach_failed' }` for every other failure, including a data-load failure; 500 `{ error: 'coach_failed' }` if `ANTHROPIC_API_KEY` is unset.
+- **Model:** `claude-sonnet-5-5` (`COACH_MODEL`), via `new Anthropic({ apiKey: ANTHROPIC_API_KEY })` — the existing key, no new env var. `max_tokens` (`COACH_MAX_TOKENS`) 800 for see / next, 1,500 for custom / reply (raised Oct 29, 2026 from 250 / 800, after a real answer was cut off mid-sentence). These are ceilings the prompts' length limits should never reach.
+  - **Cut short:** when `stop_reason` is `max_tokens`, the route logs a warning and returns `cutShort: true`, and the UI shows the text with "(answer was cut short)". A cut-short one-tap answer is **not cached**, so the next tap tries again; cut-short custom answers and replies are still stored.
+  - **Thinking is off** (`thinking: { type: 'between_tools' }`). Sonnet 5.5 rejects `{ type: 'disabled' }`, and with adaptive thinking on, the token budget could be spent on reasoning instead of the answer. The SDK (0.82) doesn't type `between_tools` yet, so the params are cast.
   - The system prompt is `COACH_SYSTEM_PROMPT` plus the task block for the type (`buildCoachSystemPrompt()` in `lib/explore/coachPrompts.ts`); custom replaces `{QUESTION}` with Julie's text. The user message is the JSON payload.
+  - **Reply:** the user message has two text blocks. The first is the same data payload the original answer used (built for the original type, with the answer's selection and window). The second is `{ earlier_answer, your_question, period, julie_reply }`.
+- **JSON output** (`parseCoachOutput()`): the prompts ask for JSON only.
+  - see / next / custom: `{"answer", "question": string | null, "period": {start, end} | null}`.
+  - reply: `{"answer", "tag": {label, start, end, note} | null}`.
+  - Code fences and stray text around the object are tolerated.
+  - A bad field is dropped to null: a period with invalid dates or start after end, an empty question, a period with no question, or a tag with no label or bad dates. Tag labels are cut to 40 characters and notes to 500.
+  - **If parsing fails,** the answer is the raw text, with no question, period or tag (`parsed: false`), so there's no Reply box. One refinement: for JSON cut off mid-way (a cut-short answer), the `"answer"` string written so far is recovered instead of showing the raw `{"answer": "…` text.
   - An empty answer (e.g. a `refusal` stop) is treated as `coach_failed`. No server-side refusal fallback is configured.
 - **Payload** (`buildCoachPayload()`, compact JSON), from the same `loadExploreData()` the chart uses, with `rollingAverage` and `findStretches` from `lib/explore/trends.ts`:
   - `view: { start, end, selected, included }` — `included` is the selected variables for `see`, all seven for `next` and `custom`.
@@ -1096,12 +1120,13 @@ Anthropic-backed answers about the chart. **Nothing calls the route automaticall
     - `dev` is the z-score and `avg7_dev` its centred 7-day average (what the chart lines draw), both to 2 decimals.
     - Missing values and baselines are `null`.
   - `stretches: [{ start, end, variables }]` — the chart's stretches, so for the selected variables.
-  - `tags: [{ label, start, end, source: 'manual' | 'auto' }]`.
+  - `tags: [{ label, start, end, source: 'manual' | 'auto', note }]` — `note` is the manual tag's note, or `null` (always `null` for automatic tags).
   - The selection is put in `EXPLORE_VARIABLES` order before the payload is built, so the same variables picked in a different order produce the same payload and hash.
 - **Cache** (`runCoach()`, `explore_answers` via `supaAdmin()`, `user_id = 'julie'`):
   - **One-tap:** `cache_key` = `type|sorted variables|endDate`, `focus_date` = endDate, `data_hash` = sha256 of the prompt version + the payload JSON (`hashPayload(type, payloadJson)`).
     - The prompt version (`coachPromptVersion(type)`) is a sha256 of `COACH_MODEL`, `COACH_SYSTEM_PROMPT` and the type's task block, so editing the prompt or changing the model makes existing cached answers miss (changed Oct 29, 2026, follow-up). If a row has the same cache_key and data_hash, it is returned without calling the API (`cached: true`). If the hash differs, the API is called and the row replaced (upsert on `user_id, cache_key`). `question` stores the button wording.
-  - **Custom:** always calls the API; each answer is inserted with `question` = Julie's text and a unique `cache_key` (`custom|…|endDate|<uuid>`), never served from cache.
+  - **Custom and reply:** always call the API. Each answer is inserted with `question` = Julie's question or reply and a unique `cache_key` (`custom|…|endDate|<uuid>`, `reply|…|endDate|<uuid>`), and is never served from cache.
+  - **`answer` column:** holds the model's raw JSON text, which is parsed again on a cache hit, so a cached one-tap answer keeps its question and period. Rows from before the JSON change miss anyway, because the prompt version changed.
   - A failed cache read or write is logged and doesn't block the answer.
 - **Out of credit** (`classifyCoachError()`): the API reports an empty balance as a 400 whose message mentions the credit balance (no dedicated error class). That, or a 402 with the same wording, maps to `out_of_credit`; everything else to `coach_failed`. Cost is not tracked.
 - **Prompt — the two [CHECK] sentences**, written from the code:
@@ -1111,6 +1136,14 @@ Anthropic-backed answers about the chart. **Nothing calls the route automaticall
   - vitest covers the payload, cache key, prompt assembly, a cache hit (no second model call, even with the selection in another order), a stale hash replacing the row, custom answers never served from cache, and the out-of-credit classification against a simulated `Anthropic.APIError` 400 "credit balance is too low" (no balance drained).
   - The UI was checked at 375px with `/api/explore` and the coach route mocked in the browser: loading state, all three answer types, greying after a selection change, both error messages with the chart still drawn, and no call on load or on selection change.
   - **Not yet run with real API calls:** the local `.env.local` `ANTHROPIC_API_KEY` is a placeholder (401), and there's no local service-role key. Check on the branch preview.
+- **Verification — replies, tag notes, JSON (Oct 29, 2026, third follow-up):**
+  - vitest (72 tests) covers JSON parsing (fences, bad periods and questions, fallback to raw text, tag trimming, invalid tags), the new ceilings, cut-short answers (text recovered, not cached for one-tap, stored for custom), the reply flow (the original payload plus the earlier exchange, the reply task, unique storage, never cached), a cached answer keeping its question, tag notes in the payload, and note validation.
+  - Browser check at 375px with the routes mocked:
+    - the question and Reply box show only on an answer with a question, and the cut-short note shows;
+    - the reply request carries the original selection, window and exchange, and the thread with the suggested tag renders;
+    - "Review and save tag" pre-fills the form (label, dates, note), and Save POSTs the note, which then shows in the readout;
+    - an overlapping suggestion opens Edit on the existing tag with the note added.
+  - Still not run against the real API (same reason as above).
 
 ---
 
@@ -1438,7 +1471,8 @@ Stores Web Push device subscriptions for server-initiated notifications.
   - id (uuid PK, `gen_random_uuid()`), user_id (text NOT NULL, default 'julie'), start_date (date NOT NULL), end_date (date NOT NULL);
   - label (text NOT NULL), created_at (timestamptz NOT NULL, default now()), updated_at (timestamptz NOT NULL, default now());
   - check `explore_tags_dates`: end_date ≥ start_date;
-  - check `explore_tags_label`: `char_length(trim(label))` between 1 and 40.
+  - check `explore_tags_label`: `char_length(trim(label))` between 1 and 40;
+  - note (text, nullable; added Oct 29, 2026) with check `explore_tags_note`: `note is null or char_length(note) <= 500`.
 - **Purpose:** Julie's **manual** Explore tags only. Automatic Sick / Travel tags are derived from `daily_entries` on every request and never stored.
 - **Access:** read by `loadManualTags()` (`lib/explore/tagsDb.ts`) for `GET /api/explore`; written by `POST /api/explore/tags` and `PATCH` / `DELETE /api/explore/tags/[id]`, all via `supaAdmin()`.
 - **App-level rules:** `updated_at` is set explicitly on PATCH. "No overlap between manual tags" and "end not after today" are enforced in `validateTag()`, not by the database.
@@ -1456,6 +1490,14 @@ Stores Web Push device subscriptions for server-initiated notifications.
     constraint explore_tags_label check (char_length(trim(label)) between 1 and 40)
   );
   -- RLS enabled, no policies; anon/authenticated revoked; service_role granted select/insert/update/delete.
+  ```
+- **Migration — note column, run by Julie in the Supabase SQL editor on Oct 29, 2026, and checked (`information_schema` shows `note | text | YES`).** It alters an existing table, so RLS and grants are unchanged.
+  ```sql
+  alter table public.explore_tags
+    add column if not exists note text;
+  alter table public.explore_tags
+    add constraint explore_tags_note
+    check (note is null or char_length(note) <= 500);
   ```
 
 ### `user_profiles`

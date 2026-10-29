@@ -17,13 +17,14 @@ export function rowToManualTag(r: Record<string, unknown>): ManualTag {
     start: r.start_date as string,
     end: r.end_date as string,
     source: 'manual',
+    note: (r.note as string | null) ?? null,
   }
 }
 
 export async function loadManualTags(client: SupabaseClient): Promise<ManualTag[]> {
   const { data, error } = await client
     .from('explore_tags')
-    .select('id, label, start_date, end_date')
+    .select('id, label, start_date, end_date, note')
     .eq('user_id', EXPLORE_TAGS_USER)
     .order('start_date', { ascending: true })
   if (error) throw error

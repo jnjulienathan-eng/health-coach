@@ -1,4 +1,4 @@
-// POST /api/explore/tags  { label, start, end }
+// POST /api/explore/tags  { label, start, end, note? }
 // Creates a manual Explore tag. Service-role client. Validation in
 // lib/explore/tags.ts → validateTag(): 400 for bad input, 409 with the
 // overlapping tag when it clashes with another manual tag.
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export async function POST(req: Request) {
-  let body: { label?: unknown; start?: unknown; end?: unknown }
+  let body: { label?: unknown; start?: unknown; end?: unknown; note?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -28,8 +28,8 @@ export async function POST(req: Request) {
 
     const { data, error } = await client
       .from('explore_tags')
-      .insert({ user_id: EXPLORE_TAGS_USER, label: v.value.label, start_date: v.value.start, end_date: v.value.end })
-      .select('id, label, start_date, end_date')
+      .insert({ user_id: EXPLORE_TAGS_USER, label: v.value.label, start_date: v.value.start, end_date: v.value.end, note: v.value.note })
+      .select('id, label, start_date, end_date, note')
       .single()
     if (error) throw error
     return Response.json(rowToManualTag(data as Record<string, unknown>), { status: 201 })
