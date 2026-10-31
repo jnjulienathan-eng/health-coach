@@ -17,6 +17,8 @@ export interface SleepData {
   rested: number | null           // 1–5 tap scale (manual)
   nap_minutes: number | null      // daytime nap in minutes, Oura-owned
   oura_readiness: number | null   // Oura daily readiness score (read-only, Oura-owned)
+  deep_sleep_min: number | null   // deep sleep in minutes, main sleep (read-only, Oura-owned)
+  lowest_hr_time_pct: number | null  // when the lowest HR fell, % of the sleep period (read-only, Oura-owned)
   fasting_glucose_mmol: number | null  // mmol/L, optional
 }
 
@@ -125,7 +127,7 @@ export interface DailyEntry {
 
 // ─── Defaults ────────────────────────────────────────────────────
 export function emptySleep(): SleepData {
-  return { bedtime: null, wake_time: null, duration_min: null, hrv: null, apple_hrv_avg: null, rhr: null, rested: null, nap_minutes: null, oura_readiness: null, fasting_glucose_mmol: null }
+  return { bedtime: null, wake_time: null, duration_min: null, hrv: null, apple_hrv_avg: null, rhr: null, rested: null, nap_minutes: null, oura_readiness: null, deep_sleep_min: null, lowest_hr_time_pct: null, fasting_glucose_mmol: null }
 }
 
 export function emptyTraining(): TrainingData {

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { emptyEntry, type DailyEntry } from '../types'
 import {
-  EXPLORE_VARIABLES, addDays, bedtimeToMinutes, lastMealToMinutes, buildExploreSeries,
-  computeInjectionInfo, bedtimeMinutesToHHMM, lastMealMinutesToHHMM, type ExploreSeries,
+  EXPLORE_VARIABLES, addDays, bedtimeToMinutes, buildExploreSeries, nightBedtime, lateWindowLoad, mealDays,
+  computeInjectionInfo, bedtimeMinutesToHHMM, type ExploreSeries,
 } from './series'
 import { robustZ, normaliseExplore, MAD_SCALE, MEAN_AD_SCALE, BASELINE_WINDOW_DAYS, BASELINE_MIN_VALUES } from './normalise'
 import { computeHighlights, OUTLIER_Z, COINCIDENCE_Z } from './highlights'
@@ -31,17 +31,15 @@ describe('variable encoding', () => {
     expect(bedtimeToMinutes('00:15')!).toBeGreaterThan(bedtimeToMinutes('23:30')!)
   })
 
-  it('last meal is minutes after 05:00 Berlin, wrapping past midnight', () => {
-    expect(lastMealToMinutes('2026-07-10T19:00:00Z')).toBe(960)  // 21:00 CEST
-    expect(lastMealToMinutes('2026-07-10T22:30:00Z')).toBe(1170) // 00:30 CEST
-    expect(lastMealToMinutes('2026-12-10T20:00:00Z')).toBe(960)  // 21:00 CET
+  it('night bedtime: 12:00 or later is the evening before the wake date', () => {
+    expect(nightBedtime('2026-07-11', '21:30')!.toISOString()).toBe('2026-07-10T19:30:00.000Z')
+    expect(nightBedtime('2026-07-11', '00:30')!.toISOString()).toBe('2026-07-10T22:30:00.000Z')
+    expect(nightBedtime('2026-07-11', 'xx')).toBeNull()
   })
 
   it('formats encoded minutes back to Berlin HH:MM', () => {
     expect(bedtimeMinutesToHHMM(690)).toBe('23:30')
     expect(bedtimeMinutesToHHMM(735)).toBe('00:15')
-    expect(lastMealMinutesToHHMM(960)).toBe('21:00')
-    expect(lastMealMinutesToHHMM(1170)).toBe('00:30')
   })
 })
 
@@ -60,16 +58,30 @@ describe('buildExploreSeries', () => {
     expect(s.training_stress['2026-07-13']).toBe(0)
   })
 
-  it('takes the latest meal per app day, including after midnight, and shifts to D+1', () => {
-    const s = buildExploreSeries([], [
-      '2026-07-10T10:00:00Z',
-      '2026-07-10T22:30:00Z', // 00:30 on 07-11 → app day 07-10
-      '2026-07-10T19:00:00Z',
-      '2026-07-11T17:00:00Z', // 19:00 → app day 07-11
+  it('late_kcal sums kcal in the 3 hours before bedtime, keyed by wake date', () => {
+    const e = emptyEntry('2026-07-11'); e.sleep.bedtime = '22:00' // 20:00Z on 07-10
+    const s = buildExploreSeries([e], [
+      { loggedAt: '2026-07-10T10:00:00Z', kcal: 600, carbs: 60 }, // lunch, out
+      { loggedAt: '2026-07-10T17:30:00Z', kcal: 500, carbs: 40 }, // 19:30, in
+      { loggedAt: '2026-07-10T19:45:00Z', kcal: 83, carbs: 5 },   // 21:45, in
     ])
-    expect(s.last_meal['2026-07-11']).toBe(1170)
-    expect(s.last_meal['2026-07-12']).toBe(840)
-    expect(s.last_meal['2026-07-10']).toBeUndefined()
+    expect(s.late_kcal['2026-07-11']).toBe(583)
+    expect(s.late_kcal['2026-07-10']).toBeUndefined()
+  })
+
+  it('late_kcal is 0 for a logged day with nothing late, and missing for an unlogged day', () => {
+    const logged = emptyEntry('2026-07-11'); logged.sleep.bedtime = '22:00'
+    const unlogged = emptyEntry('2026-07-13'); unlogged.sleep.bedtime = '22:00'
+    const s = buildExploreSeries([logged, unlogged], [{ loggedAt: '2026-07-10T10:00:00Z', kcal: 600, carbs: 60 }])
+    expect(s.late_kcal['2026-07-11']).toBe(0)
+    expect(s.late_kcal['2026-07-13']).toBeUndefined()
+  })
+
+  it('a meal after midnight belongs to the previous app day for the logged-day check', () => {
+    const meals = [{ loggedAt: '2026-07-10T22:15:00Z', kcal: 120, carbs: 10 }] // 00:15 on 07-11
+    const bed = nightBedtime('2026-07-11', '00:30')!
+    expect(mealDays(meals).has('2026-07-10')).toBe(true)
+    expect(lateWindowLoad(meals, bed, mealDays(meals))).toEqual({ kcal: 120, carbs: 10 })
   })
 
   it('reads sleep fields from the wake date with no shift', () => {
@@ -227,7 +239,7 @@ describe('computeHighlights', () => {
 
   it('requires 1–3 selected variables', () => {
     expect(() => computeHighlights(points, [])).toThrow(RangeError)
-    expect(() => computeHighlights(points, ['hrv', 'rhr', 'bedtime', 'last_meal'])).toThrow(RangeError)
+    expect(() => computeHighlights(points, ['hrv', 'rhr', 'bedtime', 'late_kcal'])).toThrow(RangeError)
   })
 })
 

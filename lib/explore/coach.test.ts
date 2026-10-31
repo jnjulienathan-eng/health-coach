@@ -10,7 +10,7 @@ import {
 import { buildCoachSystemPrompt, COACH_SYSTEM_PROMPT, COACH_TASKS } from './coachPrompts'
 
 // 20 days ending 2026-10-28. HRV and RHR drift low together from day 10
-// (a stretch), sleep is 7h30, bedtime 21:45, last meal 19:30.
+// (a stretch), sleep is 7h30, bedtime 21:45, late kcal 450.
 export function syntheticData(): ExploreData {
   const start = '2026-10-09'
   const dates = Array.from({ length: 20 }, (_, i) => {
@@ -23,7 +23,7 @@ export function syntheticData(): ExploreData {
     variables.bedtime = { value: 585, display: '21:45', z: 0 }
     variables.training_stress = { value: i % 2 ? 40 : 0, display: null, z: i % 2 ? 0.5 : -0.5 }
     variables.load_ratio = { value: 1.05, display: null, z: 0.1 }
-    variables.last_meal = { value: 870, display: '19:30', z: null }
+    variables.late_kcal = { value: 450, display: null, z: null }
     return { date, isSick: i === 12, isTravelling: false, variables, daysSinceInjection: null }
   })
   return {
@@ -76,10 +76,10 @@ describe('buildCoachPayload', () => {
     expect(day(10).rhr.avg7).toBe(53)
     expect(day(10).sleep_duration.avg7).toBe('7:30')
     expect(day(10).bedtime.avg7).toBe('21:45')
-    expect(day(10).last_meal.avg7).toBe('19:30')
+    expect(day(10).late_kcal.avg7).toBe(450)
     expect(day(10).load_ratio.avg7).toBe(1.05)
-    // last_meal has no dev at all, but still has a real-unit average.
-    expect(day(10).last_meal.avg7_dev).toBeNull()
+    // late_kcal has no dev at all, but still has a real-unit average.
+    expect(day(10).late_kcal.avg7_dev).toBeNull()
   })
 
   it('"next" includes all seven and marks the selection', () => {
@@ -89,7 +89,7 @@ describe('buildCoachPayload', () => {
     const day = p.days[0] as unknown as Record<string, { value: unknown; dev: unknown }>
     expect(day.sleep_duration.value).toBe('7:30')
     expect(day.bedtime.value).toBe('21:45')
-    expect(day.last_meal.dev).toBeNull()
+    expect(day.late_kcal.dev).toBeNull()
   })
 
   it('carries flags, the chart stretches and tags', () => {

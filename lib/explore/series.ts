@@ -3,13 +3,14 @@
 // feeds it in here.
 //
 // Every series is keyed by CHART date (YYYY-MM-DD), i.e. already shifted:
-// training_stress and last_meal for day D are plotted on D+1, because they
-// act on that night's sleep/recovery which is recorded on the wake date.
+// training_stress for day D is plotted on D+1, because it acts on that
+// night's sleep/recovery which is recorded on the wake date. late_kcal is
+// computed per night and keyed by that night's wake date directly.
 
 import type { DailyEntry } from '../types'
 import { computeTrainingLoadHistory } from '../trainingLoad'
 import { dayKeyFromTimestamp } from '../nutrition'
-import { berlinParts } from '../berlinTime'
+import { berlinWallClockToUtc } from '../berlinTime'
 
 export const EXPLORE_VARIABLES = [
   'hrv',
@@ -18,7 +19,7 @@ export const EXPLORE_VARIABLES = [
   'bedtime',
   'training_stress',
   'load_ratio',
-  'last_meal',
+  'late_kcal',
 ] as const
 export type ExploreVariable = typeof EXPLORE_VARIABLES[number]
 
@@ -31,12 +32,15 @@ export type ExploreVariable = typeof EXPLORE_VARIABLES[number]
 export const OURA_VARIABLES: readonly ExploreVariable[] = ['hrv', 'rhr']
 
 // Variables whose day-D value is plotted on D+1.
-export const SHIFTED_VARIABLES: readonly ExploreVariable[] = ['training_stress', 'last_meal']
+export const SHIFTED_VARIABLES: readonly ExploreVariable[] = ['training_stress']
 
 export type ExploreSeries = Record<ExploreVariable, Record<string, number>>
 
-// 05:00 Berlin — matches DAY_START_HOUR in lib/nutrition.ts.
-const DAY_START_MINUTES = 5 * 60
+// Late-eating window: food logged in the LATE_WINDOW_HOURS before bedtime.
+export const LATE_WINDOW_HOURS = 3
+
+// One logged meal reduced to what the late-eating measures need.
+export interface MealLoad { loggedAt: string; kcal: number; carbs: number }
 
 // ─── Date helpers ─────────────────────────────────────────────────
 export function addDays(date: string, n: number): string {
@@ -55,12 +59,35 @@ export function bedtimeToMinutes(bedtime: string): number | null {
   return ((h * 60 + m) - 720 + 1440) % 1440
 }
 
-// ─── lastMealToMinutes ────────────────────────────────────────────
-// ISO timestamp → minutes after 05:00 Berlin of its app day
-// (21:00 → 960, 00:30 → 1170).
-export function lastMealToMinutes(isoTs: string): number {
-  const p = berlinParts(new Date(isoTs))
-  return ((p.h * 60 + p.mi) - DAY_START_MINUTES + 1440) % 1440
+// ─── nightBedtime ─────────────────────────────────────────────────
+// The bedtime instant of the night that ends on wakeDate. daily_entries
+// stores bedtime as Berlin "HH:MM" on the wake-date row: 12:00 or later is
+// the evening before, earlier is after midnight on the wake date.
+export function nightBedtime(wakeDate: string, bedtime: string): Date | null {
+  const h = Number(bedtime.split(':')[0])
+  if (!Number.isFinite(h)) return null
+  return berlinWallClockToUtc(h >= 12 ? addDays(wakeDate, -1) : wakeDate, bedtime.slice(0, 5))
+}
+
+// ─── mealDays / lateWindowLoad ────────────────────────────────────
+// App days (05:00 Berlin boundary) with at least one meal logged.
+export function mealDays(meals: MealLoad[]): Set<string> {
+  return new Set(meals.filter(m => !Number.isNaN(Date.parse(m.loggedAt))).map(m => dayKeyFromTimestamp(m.loggedAt)))
+}
+
+// kcal and carbs of meals logged in [bedtime − LATE_WINDOW_HOURS, bedtime).
+// null when the app day the night belongs to has no meals logged at all
+// (not in loggedDays, from mealDays()) — a missing day, not a 0 kcal evening.
+export function lateWindowLoad(meals: MealLoad[], bedtime: Date, loggedDays: Set<string>): { kcal: number; carbs: number } | null {
+  if (!loggedDays.has(dayKeyFromTimestamp(bedtime.toISOString()))) return null
+  const bedMs = bedtime.getTime()
+  const fromMs = bedMs - LATE_WINDOW_HOURS * 3_600_000
+  let kcal = 0, carbs = 0
+  for (const m of meals) {
+    const ms = Date.parse(m.loggedAt)
+    if (ms >= fromMs && ms < bedMs) { kcal += m.kcal; carbs += m.carbs }
+  }
+  return { kcal, carbs }
 }
 
 // ─── Display helpers (inverse of the encodings above) ─────────────
@@ -74,18 +101,14 @@ export function bedtimeMinutesToHHMM(mins: number): string {
   return hhmm(mins + 720)
 }
 
-// Minutes after 05:00 Berlin → Berlin wall-clock "HH:MM".
-export function lastMealMinutesToHHMM(mins: number): string {
-  return hhmm(mins + DAY_START_MINUTES)
-}
-
 // ─── buildExploreSeries ───────────────────────────────────────────
 // entries: full daily_entries history (sessions attached) — load_ratio's
 //   EWMA needs all of it to be correct.
-// mealLoggedAts: meal_logs.logged_at timestamps (all logged_via types,
-//   photo estimates included).
-export function buildExploreSeries(entries: DailyEntry[], mealLoggedAts: string[]): ExploreSeries {
+// meals: meal_logs with their kcal and carbs (all logged_via types, photo
+//   estimates included).
+export function buildExploreSeries(entries: DailyEntry[], meals: MealLoad[]): ExploreSeries {
   const series = Object.fromEntries(EXPLORE_VARIABLES.map(v => [v, {}])) as ExploreSeries
+  const loggedDays = mealDays(meals)
 
   for (const e of entries) {
     if (e.sleep.hrv != null)          series.hrv[e.date] = e.sleep.hrv
@@ -94,6 +117,9 @@ export function buildExploreSeries(entries: DailyEntry[], mealLoggedAts: string[
     if (e.sleep.bedtime != null) {
       const mins = bedtimeToMinutes(e.sleep.bedtime)
       if (mins != null) series.bedtime[e.date] = mins
+      const bed = nightBedtime(e.date, e.sleep.bedtime)
+      const load = bed && lateWindowLoad(meals, bed, loggedDays)
+      if (load) series.late_kcal[e.date] = Math.round(load.kcal)
     }
   }
 
@@ -102,17 +128,6 @@ export function buildExploreSeries(entries: DailyEntry[], mealLoggedAts: string[
   for (const h of computeTrainingLoadHistory(entries)) {
     series.training_stress[addDays(h.date, 1)] = h.tsu
     if (h.ratio != null) series.load_ratio[h.date] = h.ratio
-  }
-
-  const latestByDay: Record<string, { ms: number; ts: string }> = {}
-  for (const ts of mealLoggedAts) {
-    const ms = new Date(ts).getTime()
-    if (Number.isNaN(ms)) continue
-    const day = dayKeyFromTimestamp(ts)
-    if (!latestByDay[day] || ms > latestByDay[day].ms) latestByDay[day] = { ms, ts }
-  }
-  for (const [day, { ts }] of Object.entries(latestByDay)) {
-    series.last_meal[addDays(day, 1)] = lastMealToMinutes(ts)
   }
 
   return series

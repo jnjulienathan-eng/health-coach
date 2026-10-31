@@ -22,7 +22,7 @@ ABOUT JULIE
 HOW THE DATA WORKS
 - Each day is compared with the previous 28 days: the median is the baseline and MAD measures the spread. dev is (value − median) ÷ (MAD × 1.4826), so ±1 is roughly one standard deviation, and it is null when fewer than 20 of the previous 28 days have a value. Beyond ±0.8 counts as notably high or low.
 - "avg7" is the 7-day centred average in real units and "avg7_dev" is the same average in deviation units. The chart lines show avg7_dev, and it is the more reliable signal. Single days are noisy.
-- Last meal and training stress are shifted to the following night, so they line up with the sleep and recovery they could affect.
+- Training stress is shifted to the following night, so it lines up with the sleep and recovery it could affect. Late kcal is the kcal logged in the 3 hours before that night's bedtime, shown on the morning after.
 - Sick days appear in the data and are excluded from baselines.
 - HRV and RHR come from an Oura ring, starting 17 Sep 2026. Their baselines start there, so the first weeks have fewer days behind them. Earlier device data is excluded because it is not comparable.
 - Higher HRV and lower RHR generally indicate better recovery. During illness HRV can spike, which is not a sign of good recovery.

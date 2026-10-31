@@ -11,7 +11,7 @@ import { createHash, randomUUID } from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExploreData } from './fetch'
-import { EXPLORE_VARIABLES, OURA_VARIABLES, bedtimeMinutesToHHMM, lastMealMinutesToHHMM, type ExploreVariable } from './series'
+import { EXPLORE_VARIABLES, OURA_VARIABLES, bedtimeMinutesToHHMM, type ExploreVariable } from './series'
 import { OURA_START_DATE } from '../types'
 import { rollingAverage, findStretches } from './trends'
 import { buildCoachSystemPrompt, COACH_SYSTEM_PROMPT, COACH_TASKS, type CoachRequestType } from './coachPrompts'
@@ -37,27 +37,27 @@ const UNITS: Record<ExploreVariable, string> = {
   bedtime: 'HH:MM',
   training_stress: 'TSU',
   load_ratio: 'ratio',
-  last_meal: 'HH:MM',
+  late_kcal: 'kcal',
 }
 
 const round2 = (x: number | null) => (x == null ? null : Math.round(x * 100) / 100)
 
 // Raw value (or average of raw values) in display units, as the readout
-// shows it: ms / bpm / TSU as whole numbers, sleep as "h:mm", bedtime and
-// last meal as Berlin "HH:MM" (same converters as the route's display),
-// load ratio to 2 decimals.
+// shows it: ms / bpm / TSU / kcal as whole numbers, sleep as "h:mm", bedtime
+// as Berlin "HH:MM" (same converter as the route's display), load ratio to
+// 2 decimals.
 function displayValue(v: ExploreVariable, value: number | null): number | string | null {
   if (value == null) return null
   switch (v) {
     case 'hrv':
     case 'rhr':
-    case 'training_stress': return Math.round(value)
+    case 'training_stress':
+    case 'late_kcal':       return Math.round(value)
     case 'sleep_duration': {
       const m = Math.round(value)
       return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`
     }
     case 'bedtime':         return bedtimeMinutesToHHMM(value)
-    case 'last_meal':       return lastMealMinutesToHHMM(value)
     case 'load_ratio':      return round2(value)
   }
 }
@@ -70,8 +70,8 @@ export function buildCoachPayload(data: ExploreData, type: CoachRequestType, sel
   const included: ExploreVariable[] = type === 'see' ? selected : [...EXPLORE_VARIABLES]
   // averages: the chart's 7-day average of dev (avg7_dev, and stretches).
   // rawAverages: the same centred window over raw values (avg7), so the
-  // average reads in real units. Bedtime and last meal average their
-  // encoded minutes, which don't wrap at midnight.
+  // average reads in real units. Bedtime averages its encoded minutes,
+  // which don't wrap at midnight.
   // Coach only: HRV and RHR before OURA_START_DATE come from the old device
   // and aren't comparable, so they are treated as missing here — value,
   // avg7, avg7_dev and dev are null on those dates, and the real-unit avg7

@@ -221,7 +221,7 @@ export async function ouraGet<T = unknown>(path: string, params: Record<string, 
 // syncOuraRange(startDate, endDate) is the ONE entry point that webhook, cron
 // and backfill all call. It makes Oura the source of these daily_entries
 // columns: bedtime, wake_time, sleep_duration_min, hrv, rhr, nap_minutes,
-// oura_readiness. Overwrite-on-change: only columns whose value differs from
+// oura_readiness, deep_sleep_min, lowest_hr_time_pct. Overwrite-on-change: only columns whose value differs from
 // what is stored are sent, so re-running over the same range is a no-op.
 // See BODYCIPHER.md → "Oura Ring sleep sync" for the full mapping.
 
@@ -234,6 +234,9 @@ interface OuraSleepPeriod {
   total_sleep_duration?: number | null
   average_hrv?: number | null
   lowest_heart_rate?: number | null
+  deep_sleep_duration?: number | null
+  // 5-minute HR samples from `timestamp`, `interval` seconds apart; null = no reading.
+  heart_rate?: { interval?: number; items?: (number | null)[]; timestamp?: string } | null
 }
 interface OuraDailyReadiness { day?: string; score?: number | null }
 interface OuraPage<T> { data?: T[]; next_token?: string | null }
@@ -241,6 +244,7 @@ interface OuraPage<T> { data?: T[]; next_token?: string | null }
 // Only columns listed here are ever written by the sync.
 const OURA_OWNED_COLUMNS = [
   'bedtime', 'wake_time', 'sleep_duration_min', 'hrv', 'rhr', 'nap_minutes', 'oura_readiness',
+  'deep_sleep_min', 'lowest_hr_time_pct',
 ] as const
 type OuraOwnedColumn = typeof OURA_OWNED_COLUMNS[number]
 type OuraOwnedValues = Partial<Record<OuraOwnedColumn, string | number | null>>
@@ -298,6 +302,23 @@ function normaliseStored(col: OuraOwnedColumn, v: unknown): string | number | nu
   return Number.isNaN(n) ? null : n
 }
 
+// When in the sleep period the lowest 5-minute HR sample fell, as % of the
+// period (bedtime_start → bedtime_end), 1 decimal. First sample wins a tie.
+// Null without an HR series or a valid period.
+export function lowestHrTimePct(p: OuraSleepPeriod): number | null {
+  const hr = p.heart_rate
+  const start = Date.parse(p.bedtime_start ?? '')
+  const end = Date.parse(p.bedtime_end ?? '')
+  const seriesStart = Date.parse(hr?.timestamp ?? '')
+  if (!hr?.items?.length || !hr.interval || Number.isNaN(start) || Number.isNaN(end) || Number.isNaN(seriesStart) || end <= start) return null
+  let minIdx = -1
+  hr.items.forEach((v, i) => { if (v != null && (minIdx < 0 || v < (hr.items![minIdx] as number))) minIdx = i })
+  if (minIdx < 0) return null
+  const at = seriesStart + minIdx * hr.interval * 1000
+  const pct = ((at - start) / (end - start)) * 100
+  return Math.round(Math.max(0, Math.min(100, pct)) * 10) / 10
+}
+
 // Pure mapping for one app date D. Returns only the columns Oura has an
 // opinion on for D; absent keys mean "leave untouched".
 export function mapOuraForDate(date: string, periods: OuraSleepPeriod[], readiness: OuraDailyReadiness[]): OuraOwnedValues {
@@ -312,6 +333,8 @@ export function mapOuraForDate(date: string, periods: OuraSleepPeriod[], readine
     out.sleep_duration_min = main.total_sleep_duration != null ? Math.round(main.total_sleep_duration / 60) : null
     out.hrv = main.average_hrv != null ? Math.round(main.average_hrv) : null
     out.rhr = main.lowest_heart_rate ?? null
+    out.deep_sleep_min = main.deep_sleep_duration != null ? Math.round(main.deep_sleep_duration / 60) : null
+    out.lowest_hr_time_pct = lowestHrTimePct(main)
   }
 
   // Naps: by Berlin calendar date of bedtime_start, NOT Oura's `day` (Oura

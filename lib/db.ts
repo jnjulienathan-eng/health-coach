@@ -23,6 +23,8 @@ export function rowToEntry(row: Record<string, unknown>, sessions: TrainingSessi
       rested:               (r.rested               as number  | null) ?? null,
       nap_minutes:          (r.nap_minutes          as number  | null) ?? null,
       oura_readiness:       (r.oura_readiness       as number  | null) ?? null,
+      deep_sleep_min:       (r.deep_sleep_min       as number  | null) ?? null,
+      lowest_hr_time_pct:   r.lowest_hr_time_pct != null ? Number(r.lowest_hr_time_pct) : null,
       fasting_glucose_mmol: (r.fasting_glucose_mmol as number  | null) ?? null,
     },
     training: {
@@ -170,7 +172,8 @@ export async function saveEntry(entry: DailyEntry, client: SupabaseClient = supa
     updated_at: new Date().toISOString(),
 
     // Sleep — bedtime, sleep_duration_min, hrv, rhr, nap_minutes (plus
-    // wake_time, oura_readiness, apple_hrv_avg) are webhook-owned and never
+    // wake_time, oura_readiness, deep_sleep_min, lowest_hr_time_pct,
+    // apple_hrv_avg) are webhook-owned and never
     // sent from here, so a save from a stale page can't overwrite Oura data.
     // Written only by syncOuraRange() in lib/oura.ts. Rested stays manual.
     rested:               entry.sleep.rested,

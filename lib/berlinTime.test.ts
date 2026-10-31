@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { berlinParts, berlinDate, berlinWallClockToUtc, atBerlinDate } from './berlinTime'
 import { dayKeyFromTimestamp } from './nutrition'
-import { lastMealToMinutes, lastMealMinutesToHHMM, buildExploreSeries } from './explore/series'
+import { buildExploreSeries, nightBedtime } from './explore/series'
+import { emptyEntry } from './types'
 
 // DST changes in 2026: Sun 29 Mar 02:00 CET → 03:00 CEST (01:00Z),
 // Sun 25 Oct 03:00 CEST → 02:00 CET (01:00Z).
@@ -116,7 +117,7 @@ describe('atBerlinDate — logging a meal on the viewed date at the current time
   })
 })
 
-describe('meal day and last-meal time across DST', () => {
+describe('meal day and time of day across DST', () => {
   it.each([
     // meal just before Berlin midnight, both sides of both changes
     ['2026-10-24T21:55:00Z', '2026-10-24', '23:55'],
@@ -133,13 +134,56 @@ describe('meal day and last-meal time across DST', () => {
     ['2026-10-30T18:44:00Z', '2026-10-30', '19:44'],
     ['2026-03-28T18:44:00Z', '2026-03-28', '19:44'],
     ['2026-03-29T17:44:00Z', '2026-03-29', '19:44'],
-  ])('%s → app day %s, last meal %s', (iso, day, time) => {
+  ])('%s → app day %s at %s', (iso, day, time) => {
     expect(dayKeyFromTimestamp(iso)).toBe(day)
-    expect(lastMealMinutesToHHMM(lastMealToMinutes(iso))).toBe(time)
+    expect(hhmm(iso)).toBe(time)
+  })
+})
+
+describe('late-eating window across DST', () => {
+  const meal = (loggedAt: string, kcal: number) => ({ loggedAt, kcal, carbs: 0 })
+  const night = (wake: string, bedtime: string) => { const e = emptyEntry(wake); e.sleep.bedtime = bedtime; return e }
+
+  it('bedtime instant on both sides of both changes, and after midnight', () => {
+    expect(nightBedtime('2026-10-25', '21:30')!.toISOString()).toBe('2026-10-24T19:30:00.000Z') // CEST
+    expect(nightBedtime('2026-10-26', '21:30')!.toISOString()).toBe('2026-10-25T20:30:00.000Z') // CET
+    expect(nightBedtime('2026-03-29', '21:30')!.toISOString()).toBe('2026-03-28T20:30:00.000Z') // CET
+    expect(nightBedtime('2026-03-30', '21:30')!.toISOString()).toBe('2026-03-29T19:30:00.000Z') // CEST
+    expect(nightBedtime('2026-10-26', '00:30')!.toISOString()).toBe('2026-10-25T23:30:00.000Z') // after midnight, CET
   })
 
-  it('Explore last_meal for 30 Oct shows 19:44 for a meal eaten at 19:44 CET', () => {
-    const series = buildExploreSeries([], ['2026-10-30T12:00:00Z', '2026-10-30T18:44:00Z'])
-    expect(lastMealMinutesToHHMM(series.last_meal['2026-10-31'])).toBe('19:44')
+  it('3-hour window follows the Berlin clock on the night of 24/25 Oct (CEST)', () => {
+    const s = buildExploreSeries([night('2026-10-25', '21:30')], [
+      meal('2026-10-24T16:20:00Z', 400), // 18:20 CEST, before the window
+      meal('2026-10-24T16:40:00Z', 300), // 18:40 CEST, in
+      meal('2026-10-24T19:25:00Z', 50),  // 21:25 CEST, in
+      meal('2026-10-24T19:30:00Z', 999), // 21:30 CEST, at bedtime, out
+    ])
+    expect(s.late_kcal['2026-10-25']).toBe(350)
+  })
+
+  it('3-hour window follows the Berlin clock on the night of 25/26 Oct (CET)', () => {
+    const s = buildExploreSeries([night('2026-10-26', '21:30')], [
+      meal('2026-10-25T17:20:00Z', 400), // 18:20 CET, out
+      meal('2026-10-25T17:40:00Z', 300), // 18:40 CET, in
+    ])
+    expect(s.late_kcal['2026-10-26']).toBe(300)
+  })
+
+  it('March: a meal just before midnight counts for a bedtime after midnight', () => {
+    // Bedtime 00:30 CEST on 30 Mar; meal 23:55 CEST on 29 Mar.
+    const s = buildExploreSeries([night('2026-03-30', '00:30')], [
+      meal('2026-03-29T08:00:00Z', 500),
+      meal('2026-03-29T21:55:00Z', 250),
+    ])
+    expect(s.late_kcal['2026-03-30']).toBe(250)
+  })
+
+  it('March: 28/29 Mar night in CET', () => {
+    const s = buildExploreSeries([night('2026-03-29', '22:00')], [
+      meal('2026-03-28T18:10:00Z', 600), // 19:10 CET, in
+      meal('2026-03-28T17:50:00Z', 100), // 18:50 CET, out
+    ])
+    expect(s.late_kcal['2026-03-29']).toBe(600)
   })
 })
