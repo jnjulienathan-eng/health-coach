@@ -17,16 +17,17 @@ import ExploreTab from '@/components/ExploreTab'
 import SplashScreen from '@/components/SplashScreen'
 import { enableNotifications } from '@/components/SwRegister'
 import { Syringe } from 'lucide-react'
+import { berlinDate } from '@/lib/berlinTime'
 
 // ─── Date utilities ───────────────────────────────────────────────
+// Berlin calendar dates, not UTC: the UTC date lags Berlin's for the first
+// hour (winter) or two (summer) after Berlin midnight.
 function todayStr() {
-  return new Date().toISOString().split('T')[0]
+  return berlinDate()
 }
 
 function yesterdayStr() {
-  const d = new Date()
-  d.setDate(d.getDate() - 1)
-  return d.toISOString().split('T')[0]
+  return shiftDay(todayStr(), -1)
 }
 
 function shiftDay(dateStr: string, delta: number) {
@@ -42,7 +43,7 @@ function shiftDay(dateStr: string, delta: number) {
 // ISO string — cgm_readings' daily-average row is stamped to Berlin local
 // midnight, which Postgres/Supabase return as a UTC timestamp on the
 // *previous* UTC calendar date (Berlin is UTC+1/+2), so a plain
-// recordedAt.slice(0, 10) vs. todayStr()/yesterdayStr() (both UTC-based)
+// recordedAt.slice(0, 10) vs. todayStr()/yesterdayStr() (both UTC-based then)
 // comparison misclassified today's own reading as "yesterday" for most of
 // each Berlin day — the self-contradictory "Today's average so far · as of
 // yesterday" bug found in live testing.
@@ -700,7 +701,7 @@ function formatHeroDate(d: Date): string {
 }
 
 function getTodayBerlin(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
+  return berlinDate()
 }
 
 function calcDaysRemaining(todayStr: string, dueDate: Date): number {
@@ -1889,7 +1890,7 @@ export default function App() {
   function openVo2Entry(e: React.MouseEvent) {
     e.stopPropagation()
     setVo2EntryValue(vo2Max ? String(vo2Max.value) : '')
-    setVo2EntryDate(new Date().toISOString().split('T')[0])
+    setVo2EntryDate(todayStr())
     setVo2EntryOpen(true)
   }
 
@@ -1940,7 +1941,7 @@ export default function App() {
   function openMuscleEntry(e: React.MouseEvent) {
     e.stopPropagation()
     setMuscleEditValue(bodyComp?.latestMuscle ? String(bodyComp.latestMuscle.value) : '')
-    setMuscleEditDate(new Date().toISOString().split('T')[0])
+    setMuscleEditDate(todayStr())
     setMuscleError(null)
     setMuscleEditOpen(v => !v)
   }
@@ -1948,7 +1949,7 @@ export default function App() {
   async function handleSaveMuscle() {
     const val = parseFloat(muscleEditValue)
     if (isNaN(val)) return
-    const d = muscleEditDate || new Date().toISOString().split('T')[0]
+    const d = muscleEditDate || todayStr()
     setMuscleSaving(true)
     setMuscleError(null)
     try {
@@ -1977,7 +1978,7 @@ export default function App() {
     e.stopPropagation()
     setCardioLdlValue(ldl ? String(ldl.value) : '')
     setCardioHdlValue(hdl ? String(hdl.value) : '')
-    setCardioEntryDate(new Date().toISOString().split('T')[0])
+    setCardioEntryDate(todayStr())
     setCardioEntryOpen(true)
     setCardioExpanded(true)
   }
@@ -2004,7 +2005,7 @@ export default function App() {
   async function saveHba1c() {
     const val = parseFloat(hba1cValueInput)
     if (!Number.isFinite(val) || val <= 0) return
-    const date = hba1cDateInput || new Date().toISOString().split('T')[0]
+    const date = hba1cDateInput || todayStr()
     setHba1cSaving(true)
     setHba1cError(null)
     try {
@@ -2055,7 +2056,7 @@ export default function App() {
   }
 
   async function handleMarkDone(appt: HealthAppointment) {
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayStr()
     const nextDue = appt.interval_months != null ? addMonths(today, appt.interval_months) : null
     setApptSaving(true)
     try {

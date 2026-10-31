@@ -16,6 +16,7 @@
 import { animate, AnimatePresence, motion, useAnimationControls } from 'framer-motion'
 import { ImagePlus, Mic } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { atBerlinDate } from '@/lib/berlinTime'
 
 // ─── Types (mirrors API responses) ────────────────────────────────────────
 interface NutrientsPer100g {
@@ -336,7 +337,9 @@ export default function MealLogger({ onClose, onSaved, currentDate, initialScree
       // wall-clock time. Without this, meals logged while viewing a past date
       // are saved under today's date, then fetchDay() refreshes the past-date
       // view and finds nothing — the meal silently disappears.
-      const loggedAt = `${currentDate}T${new Date().toISOString().slice(11)}`
+      // The time of day is Berlin's, so a past date across a DST change
+      // keeps the same clock time (not the UTC time of day).
+      const loggedAt = atBerlinDate(currentDate).toISOString()
       const body = isEstimate
         ? {
             name: mealName,

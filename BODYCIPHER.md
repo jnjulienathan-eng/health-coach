@@ -1,6 +1,18 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 29, 2026 (Session: Explore Phase 4 — Dashboard HRV chart removed, branch `dashboard-remove-hrv-rhr-chart`). Explore now covers HRV and RHR, so the Dashboard's "HRV Overview — 30 Days" chart is gone. That chart plotted overnight HRV, its baseline and Apple's all-day HRV average; RHR was never on it.
+_Last updated: October 31, 2026 (Session: DST time-of-day audit, branch `fix-dst-time-of-day`). Julie reported that the last meal on 30 Oct shows 20:44 in Explore when she ate at 19:44, after summer time ended on 25 Oct.
+- **Finding:** no code uses a fixed +2 offset. Every read path (Explore last meal and bedtime, the coach payload, Today meal cards, dayKeyFromTimestamp) already converts with Intl in Europe/Berlin. The stored row (`meal_logs` 4cba6a3d…, "Lindt 70% truffle") is `2026-10-30T19:44:48.606Z`, which is 20:44 CET. That is the moment the meal was saved, so 20:44 is a correct reading of what's stored. A fixed +2 would have shown 21:44.
+- **Real faults found and fixed:**
+  - the Today tab took "today" as the UTC date, so for the first hour after Berlin midnight (two hours in summer) it showed and saved the previous day;
+  - MealLogger built `logged_at` from the viewed date plus the UTC time of day, so a meal back-dated across a DST change landed an hour off;
+  - `buildNewLoggedAt()` (meal-time edit) could land on the wrong side of a DST change for times between 01:00 and 03:00 on change days;
+  - `deriveCycleDay()` used UTC "yesterday";
+  - the biomarker / appointment entry forms defaulted to the UTC date.
+- **One shared helper:** new `lib/berlinTime.ts` (`berlinParts`, `berlinDate`, `berlinWallClockToUtc`, `atBerlinDate`), pure and client-safe. `lib/nutrition.ts` re-exports `berlinParts`; `lib/db.ts`'s private `berlinTimeParts` / offset loop is replaced by it.
+- **Behaviour change to know:** between 00:00 and 05:00 Berlin, Today now shows the new calendar day, while a meal logged then still belongs to the previous app day (05:00 boundary), so it appears on the previous day's view. Before, that was true from 01:00 (winter) / 02:00 (summer); the window is now the same all year.
+- **Tests:** new `lib/berlinTime.test.ts` (46 tests) covers 24/25 Oct and 28/29 Mar 2026, meals just before midnight, the repeated and skipped hours, and back-dating. Total 122. No migration, no stored data changed.
+See NUTRITION → Meal time and EXPLORE → Files._
+_Previous update: October 29, 2026 (Session: Explore Phase 4 — Dashboard HRV chart removed, branch `dashboard-remove-hrv-rhr-chart`). Explore now covers HRV and RHR, so the Dashboard's "HRV Overview — 30 Days" chart is gone. That chart plotted overnight HRV, its baseline and Apple's all-day HRV average; RHR was never on it.
 - **Deleted:** `HrvChart` and its `hrvData` / `appleHrvData` arrays and card in `app/page.tsx`, and the `--color-teal` token in `app/globals.css` (only that chart used it). The chart had no API route or fetch of its own.
 - **Kept, because other code uses it:**
   - `hrvBaseline` / `hrvBaselineFromEntries` — the Today tab's Outcome bullets;
@@ -125,6 +137,7 @@ See SCORING MODEL, Coach Tab and "Oura Ring sleep sync". Previous session: Oura 
 **Key files:** `lib/explore/*` + `app/api/explore/route.ts` (Explore), `lib/db.ts`, `lib/types.ts`, `lib/scores.ts`, `lib/trainingLoad.ts`
 **Scripts:** `scripts/generate-icon.mjs` — generates `public/apple-touch-icon.png` (180×180 PNG, dark bg + BodyCipher mark). Run with `node scripts/generate-icon.mjs` from the project root. Requires `sharp`.
 **Tests:** `npm test` runs vitest (`vitest run`). Added Oct 28, 2026 for `lib/explore/`. Test files sit next to the module (`*.test.ts`).
+**Time zone:** all Berlin wall-clock ↔ UTC conversion goes through `lib/berlinTime.ts` (Intl, Europe/Berlin, never a fixed offset). Client "today" on the Today tab is the Berlin calendar date (`todayStr()` in `app/page.tsx`).
 **Sections:** `components/sections/` — SleepSection, TrainingSection, NutritionSection, HydrationSection, SupplementsSection, Glp1Section (+ named export `Glp1RefillCard`, not date-navigable), ContextSection
 **Other components:** `components/ExploreTab.tsx`, `components/DashboardTab.tsx` (not imported, preserved on disk), `components/HistoryTab.tsx` (not imported, preserved on disk), `components/GoalsTab.tsx` (not imported, preserved on disk), `components/SplashScreen.tsx`
 
@@ -854,7 +867,8 @@ Screen 5: Save confirmation. Meal name (editable), time, macros, notes. Confirm 
 - **Bug fix (July 2026) — real food identity for ingredient-mode photo estimates:** `/api/nutrition/estimate`'s single shared Vision prompt already asks for `meal_name` in every case (no full-meal-vs-ingredient branching server-side), so ingredient-mode estimates were already returning a real identified name — but `ScreenPhotoEstimate`'s `handleAddToMeal` (and the results-step display) in `MealLogger.tsx` ignored `ingredientEstimate.meal_name` and fell back straight to the hardcoded placeholder `'Estimated item'` whenever no text description was typed. Fixed both spots to prefer `ingredientEstimate.meal_name` before falling back to the placeholder. Full-meal photo-estimate path (`logged_via = 'photo_estimate'`) and the May 18 `ai_estimate` deduplication-skip fix are unchanged.
 
 Peak glucose: inline editable on meal card in day view. PATCH /api/nutrition/meal. Never on logging screens.
-Meal time: inline editable on meal card — tap the time to enter an `<input type="time">`, blur saves via PATCH /api/nutrition/meal with `logged_at` (ISO string). Client reconstructs the correct UTC ISO by converting the Berlin HH:MM back to UTC using `buildNewLoggedAt()` in NutritionSection.tsx. No summary recompute.
+Meal time: inline editable on meal card — tap the time to enter an `<input type="time">`, blur saves via PATCH /api/nutrition/meal with `logged_at` (ISO string). Client reconstructs the correct UTC ISO by converting the Berlin HH:MM back to UTC using `buildNewLoggedAt()` in NutritionSection.tsx, which calls the shared `berlinWallClockToUtc()` (`lib/berlinTime.ts`, Oct 31, 2026). No summary recompute.
+New meals: MealLogger sets `logged_at = atBerlinDate(currentDate)` — now, when the viewed date is today in Berlin; otherwise the viewed date at the current Berlin clock time (Oct 31, 2026; before, the UTC time of day was used, an hour off across DST).
 
 ---
 
@@ -928,7 +942,7 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 - `lib/explore/coach.ts` — server-only. Payload, cache key, data hash, the model call, error classification and `runCoach()`.
 - `lib/explore/coach.test.ts` — vitest: payload, cache key, prompts, caching and error classification.
 - `app/api/explore/coach/route.ts` — `POST /api/explore/coach`, `force-dynamic`.
-- `berlinParts()` in `lib/nutrition.ts` is now exported, so last-meal time of day uses the same Berlin clock as `dayKeyFromTimestamp()`.
+- `berlinParts()` lives in `lib/berlinTime.ts` (moved Oct 31, 2026; `lib/nutrition.ts` re-exports it), so last-meal time of day uses the same Berlin clock as `dayKeyFromTimestamp()`.
 
 ### Variables (keys)
 | Key | Source | Encoding | Shift |

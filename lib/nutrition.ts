@@ -7,6 +7,7 @@
 // and supaAdmin with a cookie-based client.
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { berlinParts } from './berlinTime'
 
 // ─── Macro keys (canonical order: calories, protein, carbs, fat, fiber) ────
 export const MACRO_KEYS = ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const
@@ -40,27 +41,10 @@ export function nutritionUserId(): string {
 }
 
 // ─── Day boundary (05:00 Europe/Berlin) ────────────────────────────────────
-const BERLIN = 'Europe/Berlin'
+// Berlin wall-clock conversion lives in lib/berlinTime.ts (re-exported here
+// for existing importers).
 const DAY_START_HOUR = 5
-
-export function berlinParts(d: Date): { y: number; m: number; d: number; h: number; mi: number; s: number } {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: BERLIN,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  })
-  const parts: Record<string, string> = {}
-  for (const p of fmt.formatToParts(d)) if (p.type !== 'literal') parts[p.type] = p.value
-  return {
-    y:  parseInt(parts.year,   10),
-    m:  parseInt(parts.month,  10),
-    d:  parseInt(parts.day,    10),
-    h:  parseInt(parts.hour,   10) % 24,  // en-CA returns "24" at midnight in some envs
-    mi: parseInt(parts.minute, 10),
-    s:  parseInt(parts.second, 10),
-  }
-}
+export { berlinParts }
 
 // Returns YYYY-MM-DD using the 05:00 Berlin day boundary.
 export function dayKeyFromTimestamp(isoTs: string): string {

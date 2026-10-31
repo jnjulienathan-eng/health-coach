@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { DailyEntry, TrainingSession, Symptom, BiomarkerReading, HealthAppointment, GoalsData, Glp1Injection, BodyCompositionData, CgmReading } from './types'
 import { emptyEntry, OURA_START_DATE } from './types'
+import { berlinParts, berlinDate, berlinWallClockToUtc } from './berlinTime'
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -358,9 +359,9 @@ export async function isSleepLogged(date: string, client: SupabaseClient = supab
 
 // ─── deriveCycleDay ───────────────────────────────────────────────
 export async function deriveCycleDay(client: SupabaseClient = supabase): Promise<number | null> {
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yStr = yesterday.toISOString().split('T')[0]
+  // Yesterday in Berlin, not UTC: the UTC date lags Berlin's for the first
+  // hour (winter) or two (summer) after Berlin midnight.
+  const yStr = addDaysToDateStr(berlinDate(), -1)
 
   const { data } = await client
     .from('daily_entries')
@@ -865,43 +866,11 @@ export async function getSleepDebtRolling7Day(asOfDate?: string, client: Supabas
 }
 
 // ─── Berlin wall-clock → UTC instant ────────────────────────────────
-// Converts a Berlin-local YYYY-MM-DD + HH:MM into the UTC instant it
-// represents, correctly across CET/CEST. Needed because cgm_readings.
-// recorded_at is a real timestamptz instant, while wake_time/"today" are
-// Berlin wall-clock values — every other Berlin helper in this file only
-// ever compares calendar dates, not instants.
-//
-// Europe/Berlin only ever runs at UTC+1 (CET) or UTC+2 (CEST), so rather
-// than a guess-and-correct approach (which misfires for wall-clock times
-// that fall within the ~1-3am DST-transition window on the two days a
-// year that applies, since the initial guess can land on the wrong side
-// of the transition), try both offsets and pick whichever one's Berlin
-// rendering round-trips back to the requested wall-clock time.
-function berlinTimeParts(ms: number): { y: number; m: number; d: number; h: number; mi: number } {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Europe/Berlin', hour12: false,
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-  })
-  const parts: Record<string, string> = {}
-  for (const p of fmt.formatToParts(new Date(ms))) if (p.type !== 'literal') parts[p.type] = p.value
-  return {
-    y: parseInt(parts.year, 10), m: parseInt(parts.month, 10), d: parseInt(parts.day, 10),
-    h: parseInt(parts.hour, 10) % 24, mi: parseInt(parts.minute, 10),
-  }
-}
-
+// cgm_readings.recorded_at is a real timestamptz instant, while
+// wake_time/"today" are Berlin wall-clock values. The conversion is the
+// shared, DST-aware helper in lib/berlinTime.ts.
 function berlinWallClockToUtcMs(dateStr: string, timeStr: string): number {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const [hh, mi] = timeStr.split(':').map(Number)
-  const naiveUtcMs = Date.UTC(y, m - 1, d, hh, mi, 0)
-  for (const offsetHours of [1, 2]) {
-    const candidateMs = naiveUtcMs - offsetHours * 3_600_000
-    const p = berlinTimeParts(candidateMs)
-    if (p.y === y && p.m === m && p.d === d && p.h === hh && p.mi === mi) return candidateMs
-  }
-  // Nonexistent local time (the 02:00-03:00 spring-forward gap) — not a
-  // real wake_time or day-boundary value, so this shouldn't occur.
-  return naiveUtcMs - 3_600_000
+  return berlinWallClockToUtc(dateStr, timeStr).getTime()
 }
 
 function addDaysToDateStr(dateStr: string, days: number): string {
@@ -959,7 +928,7 @@ export async function getNearestCgmReading(date: string, wakeTime: string, clien
 // 'LibreView', for real-world "today" — using the app's existing 05:00
 // Europe/Berlin day boundary (the same one the nutrition day already
 // uses, dayKeyFromTimestamp in lib/nutrition.ts — not imported here,
-// replicated with the berlinTimeParts()/berlinWallClockToUtcMs() helpers
+// replicated with the berlinParts()/berlinWallClockToUtcMs() helpers
 // already in this file, per instruction, rather than a new cross-module
 // dependency). Confirmed by Julie, Sept 8, 2026: an overnight low should
 // split across app-days the same way sleep and fasting glucose already
@@ -978,7 +947,7 @@ const LOW_GLUCOSE_THRESHOLD_MMOL = 3.9
 const DAY_START_HOUR_BERLIN = 5
 
 export async function getLowEventsToday(client: SupabaseClient = supabase): Promise<number> {
-  const now = berlinTimeParts(Date.now())
+  const now = berlinParts(new Date())
   const todayBerlin = `${now.y}-${String(now.m).padStart(2, '0')}-${String(now.d).padStart(2, '0')}`
   const anchorDate = now.h < DAY_START_HOUR_BERLIN ? addDaysToDateStr(todayBerlin, -1) : todayBerlin
   const dayStartMs = berlinWallClockToUtcMs(anchorDate, '05:00')

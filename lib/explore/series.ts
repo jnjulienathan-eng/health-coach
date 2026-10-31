@@ -8,7 +8,8 @@
 
 import type { DailyEntry } from '../types'
 import { computeTrainingLoadHistory } from '../trainingLoad'
-import { dayKeyFromTimestamp, berlinParts } from '../nutrition'
+import { dayKeyFromTimestamp } from '../nutrition'
+import { berlinParts } from '../berlinTime'
 
 export const EXPLORE_VARIABLES = [
   'hrv',

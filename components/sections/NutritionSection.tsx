@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import type { TrainingSession } from '@/lib/types'
 import { MACRO_TARGETS } from '@/lib/types'
 import { computeNutritionTargets, BASE_TEE, TARGET_DEFICIT } from '@/lib/nutritionTargets'
+import { berlinDate, berlinWallClockToUtc } from '@/lib/berlinTime'
 import Section from '@/components/ui/Section'
 import MealLogger from '@/components/nutrition/MealLogger'
 
@@ -122,19 +123,7 @@ function r(n: number): number { return Math.round(n) }
 // Convert a Berlin HH:MM time string into a UTC ISO timestamp, keeping the same
 // calendar date in Berlin as the existing logged_at.
 function buildNewLoggedAt(existingLoggedAt: string, newHHMM: string): string {
-  const berlinDate = new Date(existingLoggedAt).toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
-  const [yy, mm, dd] = berlinDate.split('-').map(Number)
-  const [hh, min] = newHHMM.split(':').map(Number)
-  // Provisional UTC: treat the Berlin HH:MM as if it were UTC
-  const provisional = new Date(Date.UTC(yy, mm - 1, dd, hh, min, 0))
-  // Find what Berlin time that provisional UTC actually corresponds to
-  const actualBerlin = provisional.toLocaleTimeString('en-GB', {
-    hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin',
-  })
-  const [aHH, aMM] = actualBerlin.split(':').map(Number)
-  // Offset (minutes) between the provisional UTC and desired Berlin time
-  const diff = (aHH * 60 + aMM) - (hh * 60 + min)
-  return new Date(provisional.getTime() - diff * 60_000).toISOString()
+  return berlinWallClockToUtc(berlinDate(new Date(existingLoggedAt)), newHHMM).toISOString()
 }
 
 // ─── Macro summary bar ────────────────────────────────────────────────────
