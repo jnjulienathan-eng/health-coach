@@ -1,6 +1,17 @@
 # BODYCIPHER
 _Single source of truth. Read at the start of every Claude Code session. Update at the end of every session._
-_Last updated: October 31, 2026 (Session: DST time-of-day audit, branch `fix-dst-time-of-day`). Julie reported that the last meal on 30 Oct shows 20:44 in Explore when she ate at 19:44, after summer time ended on 25 Oct.
+_Last updated: October 31, 2026 (Session: Explore late-eating analysis, same branch `fix-dst-time-of-day`, built on the DST fix because it uses `lib/berlinTime.ts`). The DST audit showed the "last meal" metric was the real problem: an 83 kcal truffle counted the same as a full dinner. Explore now measures the late food load instead.
+- **`late_kcal` replaces `last_meal`** on the Explore chart and in the coach payload: kcal logged in the 3 hours before Oura bedtime, keyed by the night's wake date (no shift). Days with no meals logged at all have no value; a logged day with nothing late is 0. One coach prompt line was reworded to describe it (the prompt version changes, so cached one-tap answers miss once).
+- **New Late eating view** (Explore → Trends | Late eating, `components/ExploreLateEating.tsx`):
+  - a scatter of late kcal (or carbs) against one outcome at a time, coloured by bedtime deviation, with hollow points on training days;
+  - nights under 200 vs over 500 kcal compared with n, median and middle half;
+  - filters for All / Rest days / Training days.
+  Data from `GET /api/explore/late-eating`, `lib/explore/lateEating.ts` and `lib/explore/meals.ts`. No coach in this view.
+- **Oura sync** now also stores `deep_sleep_min` and `lowest_hr_time_pct`. **Migration needed** (see DATA MODEL → daily_entries), then the Oura backfill on production.
+- **Sick nights are left out** of the Late eating view, like the 28-day baselines.
+- **Tests:** `lib/explore/lateEating.test.ts` (16) and late-window DST tests in `lib/berlinTime.test.ts`. Total 144. New `vitest.config.mts` resolves the `@/` alias.
+See EXPLORE → Late eating._
+_Previous update: October 31, 2026 (Session: DST time-of-day audit, branch `fix-dst-time-of-day`). Julie reported that the last meal on 30 Oct shows 20:44 in Explore when she ate at 19:44, after summer time ended on 25 Oct.
 - **Finding:** no code uses a fixed +2 offset. Every read path (Explore last meal and bedtime, the coach payload, Today meal cards, dayKeyFromTimestamp) already converts with Intl in Europe/Berlin. The stored row (`meal_logs` 4cba6a3d…, "Lindt 70% truffle") is `2026-10-30T19:44:48.606Z`, which is 20:44 CET. That is the moment the meal was saved, so 20:44 is a correct reading of what's stored. A fixed +2 would have shown 21:44.
 - **Real faults found and fixed:**
   - the Today tab took "today" as the UTC date, so for the first hour after Berlin midnight (two hours in summer) it showed and saved the previous day;
@@ -923,7 +934,7 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 - **Phase 4 done** (Oct 29, 2026, branch `dashboard-remove-hrv-rhr-chart`): the Dashboard's HRV chart was removed, since Explore covers HRV and RHR. See CURRENT STATE → Dashboard.
 
 ### Files
-- `lib/explore/series.ts` — pure. Holds the variable keys, the raw daily series keyed by chart date (already shifted), the bedtime and last-meal minute encodings with their HH:MM inverses, and the GLP-1 injection info.
+- `lib/explore/series.ts` — pure. Holds the variable keys, the raw daily series keyed by chart date (already shifted), the bedtime minute encoding with its HH:MM inverse, the late-eating window (`nightBedtime`, `lateWindowLoad`, `mealDays`, `LATE_WINDOW_HOURS` = 3, `MealLoad`), and the GLP-1 injection info.
 - `lib/explore/normalise.ts` — pure. Robust z-scores per variable per chart date.
 - `lib/explore/highlights.ts` — pure and client-safe. `computeHighlights(points, selected)` finds outliers and coincidences for the current 1–3 selected variables and throws a RangeError for any other count. **The chart no longer uses it** (since the Oct 28 redesign). It is kept for Phase 3, which may use outliers in the coach context.
 - `lib/explore/trends.ts` — pure and client-safe. `rollingAverage(values)` and `findStretches(dates, averages, selected)`, used by the chart (see Trends below).
@@ -942,7 +953,11 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 - `lib/explore/coach.ts` — server-only. Payload, cache key, data hash, the model call, error classification and `runCoach()`.
 - `lib/explore/coach.test.ts` — vitest: payload, cache key, prompts, caching and error classification.
 - `app/api/explore/coach/route.ts` — `POST /api/explore/coach`, `force-dynamic`.
-- `berlinParts()` lives in `lib/berlinTime.ts` (moved Oct 31, 2026; `lib/nutrition.ts` re-exports it), so last-meal time of day uses the same Berlin clock as `dayKeyFromTimestamp()`.
+- `berlinParts()` lives in `lib/berlinTime.ts` (moved Oct 31, 2026; `lib/nutrition.ts` re-exports it), the same Berlin clock `dayKeyFromTimestamp()` uses.
+- `lib/explore/meals.ts` — `mealLoadFromRow` (pure: photo estimates use their own macros, other meals sum items as `nutrients_per_100g × grams / 100`) and `loadMealLoads(client, fromDate)` (one query, items embedded).
+- `lib/explore/lateEating.ts` — pure and client-safe. The Late eating view's nights, exclusions and group summary (see "Late eating" below). `lib/explore/lateEating.test.ts` — vitest.
+- `app/api/explore/late-eating/route.ts` — `GET /api/explore/late-eating`, `force-dynamic`. Loader: `loadLateEatingData()` in `lib/explore/fetch.ts`.
+- `components/ExploreLateEating.tsx` — the Late eating view (also exports the `Segmented` control used for the Trends | Late eating switch).
 
 ### Variables (keys)
 | Key | Source | Encoding | Shift |
@@ -953,7 +968,9 @@ The Explore tab replaced the Coach tab (tab index 2). It shows a normalised char
 | `bedtime` | daily_entries.bedtime | minutes since midnight − 720, mod 1440 (noon-centred, as in `getBedtimeRolling30DayAvg()`): 23:30 = 690, 00:15 = 735 | none |
 | `training_stress` | daily TSU (`computeDailyTSU()`, via the `tsu` from `computeTrainingLoadHistory()`) | TSU | day D plotted on **D+1** |
 | `load_ratio` | `ratio` from `computeTrainingLoadHistory()` over the **full** entry history, so the EWMA is correct | ratio | none; a null ratio means no value |
-| `last_meal` | latest `meal_logs.logged_at` per app day (`dayKeyFromTimestamp()`, 05:00 Berlin boundary, photo estimates included) | minutes after 05:00 Berlin: 21:00 = 960, 00:30 = 1170 | app day D plotted on **D+1**; no meals means no value |
+| `late_kcal` | kcal of `meal_logs` (photo estimates included) logged in [bedtime − 3h, bedtime), bedtime from `daily_entries.bedtime` on the wake date (12:00 or later = the evening before; converted with `berlinWallClockToUtc`) | kcal | none (keyed by wake date); no meals logged on the evening's app day (05:00 boundary) means no value |
+
+`last_meal` (latest meal clock time, plotted D+1) was **removed Oct 31, 2026**: the last item logged, however small, set the value, so an 83 kcal truffle counted the same as dinner.
 
 - **Training stress on rest days:** `computeTrainingLoadHistory()` fills every date between the first and last entry. Days with no entry row count as 0 TSU, so they plot as 0, not as gaps. This matches the EWMA.
 - **Known limit:** sessions load only for dates that have a daily_entries row, as with `loadAllEntries`. `loadSessionsForDates()` logs errors and returns `{}`, so a failed sessions query reads as zero training.
@@ -1018,7 +1035,7 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
     daysSinceInjection,                // number | null
     variables: {
       <key>: { value: number | null,   // ms / bpm / minutes / TSU / ratio / encoded minutes
-               display: string | null, // Berlin "HH:MM" for bedtime and last_meal, else null
+               display: string | null, // Berlin "HH:MM" for bedtime, else null
                z: number | null }
     }                                   // all seven keys, always present
   }]
@@ -1035,7 +1052,7 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
 
 **Layout, top to bottom (mobile-first, 375px):**
 1. **Header:** "Explore" on the left, "Last 60 days" on the right (secondary text).
-2. **Chips** (wrapping): HRV, RHR, Sleep duration, Bedtime, Training stress, Load ratio, Last meal.
+2. **Chips** (wrapping): HRV, RHR, Sleep duration, Bedtime, Training stress, Load ratio, Late kcal. (Since Oct 31, 2026 a Trends | Late eating switch sits under the header; this list describes Trends.)
    - Each chip has a 10px colour square: filled with the series colour when selected, an empty muted outline when not.
    - Up to 3 can be selected. Tapping a 4th shows "Up to 3 variables. Remove one first." under the chips; the message clears on the next valid tap.
    - Tapping a selected chip removes it, and all chips may be deselected.
@@ -1043,8 +1060,8 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
 4. **Readout box** (card) for the selected day, which defaults to the latest date:
    - **Header line** (muted): "27 Oct", then each tag covering that date (" · Covid", " · Sick · Travel"), then " · injection" and " · off together" (inside a stretch) as applicable. " · sick day" was removed in Phase 2b; the Sick tag replaces it.
    - **Rows:** one per selected variable — colour square and name on the left, value on the right.
-     - Training stress carries a muted "(prev. day)" note after its name; Last meal carries "(prev. evening)".
-     - Values: HRV `N ms`, RHR `N bpm`, Sleep `Xh Ym`, Bedtime / Last meal `HH:MM` (the route's `display`), Training stress a whole number, Load ratio to 2 decimals.
+     - Training stress carries a muted "(prev. day)" note after its name; Late kcal carries "(3h before bed)".
+     - Values: HRV `N ms`, RHR `N bpm`, Sleep `Xh Ym`, Bedtime `HH:MM` (the route's `display`), Training stress a whole number, Load ratio to 2 decimals, Late kcal `N kcal`.
      - **Week note** (reworded in Phase 2b): a 12px muted note from that variable's 7-day average on that date — "in line with last month" (within ±0.8), "above last month" (> +0.8) or "below last month" (< −0.8). There is no note when the average is null.
        - It sits on its own right-aligned line under the value, without the leading "·", so the longer wording never pushes the value out of the card at 375px. The variable name stays on one line.
        - The baseline it compares against is the previous 28 days ("last month").
@@ -1102,7 +1119,7 @@ The window is the `EXPLORE_WINDOW_DAYS = 60` chart dates ending today (Berlin ca
    - Answers live in component state, so they clear when the tab remounts; a tap after that is served from cache when nothing changed.
 
 **Defaults:**
-- Selection is HRV, Last meal, Training stress, in that order.
+- Selection is HRV, Late kcal, Training stress, in that order (Last meal until Oct 31, 2026).
 - It resets to that default every time the tab opens, because the component remounts on tab switch. Nothing is persisted.
 
 **Verification:**
@@ -1150,9 +1167,9 @@ Anthropic-backed answers about the chart. **Nothing calls the route automaticall
   - `view: { start, end, selected, included }` — `included` is the selected variables for `see`, all seven for `next` and `custom`.
   - `units` for each included variable.
   - `days`: per chart date, `{ date, sick, injection, <variable>: { value, avg7, avg7_dev, dev } }`.
-    - `value` and `avg7` are in display units: hrv / rhr / training_stress as whole numbers, sleep_duration as "h:mm", bedtime and last_meal as Berlin "HH:MM" (via `bedtimeMinutesToHHMM` / `lastMealMinutesToHHMM`), load_ratio to 2 decimals.
-    - `avg7` (changed Oct 29, 2026, follow-up) is `rollingAverage()` over the raw values: the same centred 7-day window and 4-value minimum as the chart, then formatted. Bedtime and last meal average their encoded minutes (noon-centred / after 05:00), so times either side of midnight average correctly. The readout has no real-unit average of its own, so this reuses `rollingAverage` plus the readout's display formats.
-    - The raw average covers every non-null value in the window, including days with no dev (e.g. last meal before its baseline fills). So `avg7` can exist where `avg7_dev` is null.
+    - `value` and `avg7` are in display units: hrv / rhr / training_stress / late_kcal as whole numbers, sleep_duration as "h:mm", bedtime as Berlin "HH:MM" (via `bedtimeMinutesToHHMM`), load_ratio to 2 decimals. (last_meal was replaced by late_kcal on Oct 31, 2026; its prompt line now reads: "Training stress is shifted to the following night, so it lines up with the sleep and recovery it could affect. Late kcal is the kcal logged in the 3 hours before that night's bedtime, shown on the morning after.")
+    - `avg7` (changed Oct 29, 2026, follow-up) is `rollingAverage()` over the raw values: the same centred 7-day window and 4-value minimum as the chart, then formatted. Bedtime averages its encoded minutes (noon-centred), so times either side of midnight average correctly. The readout has no real-unit average of its own, so this reuses `rollingAverage` plus the readout's display formats.
+    - The raw average covers every non-null value in the window, including days with no dev (e.g. late kcal before its baseline fills). So `avg7` can exist where `avg7_dev` is null.
     - **Oura cutoff in the payload** (changed Oct 29, 2026, second follow-up): for HRV and RHR (`OURA_VARIABLES`) on dates before `OURA_START_DATE` (2026-09-17), value, avg7, avg7_dev and dev are all `null`. Pre-Oura values are also left out of the raw average, so a window that straddles 17 Sep averages Oura days only (e.g. 17 Sep's avg7 uses 17–20 Sep, not 14–16 Sep from the old device).
       - Coach only: the chart, readout and `/api/explore` still carry the raw pre-Oura values.
       - Stretches still come from the chart's own averages, unmasked.
@@ -1183,6 +1200,41 @@ Anthropic-backed answers about the chart. **Nothing calls the route automaticall
     - "Review and save tag" pre-fills the form (label, dates, note), and Save POSTs the note, which then shows in the readout;
     - an overlapping suggestion opens Edit on the existing tag with the note added.
   - Still not run against the real API (same reason as above).
+
+### Late eating (Oct 31, 2026) — `components/ExploreLateEating.tsx`, `GET /api/explore/late-eating`
+The question: how much does food close to bedtime affect overnight recovery, glucose and weight? Exposure is measured relative to Oura bedtime, so a 21:00 dinner before a 00:30 bedtime counts as early and the same dinner before 22:00 as late.
+
+**Per night** (wake date W, from `OURA_START_DATE` to today; `buildLateEatingNights()` in `lib/explore/lateEating.ts`):
+- **Sleep window:** `daily_entries.bedtime` / `wake_time` (Oura, Berlin "HH:MM") turned into instants with `nightBedtime()` / `berlinWallClockToUtc`.
+- **Exposure:** kcal and carbs of meals logged in [bedtime − 3h, bedtime).
+- **Bedtime deviation:** bedtime minus the median bedtime of the previous 14 wake dates, in minutes (noon-centred, so midnight doesn't wrap), needing at least 7. Null shows grey.
+- **Training:** any `training_sessions` row on the evening's app day (05:00 boundary of the bedtime).
+- **Outcomes:**
+  - Oura: lowest HR (`rhr`), lowest-HR timing (`lowest_hr_time_pct`), HRV (`hrv`) and deep sleep (`deep_sleep_min`);
+  - CGM (LibreView only): mean and peak glucose within the sleep window, and waking glucose (the reading nearest wake time, within 120 minutes, as on the Today card);
+  - weight change: the `weight` reading on W minus the latest reading in the 3 days before. InBody weighs in the morning, before breakfast and sport.
+- **Left out, with a reason, never estimated:**
+  - `oura` — no bedtime, wake time, HRV or RHR;
+  - `sick` — `is_sick`, as in the 28-day baselines;
+  - `meals` — no meals logged at all on the evening's app day;
+  - `cgm` — CGM readings fill under 70% of the window's 15-minute slots.
+
+  A night missing only deep sleep, timing or weight stays in, and that outcome is blank.
+- **Loader:** `loadLateEatingData()` (`lib/explore/fetch.ts`) loads all entries, meals from 2 days before the start, LibreView CGM (paged 1,000 rows at a time) and weights.
+
+**UI (Explore → Late eating):**
+1. **Filters:** Training All / Rest days / Training days; exposure kcal / Carbs.
+2. **Outcome chips, one at a time:** Lowest HR, Lowest HR timing, HRV, Deep sleep, Sleep glucose (mean), Sleep glucose (peak), Waking glucose, Weight change.
+3. **Readout of the tapped night:** date, bedtime, training, late kcal and carbs, the outcome and the bedtime deviation.
+4. **Legend:** a blue → grey → orange bar for earlier → later bedtime (full colour at ±60 min, via `color-mix`); a hollow point means a training day.
+5. **Scatter:** the x axis is late kcal (dashed lines at 200 and 500) or carbs.
+6. **Count line:** nights shown · nights in 200–500 kcal · left out by reason · nights without the selected outcome.
+7. **Group card:** under 200 vs over 500 kcal (always by kcal), each with n, median, middle half and a dot strip, plus the median difference. A group under 8 nights is greyed with "Too few nights to compare". No p-values.
+8. **Footnote:** "Meals count by the time they were logged. Shows associations, not causes."
+
+**Caveat — logging time vs eating time:** meals are placed by `meal_logs.logged_at`, the moment they were logged. That matches eating time only when a meal is logged as it's eaten. A meal logged later moves relative to the 3-hour window.
+
+**Data at launch:** a read of the live data from 18 Sep to 31 Oct (44 nights, before exclusions) put 10 nights under 200 kcal, 10 at 200–500 and 24 over 500. Dinner usually falls inside the 3-hour window, so the under-200 group stays small.
 
 ---
 
@@ -1336,6 +1388,13 @@ Supplements: morning_stack_taken, morning_exceptions, evening_stack_taken, eveni
 **`estradiol_taken` / `estradiol_sprays` — retired Aug 18, 2026** (same dead-column pattern as above): Lenzetto moved from a single daily 3-spray dose to twice-daily dosing, so the single toggle was replaced by `estradiol_am_taken`/`estradiol_am_sprays` and `estradiol_pm_taken`/`estradiol_pm_sprays`. The two old columns remain on the table and stay mapped through `lib/types.ts` and `lib/db.ts` (both directions, `rowToEntry()` and `saveEntry()`) exactly like `phosphatidylserine_taken`/`ashwagandha_taken`/`dim_taken` — preserved for historical rows, no longer read or written by any new code (UI, scoring, or Coach). Do not drop the columns; do not re-wire them.
 **`estradiol_pm_taken` / `estradiol_pm_sprays` — retired Aug 30, 2026** (same dead-column pattern as above, joining `estradiol_taken`/`estradiol_sprays` in this list): the twice-daily AM/PM split above is reverted — back to a single AM-only dose at 2 sprays. The two PM columns remain on the table and stay mapped through `lib/types.ts` and `lib/db.ts` (both directions) exactly like the other retired columns here — preserved for historical rows, no longer read or written by any new code (UI, scoring, or Coach — the three Coach reads of `estradiol_pm_taken` that remained after this entry were removed Oct 3, 2026, see Supplements section above). Do not drop the columns; do not re-wire them.
 Oura: **oura_readiness** (integer, nullable — Oura `daily_readiness.score` for that date, written by `syncOuraRange()` in `lib/oura.ts`, overwrite-on-change). Migration run by Julie in the Supabase SQL editor, Oct 3, 2026: `ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS oura_readiness integer;` Existing table, so no grants were needed.
+Oura (Oct 31, 2026, Late eating): **deep_sleep_min** (integer, nullable — main sleep `deep_sleep_duration` ÷ 60, rounded) and **lowest_hr_time_pct** (numeric, nullable — when the lowest 5-minute `heart_rate` sample fell, as % of bedtime_start → bedtime_end, 1 decimal, first sample wins a tie; `lowestHrTimePct()` in `lib/oura.ts`). Both Oura-owned (in `OURA_OWNED_COLUMNS`, overwrite-on-change), read-only in `SleepData`, never sent by `saveEntry()`. **Migration — Julie runs it before this code deploys** (existing table, so no grants):
+```sql
+ALTER TABLE daily_entries
+  ADD COLUMN IF NOT EXISTS deep_sleep_min integer,
+  ADD COLUMN IF NOT EXISTS lowest_hr_time_pct numeric;
+```
+Without it, `syncOuraRange()`'s read of the Oura-owned columns fails. After merge, run the Oura backfill on production (Vercel → Settings → Cron Jobs → `/api/oura/backfill` → Run; the Oura env vars are Production-only) to fill both from 17 Sep.
 Context: cycle_day, symptoms, travelling, is_sick, notes
 - **`is_sick`** (boolean, `DEFAULT false` — migration already applied, July 26, 2026). Manual toggle in Context section. Drives Behavior/Outcome Score exclusions and Coach sick-day training suppression — see SCORING MODEL and Coach Tab sections.
 Scores: behavior_score, outcome_score

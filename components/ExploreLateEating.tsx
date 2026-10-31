@@ -264,7 +264,7 @@ function GroupCard({ nights, outcome }: { nights: LateEatingNight[]; outcome: La
       </div>
       <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 'var(--space-sm) 0 0' }}>
         {enough
-          ? `Median difference (over ${HIGH_KCAL} − under ${LOW_KCAL}): ${fmtOutcome(outcome, diff)} ${meta.unit}`
+          ? `Median difference (over ${HIGH_KCAL} − under ${LOW_KCAL}): ${diff != null && diff > 0 ? '+' : ''}${diff == null ? '—' : diff.toFixed(meta.decimals)} ${meta.unit}`
           : `Too few nights to compare (each group needs ${MIN_GROUP_NIGHTS}).`}
       </p>
     </div>
