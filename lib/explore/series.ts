@@ -39,8 +39,8 @@ export type ExploreSeries = Record<ExploreVariable, Record<string, number>>
 // Late-eating window: food logged in the LATE_WINDOW_HOURS before bedtime.
 export const LATE_WINDOW_HOURS = 3
 
-// One logged meal reduced to what the late-eating measures need.
-export interface MealLoad { loggedAt: string; kcal: number; carbs: number }
+// One logged meal reduced to what late_kcal needs.
+export interface MealLoad { loggedAt: string; kcal: number }
 
 // ─── Date helpers ─────────────────────────────────────────────────
 export function addDays(date: string, n: number): string {
@@ -69,25 +69,25 @@ export function nightBedtime(wakeDate: string, bedtime: string): Date | null {
   return berlinWallClockToUtc(h >= 12 ? addDays(wakeDate, -1) : wakeDate, bedtime.slice(0, 5))
 }
 
-// ─── mealDays / lateWindowLoad ────────────────────────────────────
+// ─── mealDays / lateWindowKcal ────────────────────────────────────
 // App days (05:00 Berlin boundary) with at least one meal logged.
 export function mealDays(meals: MealLoad[]): Set<string> {
   return new Set(meals.filter(m => !Number.isNaN(Date.parse(m.loggedAt))).map(m => dayKeyFromTimestamp(m.loggedAt)))
 }
 
-// kcal and carbs of meals logged in [bedtime − LATE_WINDOW_HOURS, bedtime).
+// kcal of meals logged in [bedtime − LATE_WINDOW_HOURS, bedtime).
 // null when the app day the night belongs to has no meals logged at all
 // (not in loggedDays, from mealDays()) — a missing day, not a 0 kcal evening.
-export function lateWindowLoad(meals: MealLoad[], bedtime: Date, loggedDays: Set<string>): { kcal: number; carbs: number } | null {
+export function lateWindowKcal(meals: MealLoad[], bedtime: Date, loggedDays: Set<string>): number | null {
   if (!loggedDays.has(dayKeyFromTimestamp(bedtime.toISOString()))) return null
   const bedMs = bedtime.getTime()
   const fromMs = bedMs - LATE_WINDOW_HOURS * 3_600_000
-  let kcal = 0, carbs = 0
+  let kcal = 0
   for (const m of meals) {
     const ms = Date.parse(m.loggedAt)
-    if (ms >= fromMs && ms < bedMs) { kcal += m.kcal; carbs += m.carbs }
+    if (ms >= fromMs && ms < bedMs) kcal += m.kcal
   }
-  return { kcal, carbs }
+  return kcal
 }
 
 // ─── Display helpers (inverse of the encodings above) ─────────────
@@ -104,7 +104,7 @@ export function bedtimeMinutesToHHMM(mins: number): string {
 // ─── buildExploreSeries ───────────────────────────────────────────
 // entries: full daily_entries history (sessions attached) — load_ratio's
 //   EWMA needs all of it to be correct.
-// meals: meal_logs with their kcal and carbs (all logged_via types, photo
+// meals: meal_logs with their kcal (all logged_via types, photo
 //   estimates included).
 export function buildExploreSeries(entries: DailyEntry[], meals: MealLoad[]): ExploreSeries {
   const series = Object.fromEntries(EXPLORE_VARIABLES.map(v => [v, {}])) as ExploreSeries
@@ -118,8 +118,8 @@ export function buildExploreSeries(entries: DailyEntry[], meals: MealLoad[]): Ex
       const mins = bedtimeToMinutes(e.sleep.bedtime)
       if (mins != null) series.bedtime[e.date] = mins
       const bed = nightBedtime(e.date, e.sleep.bedtime)
-      const load = bed && lateWindowLoad(meals, bed, loggedDays)
-      if (load) series.late_kcal[e.date] = Math.round(load.kcal)
+      const kcal = bed ? lateWindowKcal(meals, bed, loggedDays) : null
+      if (kcal != null) series.late_kcal[e.date] = Math.round(kcal)
     }
   }
 

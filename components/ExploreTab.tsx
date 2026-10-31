@@ -8,8 +8,7 @@
 // BODYCIPHER.md → EXPLORE). Trends and stretches are computed here for the
 // current selection. Selection resets to the default every time the tab
 // mounts — no persistence. The coach (Phase 3) sits below the tag list:
-// POST /api/explore/coach, called only when Julie taps. The Trends | Late
-// eating switch under the header swaps in components/ExploreLateEating.tsx.
+// POST /api/explore/coach, called only when Julie taps.
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { ExploreData, ExploreDate } from '@/lib/explore/fetch'
@@ -18,7 +17,6 @@ import { MAX_SELECTED_VARIABLES } from '@/lib/explore/highlights'
 import { rollingAverage, findStretches, STRETCH_Z, type ExploreStretch } from '@/lib/explore/trends'
 import { TAG_LABEL_MAX, TAG_NOTE_MAX, tagsOverlap, type ExploreTag } from '@/lib/explore/tags'
 import type { CoachRequestType } from '@/lib/explore/coachPrompts'
-import ExploreLateEating, { Segmented } from '@/components/ExploreLateEating'
 
 type OriginalCoachType = Exclude<CoachRequestType, 'reply'>
 
@@ -580,7 +578,6 @@ function ExploreChart({
 
 // ─── Tab ──────────────────────────────────────────────────────────
 export default function ExploreTab() {
-  const [view, setView] = useState<'trends' | 'late'>('trends')
   const [data, setData] = useState<ExploreData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<ExploreVariable[]>(DEFAULT_SELECTION)
@@ -809,35 +806,14 @@ export default function ExploreTab() {
     boxShadow: 'var(--shadow-card)',
   }
 
-  const page: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', paddingBottom: 'var(--space-md)' }
-  const top = (
-    <>
-      {/* 1. Header + view switch */}
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', paddingBottom: 'var(--space-md)' }}>
+
+      {/* 1. Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>Explore</h1>
-        <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>{view === 'trends' ? 'Last 60 days' : 'Since 17 Sep'}</span>
+        <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Last 60 days</span>
       </div>
-      <Segmented
-        label="Explore view"
-        value={view}
-        onChange={setView}
-        options={[{ value: 'trends', label: 'Trends' }, { value: 'late', label: 'Late eating' }]}
-      />
-    </>
-  )
-
-  if (view === 'late') {
-    return (
-      <div style={page}>
-        {top}
-        <ExploreLateEating />
-      </div>
-    )
-  }
-
-  return (
-    <div style={page}>
-      {top}
 
       {/* 2. Chips */}
       <div>

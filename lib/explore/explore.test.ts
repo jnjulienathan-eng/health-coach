@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { emptyEntry, type DailyEntry } from '../types'
 import {
-  EXPLORE_VARIABLES, addDays, bedtimeToMinutes, buildExploreSeries, nightBedtime, lateWindowLoad, mealDays,
+  EXPLORE_VARIABLES, addDays, bedtimeToMinutes, buildExploreSeries, nightBedtime, lateWindowKcal, mealDays,
   computeInjectionInfo, bedtimeMinutesToHHMM, type ExploreSeries,
 } from './series'
 import { robustZ, normaliseExplore, MAD_SCALE, MEAN_AD_SCALE, BASELINE_WINDOW_DAYS, BASELINE_MIN_VALUES } from './normalise'
 import { computeHighlights, OUTLIER_Z, COINCIDENCE_Z } from './highlights'
 import { rollingAverage, findStretches } from './trends'
+import { mealLoadFromRow } from './meals'
 
 function emptySeries(): ExploreSeries {
   return Object.fromEntries(EXPLORE_VARIABLES.map(v => [v, {}])) as ExploreSeries
@@ -61,9 +62,9 @@ describe('buildExploreSeries', () => {
   it('late_kcal sums kcal in the 3 hours before bedtime, keyed by wake date', () => {
     const e = emptyEntry('2026-07-11'); e.sleep.bedtime = '22:00' // 20:00Z on 07-10
     const s = buildExploreSeries([e], [
-      { loggedAt: '2026-07-10T10:00:00Z', kcal: 600, carbs: 60 }, // lunch, out
-      { loggedAt: '2026-07-10T17:30:00Z', kcal: 500, carbs: 40 }, // 19:30, in
-      { loggedAt: '2026-07-10T19:45:00Z', kcal: 83, carbs: 5 },   // 21:45, in
+      { loggedAt: '2026-07-10T10:00:00Z', kcal: 600 }, // lunch, out
+      { loggedAt: '2026-07-10T17:30:00Z', kcal: 500 }, // 19:30, in
+      { loggedAt: '2026-07-10T19:45:00Z', kcal: 83 },   // 21:45, in
     ])
     expect(s.late_kcal['2026-07-11']).toBe(583)
     expect(s.late_kcal['2026-07-10']).toBeUndefined()
@@ -72,16 +73,16 @@ describe('buildExploreSeries', () => {
   it('late_kcal is 0 for a logged day with nothing late, and missing for an unlogged day', () => {
     const logged = emptyEntry('2026-07-11'); logged.sleep.bedtime = '22:00'
     const unlogged = emptyEntry('2026-07-13'); unlogged.sleep.bedtime = '22:00'
-    const s = buildExploreSeries([logged, unlogged], [{ loggedAt: '2026-07-10T10:00:00Z', kcal: 600, carbs: 60 }])
+    const s = buildExploreSeries([logged, unlogged], [{ loggedAt: '2026-07-10T10:00:00Z', kcal: 600 }])
     expect(s.late_kcal['2026-07-11']).toBe(0)
     expect(s.late_kcal['2026-07-13']).toBeUndefined()
   })
 
   it('a meal after midnight belongs to the previous app day for the logged-day check', () => {
-    const meals = [{ loggedAt: '2026-07-10T22:15:00Z', kcal: 120, carbs: 10 }] // 00:15 on 07-11
+    const meals = [{ loggedAt: '2026-07-10T22:15:00Z', kcal: 120 }] // 00:15 on 07-11
     const bed = nightBedtime('2026-07-11', '00:30')!
     expect(mealDays(meals).has('2026-07-10')).toBe(true)
-    expect(lateWindowLoad(meals, bed, mealDays(meals))).toEqual({ kcal: 120, carbs: 10 })
+    expect(lateWindowKcal(meals, bed, mealDays(meals))).toBe(120)
   })
 
   it('reads sleep fields from the wake date with no shift', () => {
@@ -315,5 +316,19 @@ describe('computeInjectionInfo', () => {
     expect(daysSinceInjection['2026-10-02']).toBe(0)
     expect(daysSinceInjection['2026-10-16']).toBe(14)
     expect(daysSinceInjection['2026-10-17']).toBeNull()
+  })
+})
+
+describe('mealLoadFromRow', () => {
+  it('photo estimates use their own kcal; other meals sum their items', () => {
+    expect(mealLoadFromRow({ logged_at: 't', logged_via: 'photo_estimate', calories: '420' }))
+      .toEqual({ loggedAt: 't', kcal: 420 })
+    expect(mealLoadFromRow({
+      logged_at: 't', logged_via: 'ingredients', calories: null,
+      meal_log_items: [
+        { weight_grams: 200, food_items: { nutrients_per_100g: { calories: 100 } } },
+        { weight_grams: 50, food_items: [{ nutrients_per_100g: { calories: '500' } }] },
+      ],
+    })).toEqual({ loggedAt: 't', kcal: 450 })
   })
 })

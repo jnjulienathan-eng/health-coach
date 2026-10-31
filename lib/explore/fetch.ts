@@ -1,6 +1,6 @@
 // Explore tab — server-side data load. Server-only: uses the service-role
 // client (supaAdmin). Loads daily_entries (full history, sessions attached),
-// meal_logs (with kcal and carbs), glp1_injections dates and explore_tags, then runs
+// meal_logs (with kcal), glp1_injections dates and explore_tags, then runs
 // the pure lib/explore functions. Trends and stretches are NOT computed
 // here — the client computes them for its current selection.
 
@@ -14,8 +14,6 @@ import { loadMealLoads } from './meals'
 import { normaliseExplore, BASELINE_WINDOW_DAYS } from './normalise'
 import { deriveAutoTags, visibleAutoTags, tagsOverlap, type ExploreTag } from './tags'
 import { loadManualTags } from './tagsDb'
-import { buildLateEatingNights, BEDTIME_MEDIAN_NIGHTS, WEIGHT_LOOKBACK_DAYS, type CgmPoint, type LateEatingData } from './lateEating'
-import { OURA_START_DATE } from '../types'
 
 // Number of chart dates, ending today (Berlin).
 export const EXPLORE_WINDOW_DAYS = 60
@@ -104,58 +102,4 @@ export async function loadExploreData(endDate: string = todayBerlin()): Promise<
     .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0))
 
   return { startDate, endDate, dates, injectionDates: injectionDatesInWindow, tags }
-}
-
-// ─── Late eating view ─────────────────────────────────────────────
-// Nights with wake dates from OURA_START_DATE to today (Berlin): entries
-// (all, for the prior-14-night bedtime median), meals, LibreView CGM and
-// morning weights. CGM is paged because PostgREST returns at most 1,000
-// rows per request and readings come every ~5 minutes.
-const CGM_PAGE = 1000
-
-export async function loadLateEatingData(to: string = todayBerlin()): Promise<LateEatingData> {
-  const client = supaAdmin()
-  const from = OURA_START_DATE
-  const dataFrom = addDays(from, -2)
-
-  const loadCgm = async (): Promise<CgmPoint[]> => {
-    const out: CgmPoint[] = []
-    for (let page = 0; ; page++) {
-      const { data, error } = await client
-        .from('cgm_readings')
-        .select('recorded_at, value_mmol')
-        .eq('user_id', 'julie')
-        .eq('source', 'LibreView')
-        .gte('recorded_at', `${dataFrom}T00:00:00Z`)
-        .order('recorded_at', { ascending: true })
-        .range(page * CGM_PAGE, page * CGM_PAGE + CGM_PAGE - 1)
-      if (error) throw error
-      const rows = (data ?? []) as { recorded_at: string; value_mmol: number | string }[]
-      for (const r of rows) out.push({ at: r.recorded_at, mmol: Number(r.value_mmol) })
-      if (rows.length < CGM_PAGE) return out
-    }
-  }
-
-  const [entries, meals, cgm, weightRes] = await Promise.all([
-    loadAllEntries(client),
-    loadMealLoads(client, dataFrom),
-    loadCgm(),
-    client
-      .from('biomarker_readings')
-      .select('recorded_on, value')
-      .eq('user_id', 'julie')
-      .eq('marker', 'weight')
-      .gte('recorded_on', addDays(from, -WEIGHT_LOOKBACK_DAYS)),
-  ])
-  if (weightRes.error) throw weightRes.error
-
-  const weightByDate: Record<string, number> = {}
-  for (const r of (weightRes.data ?? []) as { recorded_on: string; value: number | string }[]) {
-    weightByDate[String(r.recorded_on).slice(0, 10)] = Number(r.value)
-  }
-  const bedtimeFrom = addDays(from, -BEDTIME_MEDIAN_NIGHTS)
-  return buildLateEatingNights({
-    entries: entries.filter(e => e.date >= bedtimeFrom && e.date <= to),
-    meals, cgm, weightByDate, from, to,
-  })
 }

@@ -141,7 +141,7 @@ describe('meal day and time of day across DST', () => {
 })
 
 describe('late-eating window across DST', () => {
-  const meal = (loggedAt: string, kcal: number) => ({ loggedAt, kcal, carbs: 0 })
+  const meal = (loggedAt: string, kcal: number) => ({ loggedAt, kcal })
   const night = (wake: string, bedtime: string) => { const e = emptyEntry(wake); e.sleep.bedtime = bedtime; return e }
 
   it('bedtime instant on both sides of both changes, and after midnight', () => {
