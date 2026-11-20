@@ -398,12 +398,12 @@ export async function DELETE(req: NextRequest) {
 
   const { data: existing, error: lookupErr } = await supabase
     .from('recipes')
-    .select('id, food_item_id')
+    .select('id, name, food_item_id')
     .eq('id', id)
     .eq('user_id', userId)
     .maybeSingle()
   if (lookupErr) return fail('lookup', lookupErr)
-  if (!existing) return Response.json({ ok: true })   // already gone
+  if (!existing) return Response.json({ ok: true, deleted: false })   // already gone
 
   // Recipe row first — recipe_ingredients cascade with it.
   const { error: delErr } = await supabase
@@ -424,7 +424,7 @@ export async function DELETE(req: NextRequest) {
     if (fiErr) return fail('soft-delete-food-item', fiErr)
   }
 
-  return Response.json({ ok: true })
+  return Response.json({ ok: true, deleted: true, id, name: existing.name as string })
 }
 
 // ─── Macro computation ────────────────────────────────────────────────────

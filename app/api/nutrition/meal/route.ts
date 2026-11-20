@@ -211,12 +211,12 @@ export async function DELETE(req: Request) {
   // Need logged_at to know which date's summary to refresh.
   const { data: existing, error: loadErr } = await supabase
     .from('meal_logs')
-    .select('logged_at')
+    .select('logged_at, name')
     .eq('id', id)
     .eq('user_id', userId)
     .maybeSingle()
   if (loadErr) return Response.json({ error: loadErr.message }, { status: 500 })
-  if (!existing) return Response.json({ ok: true })   // already gone
+  if (!existing) return Response.json({ ok: true, deleted: false })   // already gone
 
   const { error: delErr } = await supabase
     .from('meal_logs')
@@ -228,7 +228,7 @@ export async function DELETE(req: Request) {
   const date = dayKeyFromTimestamp(existing.logged_at as string)
   await recomputeDailySummary(date)
   await recomputeScores(date)
-  return Response.json({ ok: true, date })
+  return Response.json({ ok: true, deleted: true, id, name: existing.name as string | null, date })
 }
 
 // ─── PATCH (update a single field without recomputing summary) ───────────
